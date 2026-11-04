@@ -1,0 +1,37 @@
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# 로컬 전용 메모와 설정
+CLAUDE.local.md
+.claude/settings.local.json
+
+# 데이터 원본과 생성물 (출처와 받는 방법은 data/README.md)
+data/raw/
+data/generated/
+*.parquet
+*.avro
+
+# 실행 중 생기는 것
+checkpoints/
+warehouse/
+logs/
+*.log
+
+# 파이썬
+.venv/
+__pycache__/
+*.py[cod]
+
+# dbt
+target/
+dbt_packages/
+
+# OS와 편집기
+.DS_Store
+.idea/
+.vscode/
+
+# 진행판 원본 (아티팩트로 게시)
+진행판.html

@@ -1,0 +1,23 @@
+{
+  "name": "source-postgres",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.dbname": "${env:POSTGRES_DB}",
+    "database.user": "${env:CDC_USER}",
+    "database.password": "${env:CDC_PASSWORD}",
+    "topic.prefix": "src",
+    "schema.include.list": "source",
+    "publication.name": "cdc_pub",
+    "publication.autocreate.mode": "disabled",
+    "slot.name": "cdc_slot",
+    "snapshot.mode": "initial",
+    "tombstones.on.delete": "true",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}
