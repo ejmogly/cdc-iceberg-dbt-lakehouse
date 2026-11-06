@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 620" width="1320" height="620" role="img" aria-label="AI 트랙 구조: 데이터 파이프라인 위에 도구, 에이전트, 화면, 평가 실행기"><title>AI 트랙 구조: 데이터 파이프라인 위에 도구, 에이전트, 화면, 평가 실행기</title><rect width="100%" height="100%" fill="#ffffff"/><text x="30" y="30" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="17" font-weight="700" fill="#1f2328" text-anchor="start">데이터 파이프라인이 만든 Gold 위에 도구와 에이전트를 얹고, 평가 실행기가 모든 단계를 잽니다</text>
+<rect x="20" y="80" width="210" height="330" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="5 5"/>
+<text x="32" y="72" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="700" fill="#6e7781" text-anchor="start">원천 DB</text>
+<rect x="30" y="92" width="190" height="86" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="125.0" y="130.1" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#1d4ed8" text-anchor="middle">주문, 체결, 잔고</text>
+<text x="125.0" y="149.29999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">합성 데이터</text>
+<rect x="30" y="196" width="190" height="86" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="125.0" y="234.1" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#1d4ed8" text-anchor="middle">시세, 환율</text>
+<text x="125.0" y="253.29999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">공공 데이터, 하루 한 번</text>
+<rect x="30" y="300" width="190" height="96" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="125.0" y="334.70000000000005" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#1d4ed8" text-anchor="middle">관심도, 뉴스</text>
+<text x="125.0" y="353.90000000000003" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">GDELT, 위키백과</text>
+<text x="125.0" y="370.70000000000005" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">종목 뉴스 제목과 감성</text>
+<rect x="260" y="80" width="190" height="330" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="5 5"/>
+<text x="272" y="72" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="700" fill="#6e7781" text-anchor="start">데이터 파이프라인</text>
+<rect x="270" y="96" width="170" height="56" rx="10" fill="#fff4e5" stroke="#f0a14a" stroke-width="1.5"/>
+<text x="355.0" y="127.5" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#9a4d00" text-anchor="middle">CDC, Kafka</text>
+<rect x="270" y="168" width="170" height="56" rx="10" fill="#e8f7fb" stroke="#36a3c9" stroke-width="1.5"/>
+<text x="355.0" y="199.5" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#0b5c78" text-anchor="middle">Bronze</text>
+<rect x="270" y="240" width="170" height="56" rx="10" fill="#e8f7fb" stroke="#36a3c9" stroke-width="1.5"/>
+<text x="355.0" y="271.5" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#0b5c78" text-anchor="middle">Silver</text>
+<rect x="270" y="312" width="170" height="56" rx="10" fill="#ecfdf3" stroke="#3fb27f" stroke-width="1.5"/>
+<text x="355.0" y="343.5" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#0f6b45" text-anchor="middle">Gold</text>
+<defs><marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="355.0,152 355.0,166" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m1)"/>
+<defs><marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="355.0,224 355.0,238" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m2)"/>
+<defs><marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="355.0,296 355.0,310" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m3)"/>
+<defs><marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="220,135 242,135 268,112" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m4)"/>
+<defs><marker id="m5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="220,239 242,239 268,124" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m5)"/>
+<defs><marker id="m6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="220,348 242,348 268,136" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m6)"/>
+<rect x="480" y="80" width="220" height="330" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="5 5"/>
+<text x="492" y="72" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="700" fill="#6e7781" text-anchor="start">도구</text>
+<rect x="490" y="92" width="200" height="64" rx="10" fill="#ecfdf3" stroke="#3fb27f" stroke-width="1.5"/>
+<text x="590.0" y="119.8" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#0f6b45" text-anchor="middle">손익 계산기</text>
+<text x="590.0" y="139.0" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">A, B. 결정적 계산</text>
+<rect x="490" y="170" width="200" height="64" rx="10" fill="#ecfdf3" stroke="#3fb27f" stroke-width="1.5"/>
+<text x="590.0" y="197.79999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#0f6b45" text-anchor="middle">SQL 조회</text>
+<text x="590.0" y="216.99999999999997" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">Gold 읽기만</text>
+<rect x="490" y="248" width="200" height="64" rx="10" fill="#f1f0ff" stroke="#8b7cf6" stroke-width="1.5"/>
+<text x="590.0" y="275.8" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#5b21b6" text-anchor="middle">뉴스 검색</text>
+<text x="590.0" y="295.0" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">C. 날짜와 종목 거름 + 의미 검색</text>
+<rect x="490" y="326" width="200" height="64" rx="10" fill="#f1f0ff" stroke="#8b7cf6" stroke-width="1.5"/>
+<text x="590.0" y="353.8" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#5b21b6" text-anchor="middle">비슷했던 때 찾기</text>
+<text x="590.0" y="373.0" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">D. 유사 국면과 그 뒤 범위</text>
+<defs><marker id="m7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3fb27f"/></marker></defs>
+<polyline points="440,340 488,340" fill="none" stroke="#3fb27f" stroke-width="1.7" marker-end="url(#m7)"/>
+<text x="465.0" y="332" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">읽기</text>
+<rect x="730" y="80" width="250" height="330" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="5 5"/>
+<text x="742" y="72" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="700" fill="#6e7781" text-anchor="start">에이전트 (E)</text>
+<rect x="740" y="96" width="230" height="72" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<text x="855.0" y="127.8" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#57606a" text-anchor="middle">계획</text>
+<text x="855.0" y="147.0" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">질문을 도구 호출로 나눔</text>
+<rect x="740" y="196" width="230" height="72" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<text x="855.0" y="227.79999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#57606a" text-anchor="middle">실행</text>
+<text x="855.0" y="246.99999999999997" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">도구를 부르고 결과를 모음</text>
+<rect x="740" y="296" width="230" height="72" rx="10" fill="#fff1f0" stroke="#e5534b" stroke-width="1.5"/>
+<text x="855.0" y="327.8" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#b42318" text-anchor="middle">검증</text>
+<text x="855.0" y="347.0" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">숫자를 다시 계산, 인과 표현 검사</text>
+<defs><marker id="m8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="855.0,168 855.0,194" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m8)"/>
+<defs><marker id="m9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="855.0,268 855.0,294" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m9)"/>
+<defs><marker id="m10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e5534b"/></marker></defs>
+<polyline points="950,296 974,296 974,132 968,132" fill="none" stroke="#e5534b" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m10)"/>
+<text x="978" y="220" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#b42318" text-anchor="start">틀리면</text>
+<text x="978" y="236" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#b42318" text-anchor="start">다시</text>
+<defs><marker id="m11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="738,230 692,230" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m11)"/>
+<defs><marker id="m12" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="692,250 738,250" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m12)"/>
+<rect x="1030" y="80" width="270" height="330" rx="14" fill="none" stroke="#d0d7de" stroke-width="1.4" stroke-dasharray="5 5"/>
+<text x="1042" y="72" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="700" fill="#6e7781" text-anchor="start">화면 (F)</text>
+<rect x="1040" y="96" width="250" height="84" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="1165.0" y="126.1" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#1d4ed8" text-anchor="middle">대시보드</text>
+<text x="1165.0" y="145.29999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">종목, 매수일, 매도일, 수량</text>
+<text x="1165.0" y="160.7" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">손익, 환율 효과, 기준선 대비</text>
+<rect x="1040" y="198" width="250" height="84" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="1165.0" y="228.1" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#1d4ed8" text-anchor="middle">대화창</text>
+<text x="1165.0" y="247.29999999999998" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">질문과 답, 근거 인용</text>
+<text x="1165.0" y="262.7" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">범위로만 말하는 전망</text>
+<rect x="1040" y="300" width="250" height="96" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="1165.0" y="336.1" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#57606a" text-anchor="middle">미니어처 도시 (선택)</text>
+<text x="1165.0" y="355.3" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">종목마다 건물, 높이는 평가금액</text>
+<text x="1165.0" y="370.7" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#424a53" text-anchor="middle">색은 수익률, 날짜 슬라이더</text>
+<defs><marker id="m13" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="1000,240 1038,240" fill="none" stroke="#6e7781" stroke-width="1.7" marker-end="url(#m13)"/>
+<defs><marker id="m14" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3fb27f"/></marker></defs>
+<polyline points="630.0,92 630.0,54 1165.0,54 1165.0,94" fill="none" stroke="#3fb27f" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m14)"/>
+<text x="910.0" y="49" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">대시보드는 에이전트 없이 계산기를 바로 씀</text>
+<rect x="30" y="450" width="1260" height="92" rx="10" fill="#fffbea" stroke="#d4a72c" stroke-width="1.5"/>
+<text x="660.0" y="482.70000000000005" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="700" fill="#7a5d00" text-anchor="middle">평가 실행기</text>
+<text x="660.0" y="501.90000000000003" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">골든셋(손익 사례 30, 질문 60, 큰 움직임 날 40) → 시스템 → 채점(규칙, 판정 모델, 사람 표본) → 품질, p50과 p95 지연, 비용</text>
+<text x="660.0" y="518.7" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="400" fill="#424a53" text-anchor="middle">기능마다 평가 기준을 개발 전에 확정. 손잡이(모델 크기, 검색 개수, 캐시, 미리 계산)를 바꿔 파레토 그림</text>
+<defs><marker id="m15" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d4a72c"/></marker></defs>
+<polyline points="590.0,448 590.0,414" fill="none" stroke="#d4a72c" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m15)"/>
+<defs><marker id="m16" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d4a72c"/></marker></defs>
+<polyline points="855.0,448 855.0,414" fill="none" stroke="#d4a72c" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m16)"/>
+<defs><marker id="m17" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d4a72c"/></marker></defs>
+<polyline points="1165.0,448 1165.0,414" fill="none" stroke="#d4a72c" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m17)"/>
+<defs><marker id="m18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d4a72c"/></marker></defs>
+<polyline points="355.0,448 355.0,414" fill="none" stroke="#d4a72c" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#m18)"/>
+<text x="30" y="590" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">투자 권유가 아닙니다. 데이터 사이의 관계는 &quot;같이 움직였다&quot;(상관)까지만 말합니다.</text></svg>
