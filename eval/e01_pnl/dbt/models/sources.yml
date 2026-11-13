@@ -1,0 +1,36 @@
+version: 2
+
+# 실행기(../run_dbt.py)가 dbt build 전에 만드는 테이블입니다.
+# in_*: 손익 모델의 입력. 칸은 sql/pnl/README.md 「입력」과 같습니다.
+# in_case_map, in_seq_map: 섞은 사본(G01_s1 등)을 원래 사례와 원래 줄 번호로 되돌리는 표.
+# exp_*: expected.json의 정답(골든 실행에만 있음).
+sources:
+  - name: e01
+    schema: main
+    tables:
+      - name: in_calendar
+      - name: in_prices
+      - name: in_fx
+      - name: in_instruments
+      - name: in_positions
+      - name: in_trades
+      - name: in_case_map
+      - name: in_seq_map
+      - name: exp_position
+      - name: exp_sells
+      - name: exp_warnings
+
+models:
+  - name: pnl_position
+    columns:
+      - name: position_id
+        data_tests:
+          - unique
+          - not_null
+  - name: pnl_warnings
+    columns:
+      - name: code
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["BAD_QTY", "AFTER_ASOF", "OVERSOLD", "NON_TRADING_DAY", "PRICE_OUT_OF_RANGE"]

@@ -1,0 +1,6 @@
+target/
+logs/
+.user.yml
+models/pnl/
+*.duckdb
+*.duckdb.wal

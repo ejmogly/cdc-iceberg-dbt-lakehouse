@@ -1,0 +1,24 @@
+# E01 본 실행: sql/pnl/의 손익 모델을 고치지 않고 dbt(DuckDB 어댑터)로 빌드하고, 골든 사례를 dbt 테스트로 맞춥니다.
+# 입력과 정답 테이블은 실행기(../run_dbt.py)가 DuckDB 파일에 먼저 만듭니다. 직접 돌릴 때도 실행기를 씁니다.
+name: e01_pnl
+version: "1.0"
+config-version: 2
+profile: e01_pnl
+
+# models/pnl/은 실행기가 빌드 전마다 저장소의 sql/pnl/*.sql을 복사해 두는 곳입니다(git 제외).
+# 프로젝트 밖 경로를 model-paths에 넣으면 dbt가 컴파일한 SQL을 target 밖(../ 경로를 따라)에 쓰고,
+# 디렉터리 심볼릭 링크는 따라가지 않아서 복사로 했습니다(2026-11-12, dbt-core 1.12.6).
+model-paths: ["models"]
+test-paths: ["tests"]
+target-path: target
+clean-targets: [target, logs]
+
+models:
+  e01_pnl:
+    +materialized: table
+    inputs:
+      +materialized: view
+
+tests:
+  e01_pnl:
+    +store_failures: true

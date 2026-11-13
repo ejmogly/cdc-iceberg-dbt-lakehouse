@@ -1,0 +1,7 @@
+e01_pnl:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('E01_DUCKDB', 'target/e01_golden.duckdb') }}"
+      threads: 4

@@ -1,0 +1,170 @@
+{
+ "checked": "2026-11-12",
+ "mode": "scale",
+ "dbt-core": "1.12.6",
+ "dbt-duckdb": "1.11.1",
+ "duckdb": "2.0.0",
+ "seed": 20261112,
+ "accounts": 1000,
+ "units": 5000,
+ "trades": 100000,
+ "build_seconds": 5.6,
+ "query_ms": {
+  "tries": 200,
+  "p50": 0.77,
+  "p95": 0.88
+ },
+ "warnings": {},
+ "pass": true,
+ "tests": [
+  {
+   "id": "accepted_values_pnl_warnings_code__BAD_QTY__AFTER_ASOF__OVERSOLD__NON_TRADING_DAY__PRICE_OUT_OF_RANGE",
+   "kind": "test",
+   "status": "pass",
+   "failures": 0,
+   "seconds": 0.055
+  },
+  {
+   "id": "not_null_pnl_position_position_id",
+   "kind": "test",
+   "status": "pass",
+   "failures": 0,
+   "seconds": 0.031
+  },
+  {
+   "id": "e01_identity",
+   "kind": "test",
+   "status": "pass",
+   "failures": 0,
+   "seconds": 0.026
+  },
+  {
+   "id": "unique_pnl_position_position_id",
+   "kind": "test",
+   "status": "pass",
+   "failures": 0,
+   "seconds": 0.027
+  }
+ ],
+ "models": [
+  {
+   "id": "pnl_irr",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.916
+  },
+  {
+   "id": "pnl_trade_prep",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.403
+  },
+  {
+   "id": "pnl_daily",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.289
+  },
+  {
+   "id": "pnl_position",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.15
+  },
+  {
+   "id": "pnl_ledger",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.142
+  },
+  {
+   "id": "pnl_sells",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.113
+  },
+  {
+   "id": "pnl_trade_result",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.096
+  },
+  {
+   "id": "pnl_position_base",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.072
+  },
+  {
+   "id": "pnl_positions",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.067
+  },
+  {
+   "id": "pnl_calendar",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.061
+  },
+  {
+   "id": "pnl_fx",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.06
+  },
+  {
+   "id": "pnl_instruments",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.058
+  },
+  {
+   "id": "pnl_trades",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.05
+  },
+  {
+   "id": "pnl_prices",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.049
+  },
+  {
+   "id": "pnl_position_end",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.034
+  },
+  {
+   "id": "pnl_warnings",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.026
+  },
+  {
+   "id": "pnl_market_daily",
+   "kind": "model",
+   "status": "success",
+   "failures": null,
+   "seconds": 0.023
+  }
+ ]
+}
