@@ -1,0 +1,18 @@
+{
+ "locked_at": "2026-11-12T15:35:46+0900",
+ "why": "git 커밋 대신 평가 기준을 고정한 기록(11/12 결정). 이 뒤에 코스피 값을 처음 받음",
+ "criteria_sha256": {
+  "docs/ai/experiments/E03-regime.md 3절": "502ec75ba35fc456b857b29f94d2bb571655f8092008e27f8784696ac6168d38",
+  "eval/e03_regime/power_sim.py": "de5e8569714c52375bbdaaf116c0a160d4a87c176d8da759fbbfae1666a6257c",
+  "eval/e03_regime/power_result.json": "5384eab47c7f9fe9e298773cd09b41eee58e21b93187ed47b359bb34b9746c59",
+  "eval/e03_regime/step0_survey.py": "d81f733a1848fc2cf37b42a0bfc93b3c005b8c6cc86f455055090b017195ff11",
+  "eval/e03_regime/step0_result.json": "903de943d94739487683fccbd3cea63952285b2beb2d0788df0ba9980f64bddd",
+  "eval/step0_util.py": "6c29eeb7696a4d1ec57a87863112e49e512bde08f32b89e65bb9d7245f39f356"
+ },
+ "code_at_lock_sha256": {
+  "eval/e03_regime/backtest.py": "5a84ff007d8fc76bc97a18343a2df31f745d32a96fbf31ecf3b14821b03dfbbb",
+  "eval/e03_regime/synthetic_result.json": "34ef1423cae9e9a8eaa799a3490d01b88bd4aaba6e7c70f40131fec5139df65b"
+ },
+ "doc_whole_sha256_at_lock": "40344cb8518e6157180212e1bfa9eea7893b831f13aba28d1cd230c4c2fec2c4",
+ "check": "python3 eval/e03_regime/backtest.py --verify (3절은 '## 3. '부터 '## 4. ' 앞까지의 UTF-8 바이트)"
+}
