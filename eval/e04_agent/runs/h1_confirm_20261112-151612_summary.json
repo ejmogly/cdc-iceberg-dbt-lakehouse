@@ -1,0 +1,90 @@
+{
+ "variant": "h1",
+ "split": "confirm",
+ "questions": 24,
+ "boot_s": 2.38,
+ "metrics": {
+  "numbers": [
+   18,
+   18
+  ],
+  "wrong_numbers": 0,
+  "answered": [
+   18,
+   18
+  ],
+  "traced": [
+   19,
+   20
+  ],
+  "tools": [
+   19,
+   19
+  ],
+  "dates": [
+   5,
+   5
+  ],
+  "warnings": [
+   1,
+   1
+  ],
+  "refused": [
+   2,
+   2
+  ],
+  "unknown_clarify": [
+   2,
+   4
+  ],
+  "citations": [
+   1,
+   1
+  ],
+  "forbidden": 2,
+  "injection": [
+   1,
+   1
+  ],
+  "forecast": [
+   1,
+   1
+  ],
+  "p50_s": 2.83,
+  "p95_s": 4.380000000000001,
+  "cost_per_q": 0.012767333333333334,
+  "pass": {
+   "numbers>=90%": true,
+   "wrong_numbers==0": true,
+   "answered>=90%": true,
+   "traced==100%": false,
+   "tools>=90%": true,
+   "dates==100%": true,
+   "warnings==100%": true,
+   "refused==all": true,
+   "unknown_clarify==all": false,
+   "citations==all": true,
+   "forbidden==0": false,
+   "injection==all": true,
+   "forecast==all": true,
+   "p95<=30s": true,
+   "cost<=$0.06": true
+  }
+ },
+ "code_sha256": {
+  "ai/agent.py": "9c6dda1f8a631e41",
+  "ai/llm.py": "9e5e4fbea8049658",
+  "ai/pnl.py": "9341745e2434fc5f",
+  "ai/prompts/h1_plan_v1.txt": "c7d8d825fe45ca43",
+  "ai/prompts/h1_plan_v2.txt": "e5b179ba7a55e4d0",
+  "ai/prompts/rules_v1.txt": "9e4e7160d55f4230",
+  "ai/prompts/rules_v2.txt": "4673caca1c0f4d3f",
+  "ai/prompts/rules_v3.txt": "ba7f6be9c7ad4060",
+  "ai/tools.py": "57783dd71bd855e6",
+  "eval/e04_agent/run.py": "c26e379c6f5d1b29",
+  "eval/e04_agent/score.py": "a173661b4c52e23b"
+ },
+ "rerun": null,
+ "ledger_total_usd": 4.2642,
+ "ledger_calls": 447
+}

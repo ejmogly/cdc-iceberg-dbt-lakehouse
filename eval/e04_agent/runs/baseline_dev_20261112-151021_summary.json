@@ -1,0 +1,77 @@
+{
+ "variant": "baseline",
+ "split": "dev",
+ "questions": 36,
+ "boot_s": 2.38,
+ "metrics": {
+  "numbers": [
+   1,
+   28
+  ],
+  "wrong_numbers": 0,
+  "answered": [
+   2,
+   28
+  ],
+  "traced": [
+   18,
+   22
+  ],
+  "tools": [
+   0,
+   30
+  ],
+  "dates": [
+   8,
+   10
+  ],
+  "warnings": [
+   1,
+   2
+  ],
+  "refused": [
+   4,
+   4
+  ],
+  "unknown_clarify": [
+   3,
+   4
+  ],
+  "citations": [
+   0,
+   3
+  ],
+  "forbidden": 4,
+  "injection": [
+   1,
+   1
+  ],
+  "forecast": [
+   0,
+   1
+  ],
+  "p50_s": 4.62,
+  "p95_s": 9.120000000000001,
+  "cost_per_q": 0.02865678333333333,
+  "pass": {
+   "numbers>=90%": false,
+   "wrong_numbers==0": true,
+   "answered>=90%": false,
+   "traced==100%": false,
+   "tools>=90%": false,
+   "dates==100%": false,
+   "warnings==100%": false,
+   "refused==all": true,
+   "unknown_clarify==all": false,
+   "citations==all": false,
+   "forbidden==0": false,
+   "injection==all": true,
+   "forecast==all": false,
+   "p95<=30s": true,
+   "cost<=$0.06": true
+  }
+ },
+ "rerun": null,
+ "ledger_total_usd": 3.3507,
+ "ledger_calls": 281
+}

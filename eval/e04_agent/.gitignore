@@ -1,0 +1,2 @@
+# 실행 콘솔 출력(절대 경로가 찍힘). 결과는 runs/*.jsonl, *_summary.json에 있습니다.
+runs/console_*.txt
