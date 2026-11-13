@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1388 530" width="1388" height="530" role="img" aria-label="증권 앱 원천 테이블 네 개와 관계"><title>증권 앱 원천 테이블 네 개와 관계</title><rect width="100%" height="100%" fill="#ffffff"/><text x="40" y="38" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="18" font-weight="700" fill="#1f2328" text-anchor="start">원천 테이블 네 개 (source 스키마)</text>
+<rect x="40" y="70" width="270" height="312" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<rect x="40" y="70" width="270" height="38" rx="10" fill="#eef4ff" stroke="#5b8def" stroke-width="1.5"/>
+<text x="54" y="95" font-family="'SF Mono','Menlo',monospace" font-size="15" font-weight="700" fill="#1d4ed8" text-anchor="start">source.orders</text>
+<text x="54" y="126" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">order_id</text>
+<text x="190" y="126" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">bigint</text>
+<rect x="264" y="112" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="273" y="125.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="54" y="150" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">account_id</text>
+<text x="190" y="150" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="54" y="174" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">symbol</text>
+<text x="190" y="174" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="54" y="198" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">side</text>
+<text x="190" y="198" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="54" y="222" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">order_type</text>
+<text x="190" y="222" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="54" y="246" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">order_qty</text>
+<text x="190" y="246" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">int</text>
+<text x="54" y="270" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">limit_price</text>
+<text x="190" y="270" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="54" y="294" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">filled_qty</text>
+<text x="190" y="294" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">int</text>
+<text x="54" y="318" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">status</text>
+<text x="190" y="318" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="54" y="342" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">ordered_at</text>
+<text x="190" y="342" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="54" y="366" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">updated_at</text>
+<text x="190" y="366" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="40" y="408" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">한 행: 주문 하나</text>
+<text x="40" y="430" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">삭제 없음, 취소는 status 수정</text>
+<rect x="40" y="442" width="104" height="24" rx="7" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.3"/>
+<text x="49" y="458.32" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="600" fill="#57606a" text-anchor="start">데이터: 합성</text>
+<rect x="386" y="70" width="270" height="216" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<rect x="386" y="70" width="270" height="38" rx="10" fill="#fff4e5" stroke="#f0a14a" stroke-width="1.5"/>
+<text x="400" y="95" font-family="'SF Mono','Menlo',monospace" font-size="15" font-weight="700" fill="#9a4d00" text-anchor="start">source.executions</text>
+<text x="400" y="126" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">execution_id</text>
+<text x="536" y="126" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">bigint</text>
+<rect x="610" y="112" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="619" y="125.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="400" y="150" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">order_id</text>
+<text x="536" y="150" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">bigint</text>
+<rect x="610" y="136" width="36" height="19" rx="7" fill="#fff1f0" stroke="#e5534b" stroke-width="1.3"/>
+<text x="619" y="149.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#b42318" text-anchor="start">FK</text>
+<text x="400" y="174" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">exec_qty</text>
+<text x="536" y="174" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">int</text>
+<text x="400" y="198" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">exec_price</text>
+<text x="536" y="198" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="400" y="222" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">fx_rate</text>
+<text x="536" y="222" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(12,4)</text>
+<text x="400" y="246" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">executed_at</text>
+<text x="536" y="246" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="400" y="270" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">updated_at</text>
+<text x="536" y="270" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="386" y="312" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">한 행: 체결 한 건</text>
+<text x="386" y="334" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">철회만 물리 삭제(드묾)</text>
+<rect x="386" y="346" width="104" height="24" rx="7" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.3"/>
+<text x="395" y="362.32" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="600" fill="#57606a" text-anchor="start">데이터: 합성</text>
+<rect x="386" y="378" width="196" height="24" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="395" y="394.32" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="600" fill="#7a5d00" text-anchor="start">REPLICA IDENTITY FULL</text>
+<rect x="732" y="70" width="270" height="168" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<rect x="732" y="70" width="270" height="38" rx="10" fill="#e8f7fb" stroke="#36a3c9" stroke-width="1.5"/>
+<text x="746" y="95" font-family="'SF Mono','Menlo',monospace" font-size="15" font-weight="700" fill="#0b5c78" text-anchor="start">source.holdings</text>
+<text x="746" y="126" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">account_id</text>
+<text x="882" y="126" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<rect x="956" y="112" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="965" y="125.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="746" y="150" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">symbol</text>
+<text x="882" y="150" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<rect x="956" y="136" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="965" y="149.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="746" y="174" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">qty</text>
+<text x="882" y="174" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">int</text>
+<text x="746" y="198" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">avg_price</text>
+<text x="882" y="198" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="746" y="222" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">updated_at</text>
+<text x="882" y="222" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="732" y="264" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">한 행: 계좌의 한 종목 보유</text>
+<text x="732" y="286" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">전량 매도하면 행 삭제</text>
+<rect x="732" y="298" width="104" height="24" rx="7" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.3"/>
+<text x="741" y="314.32" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="600" fill="#57606a" text-anchor="start">데이터: 합성</text>
+<rect x="1078" y="70" width="270" height="264" rx="10" fill="#f6f8fa" stroke="#afb8c1" stroke-width="1.5"/>
+<rect x="1078" y="70" width="270" height="38" rx="10" fill="#ecfdf3" stroke="#3fb27f" stroke-width="1.5"/>
+<text x="1092" y="95" font-family="'SF Mono','Menlo',monospace" font-size="15" font-weight="700" fill="#0f6b45" text-anchor="start">source.daily_prices</text>
+<text x="1092" y="126" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">symbol</text>
+<text x="1228" y="126" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<rect x="1302" y="112" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="1311" y="125.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="1092" y="150" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">trade_date</text>
+<text x="1228" y="150" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">date</text>
+<rect x="1302" y="136" width="36" height="19" rx="7" fill="#fffbea" stroke="#d4a72c" stroke-width="1.3"/>
+<text x="1311" y="149.46" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="600" fill="#7a5d00" text-anchor="start">PK</text>
+<text x="1092" y="174" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">open_price</text>
+<text x="1228" y="174" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="1092" y="198" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">high_price</text>
+<text x="1228" y="198" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="1092" y="222" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">low_price</text>
+<text x="1228" y="222" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="1092" y="246" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">close_price</text>
+<text x="1228" y="246" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">numeric(18,4)</text>
+<text x="1092" y="270" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">volume</text>
+<text x="1228" y="270" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">bigint</text>
+<text x="1092" y="294" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">provider</text>
+<text x="1228" y="294" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">text</text>
+<text x="1092" y="318" font-family="'SF Mono','Menlo',monospace" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">loaded_at</text>
+<text x="1228" y="318" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="400" fill="#6e7781" text-anchor="start">timestamptz</text>
+<text x="1078" y="360" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">한 행: 한 종목의 한 거래일 시세</text>
+<text x="1078" y="382" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">삭제 없음, 정정은 수정</text>
+<rect x="1078" y="394" width="160" height="24" rx="7" fill="#ecfdf3" stroke="#3fb27f" stroke-width="1.3"/>
+<text x="1087" y="410.32" font-family="'SF Mono','Menlo',monospace" font-size="12" font-weight="600" fill="#0f6b45" text-anchor="start">데이터: 실제(공공)</text>
+<defs><marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e5534b"/></marker></defs>
+<polyline points="386,146 348.0,146 348.0,122 318,122" fill="none" stroke="#e5534b" stroke-width="1.8" marker-end="url(#m1)"/>
+<text x="348.0" y="164" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="12" font-weight="700" fill="#b42318" text-anchor="middle">FK</text>
+<defs><marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6e7781"/></marker></defs>
+<polyline points="656,156 724,156" fill="none" stroke="#6e7781" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#m2)"/>
+<text x="694.0" y="146" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">같은</text>
+<text x="694.0" y="176" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">커밋</text>
+<line x1="1002" y1="146" x2="1078" y2="146" stroke="#6e7781" stroke-width="1.6" stroke-dasharray="4 4"/>
+<text x="1040.0" y="136" font-family="'SF Mono','Menlo',monospace" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">symbol</text>
+<text x="1040.0" y="166" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="11" font-weight="400" fill="#6e7781" text-anchor="middle">Gold 조인</text>
+<text x="40" y="512" font-family="'Apple SD Gothic Neo','Pretendard','Noto Sans KR',sans-serif" font-size="13" font-weight="400" fill="#424a53" text-anchor="start">FK는 executions → orders 하나뿐입니다. 잔고는 체결과 같은 트랜잭션에서 앱이 고치고, 시세는 다음 날 들어오므로 Gold에서 조인합니다.</text></svg>
