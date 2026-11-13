@@ -1,0 +1,297 @@
+{
+ "checked": "2026-11-12",
+ "source": "kospi_19950103_20261111.json",
+ "rule": "판을 다시 고르지 않음. 그 해에 예측 시점이나 결과 창이 걸친 시험 날짜만 뺌",
+ "confirm_recount_same": true,
+ "confirm_without_2026": {
+  "5": {
+   "h": 5,
+   "dates": 602,
+   "표준화100": {
+    "pinball": 0.004124159792206423,
+    "vol_err": 0.37084108716932973,
+    "coverage": 0.8239202657807309,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 42.0
+   },
+   "과거": {
+    "pinball": 0.004747258237102444,
+    "vol_err": 0.5263982081143689,
+    "coverage": 0.9302325581395349
+   },
+   "최근": {
+    "pinball": 0.004040407815480251,
+    "vol_err": 0.3901890732919643,
+    "coverage": 0.792358803986711
+   },
+   "섞음": {
+    "pinball": 0.004013897470947264,
+    "vol_err": 0.4139502050105722,
+    "coverage": 0.8471760797342193
+   }
+  },
+  "20": {
+   "h": 20,
+   "dates": 150,
+   "표준화100": {
+    "pinball": 0.008434612008576195,
+    "vol_err": 0.28472790118866254,
+    "coverage": 0.8133333333333334,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 27.0
+   },
+   "과거": {
+    "pinball": 0.009806335867569753,
+    "vol_err": 0.4528693584794803,
+    "coverage": 0.92
+   },
+   "최근": {
+    "pinball": 0.008369615637631302,
+    "vol_err": 0.3031509344072734,
+    "coverage": 0.7933333333333333
+   },
+   "섞음": {
+    "pinball": 0.008336812697123311,
+    "vol_err": 0.3102616962363001,
+    "coverage": 0.8533333333333334
+   }
+  }
+ },
+ "dev_without_1997_1998": {
+  "5": {
+   "h": 5,
+   "dates": 799,
+   "이웃30": {
+    "pinball": 0.006665661782570512,
+    "vol_err": 0.3316681674709244,
+    "coverage": 0.772215269086358,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": false,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": false,
+    "too_few": 0.0,
+    "median_episodes": 14
+   },
+   "이웃50": {
+    "pinball": 0.006518375410977578,
+    "vol_err": 0.32909040774545245,
+    "coverage": 0.7984981226533167,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": false,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": false,
+    "too_few": 0.0,
+    "median_episodes": 21
+   },
+   "이웃100": {
+    "pinball": 0.0063815117805198825,
+    "vol_err": 0.32472981724295846,
+    "coverage": 0.8235294117647058,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 35
+   },
+   "표준화100": {
+    "pinball": 0.0063799315610207005,
+    "vol_err": 0.3231066862213816,
+    "coverage": 0.8235294117647058,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 35
+   },
+   "과거": {
+    "pinball": 0.006674428014428806,
+    "vol_err": 0.440436214439631,
+    "coverage": 0.8610763454317898
+   },
+   "최근": {
+    "pinball": 0.006306205247396235,
+    "vol_err": 0.3353260230049448,
+    "coverage": 0.7809762202753442
+   },
+   "섞음": {
+    "pinball": 0.006233982516999768,
+    "vol_err": 0.3437245841185796,
+    "coverage": 0.7909887359198998
+   }
+  },
+  "20": {
+   "h": 20,
+   "dates": 199,
+   "이웃30": {
+    "pinball": 0.014503502146696786,
+    "vol_err": 0.2509975908119131,
+    "coverage": 0.7085427135678392,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     }
+    },
+    "all_range": false,
+    "all_vol": false,
+    "too_few": 0.04522613065326633,
+    "median_episodes": 10
+   },
+   "이웃50": {
+    "pinball": 0.01371254242386334,
+    "vol_err": 0.2472702663819944,
+    "coverage": 0.7487437185929648,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     }
+    },
+    "all_range": false,
+    "all_vol": false,
+    "too_few": 0.010050251256281407,
+    "median_episodes": 13
+   },
+   "이웃100": {
+    "pinball": 0.013188178719359065,
+    "vol_err": 0.24572747349210003,
+    "coverage": 0.7839195979899497,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": false,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": false,
+    "too_few": 0.0,
+    "median_episodes": 19
+   },
+   "표준화100": {
+    "pinball": 0.01323082350643507,
+    "vol_err": 0.24540080184936644,
+    "coverage": 0.8040201005025126,
+    "beats": {
+     "range": {
+      "과거": false,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 19
+   },
+   "과거": {
+    "pinball": 0.013270201130075729,
+    "vol_err": 0.38762163547371725,
+    "coverage": 0.864321608040201
+   },
+   "최근": {
+    "pinball": 0.012837811510007454,
+    "vol_err": 0.26218917438746914,
+    "coverage": 0.7437185929648241
+   },
+   "섞음": {
+    "pinball": 0.012238003160823253,
+    "vol_err": 0.2641557781327598,
+    "coverage": 0.7989949748743719
+   }
+  }
+ },
+ "dev_pick_without_1997_1998": "표준화100"
+}

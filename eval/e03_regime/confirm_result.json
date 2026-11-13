@@ -1,0 +1,124 @@
+{
+ "checked": "2026-11-12",
+ "split": "confirm",
+ "source": "kospi_19950103_20261111.json",
+ "days": 8053,
+ "first": "19950103",
+ "last": "20261111",
+ "dev": [
+  "19950104",
+  "20130924"
+ ],
+ "confirm": [
+  "20130925",
+  "20261111"
+ ],
+ "method": "표준화100",
+ "verdict": {
+  "5": {
+   "beats_all_range": false,
+   "beats_all_vol": true,
+   "coverage_ok": true,
+   "best_base_by_pinball": "최근",
+   "base_coverage_ok": {
+    "과거": false,
+    "최근": true,
+    "섞음": true
+   }
+  },
+  "20": {
+   "beats_all_range": false,
+   "beats_all_vol": true,
+   "coverage_ok": true,
+   "best_base_by_pinball": "최근",
+   "base_coverage_ok": {
+    "과거": true,
+    "최근": true,
+    "섞음": true
+   }
+  }
+ },
+ "seconds": 6.3,
+ "result": {
+  "5": {
+   "h": 5,
+   "dates": 644,
+   "표준화100": {
+    "pinball": 0.004700967927009522,
+    "vol_err": 0.37456158071584733,
+    "coverage": 0.8183229813664596,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 42.0
+   },
+   "과거": {
+    "pinball": 0.0056542224540620046,
+    "vol_err": 0.5595309402955587,
+    "coverage": 0.8866459627329193
+   },
+   "최근": {
+    "pinball": 0.00469745065428797,
+    "vol_err": 0.39197174833375636,
+    "coverage": 0.7919254658385093
+   },
+   "섞음": {
+    "pinball": 0.0047527856429041915,
+    "vol_err": 0.42499358575550805,
+    "coverage": 0.827639751552795
+   }
+  },
+  "20": {
+   "h": 20,
+   "dates": 161,
+   "표준화100": {
+    "pinball": 0.009829227940725093,
+    "vol_err": 0.2874518013868958,
+    "coverage": 0.7888198757763976,
+    "beats": {
+     "range": {
+      "과거": true,
+      "최근": false,
+      "섞음": false
+     },
+     "vol": {
+      "과거": true,
+      "최근": true,
+      "섞음": true
+     }
+    },
+    "all_range": false,
+    "all_vol": true,
+    "too_few": 0.0,
+    "median_episodes": 27
+   },
+   "과거": {
+    "pinball": 0.011570191340585637,
+    "vol_err": 0.491817294991696,
+    "coverage": 0.8819875776397516
+   },
+   "최근": {
+    "pinball": 0.0094784475495999,
+    "vol_err": 0.3074165945697616,
+    "coverage": 0.782608695652174
+   },
+   "섞음": {
+    "pinball": 0.009976595613221256,
+    "vol_err": 0.3265578266200175,
+    "coverage": 0.8198757763975155
+   }
+  }
+ }
+}
