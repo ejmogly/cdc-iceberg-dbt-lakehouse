@@ -1,0 +1,17 @@
+# 키와 Docker 없이 도는 확인: 손익 골든 30개, 공개 전 검사
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install duckdb==2.0.0
+      - run: make check PY=python

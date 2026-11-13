@@ -5,6 +5,7 @@
 
 # 로컬 전용 메모와 설정
 CLAUDE.local.md
+.public-check.local.json
 .claude/settings.local.json
 
 # 데이터 원본과 생성물 (출처와 받는 방법은 data/README.md)
