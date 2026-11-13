@@ -1,0 +1,20 @@
+symbol,name,market,currency,asset_class,group,provider
+005930,삼성전자,KRX,KRW,주식,국내,data.go.kr
+000660,SK하이닉스,KRX,KRW,주식,국내,data.go.kr
+SPY,SPDR S&P 500 ETF,US,USD,주식,미국 주식,massive
+QQQ,Invesco QQQ(나스닥 100),US,USD,주식,미국 주식,massive
+IWM,iShares 러셀 2000 ETF,US,USD,주식,미국 주식,massive
+SHY,iShares 1 ~ 3년 미국 국채 ETF,US,USD,채권,금리와 신용,massive
+TLT,iShares 20년 이상 미국 국채 ETF,US,USD,채권,금리와 신용,massive
+HYG,iShares 하이일드 회사채 ETF,US,USD,채권,금리와 신용,massive
+GLD,SPDR 금 ETF,US,USD,원자재,원자재,massive
+USO,미국 원유 펀드,US,USD,원자재,원자재,massive
+UUP,Invesco 미국 달러 강세 ETF,US,USD,통화,통화,massive
+EFA,iShares MSCI EAFE ETF,US,USD,주식,미국 밖,massive
+EEM,iShares MSCI 신흥국 ETF,US,USD,주식,미국 밖,massive
+IBIT,iShares 비트코인 ETF,US,USD,가상자산,가상자산,massive
+NVDA,NVIDIA,US,USD,주식,미국 개별 기업,massive
+AAPL,Apple,US,USD,주식,미국 개별 기업,massive
+TSLA,Tesla,US,USD,주식,미국 개별 기업,massive
+GOOGL,Alphabet Class A,US,USD,주식,미국 개별 기업,massive
+TSM,TSMC ADR,US,USD,주식,미국 개별 기업,massive

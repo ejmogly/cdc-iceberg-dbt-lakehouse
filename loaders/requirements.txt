@@ -1,0 +1,7 @@
+# 적재기와 손익 SQL 검증에 쓰는 패키지(2026-11-11에 이 판으로 확인)
+truststore==0.10.5
+psycopg[binary]==3.3.8
+duckdb==2.0.0
+# E01 본 실행(eval/e01_pnl/run_dbt.py). 2026-11-12에 Python 3.14.7에서 이 판으로 확인
+dbt-core==1.12.6
+dbt-duckdb==1.11.1

@@ -1,0 +1,8 @@
+topic_id,topic_ko,gdelt_query,wiki_articles,naver_keywords,related_symbols
+rates,금리,"""federal reserve""",Federal_Reserve,금리|기준금리,SHY|TLT
+tariff,관세와 무역,tariff,Tariff,관세,EEM|UUP
+oil,유가,"""oil price""",Price_of_oil,유가|국제유가,USO
+semis_ai,반도체와 AI,semiconductor,Semiconductor_industry,반도체|AI 반도체,QQQ|005930|000660
+bitcoin,비트코인,bitcoin,Bitcoin,비트코인,IBIT
+recession,경기 침체,recession,Recession,경기침체,SPY|IWM|HYG
+gold,금,"""gold price""",Gold_as_an_investment,금값|금시세,GLD

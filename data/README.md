@@ -6,13 +6,15 @@
 
 | 데이터 | 출처 | 라이선스와 조건 | 받는 방법 | 쓰는 곳 |
 |---|---|---|---|---|
-| 국내 주식 일별 시세(2종목) | 금융위원회_주식시세정보, [공공데이터포털](https://www.data.go.kr/data/15094808/openapi.do) | 공공누리 제4유형(출처표시, 상업적 이용금지, 변경금지). 제3자 재배포 금지 | 공공데이터포털에서 각자 인증키를 받아 적재기 실행(적재기는 만들 예정) | `source.daily_prices` |
-| 미국 상장 ETF와 개별 기업 일별 시세(17개) | Massive(옛 Polygon.io) 무료 요금제 | 개인, 비업무, 비상업 용도만. 재배포 금지([약관](https://massive.com/legal/market-data-terms-of-service)) | 각자 API 키를 받아 적재기 실행 | `source.daily_prices` |
-| 원/달러 환율(예정) | 한국은행 ECOS Open API | 무료 회원가입 뒤 인증키. 이용 조건은 받을 때 확인 | 각자 인증키를 받아 적재기 실행 | `source.fx_rates`(예정) |
+| 국내 주식 일별 시세(2종목) | 금융위원회_주식시세정보, [공공데이터포털](https://www.data.go.kr/data/15094808/openapi.do) | 공공누리 제4유형(출처표시, 상업적 이용금지, 변경금지). 제3자 재배포 금지. 거래일 다음 영업일 오후 1시 이후에 나옴 | 공공데이터포털에서 각자 인증키를 받아 `loaders/daily_prices.py --market kr` | `source.daily_prices` |
+| 미국 상장 ETF와 개별 기업 일별 시세(17개) | Massive(옛 Polygon.io) 무료 요금제, 일별 집계 | 개인, 비업무, 비상업 용도만. 재배포 금지([약관](https://massive.com/legal/market-data-terms-of-service)). 분당 5번 | 각자 API 키를 받아 `loaders/daily_prices.py --market us --adjusted true 또는 false`(수정주가 여부는 정할 것) | `source.daily_prices` |
+| 원/달러 환율 | 한국은행 ECOS Open API(`731Y001`, `0000001` 원/미국달러 매매기준율, 일별) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 값은 저장소에 두지 않음. 한국 휴일에는 값이 없음 | 각자 인증키를 받아 `loaders/fx_rates.py` | `source.fx_rates`(`infra/postgres/init/20_fx_rates.sql`) |
 | 코스피 일별 지수(예정) | 한국은행 ECOS Open API(`802Y001`, `0001000`) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 지수의 저작권은 통계 작성기관에 있으므로 값은 저장소에 두지 않음 | 각자 인증키를 받아 적재기 실행 | E03 판정(`docs/ai/experiments/E03-regime.md`) |
 | 고객 주문, 체결, 잔고 | 직접 만든 합성 데이터 | 제한 없음 | 생성기 실행(만들 예정) | `source.orders`, `source.executions`, `source.holdings` |
+| 일정(금리 결정, 물가와 고용 지표 발표일) | 정할 것. 후보는 FRED API(CPI, 고용), 연준 FOMC 일정 페이지, BLS 일정, 한국은행 결정회의 페이지, 국가데이터처 보도계획 | 후보마다 다름([`docs/ai/data-prep.md`](../docs/ai/data-prep.md) 6절) | 정한 뒤 만듦 | AI 트랙 C, 상관 점검의 「공통 원인」 |
 
-- 받은 시세는 재배포할 수 없으므로 저장소에는 **받는 코드만** 둡니다. 화면이나 글에 시세에서 나온 값을 보일 때는 출처를 적습니다.
+- 받은 시세는 재배포할 수 없으므로 저장소에는 **받는 코드만** 둡니다(`loaders/`). 화면이나 글에 시세에서 나온 값을 보일 때는 출처를 적습니다.
+- 적재기는 받은 원본을 `data/raw/`에 두고, 값이 바뀐 행만 고칩니다(같은 값으로 다시 넣어도 CDC 이벤트가 생기지 않음). 쓰는 법은 [`loaders/README.md`](../loaders/README.md), 2026-11-11에 실제로 받아 본 결과는 [`docs/ai/data-prep.md`](../docs/ai/data-prep.md).
 - API 키는 `.env`(git 제외)에 둡니다. `.env.example`에는 이름만 적습니다.
 
 ## 종목
@@ -47,14 +49,14 @@
 
 ## 확장 예정: 관심도
 
-핵심 파이프라인이 돈 뒤, 정해 둔 주제(금리, 관세, 유가 등)가 얼마나 관심을 받았는지를 날짜별로 모아 `source.attention_daily`에 넣을 계획입니다.
+핵심 파이프라인이 돈 뒤, 정해 둔 주제(금리, 관세, 유가 등)가 얼마나 관심을 받았는지를 날짜별로 모아 `source.attention_daily`에 넣을 계획입니다. 테이블은 `infra/postgres/init/30_attention_news.sql`, 주제 목록 초안은 `loaders/topics.csv`(확정 전)입니다.
 
-| 데이터 | 출처 | 라이선스와 조건 |
-|---|---|---|
-| 주제어가 나온 기사 수와 어조 | [GDELT DOC 2.0 API](https://www.gdeltproject.org/about.html) | 이용과 재배포 허용, GDELT 출처 표기 필수. 5초에 1번까지 |
-| 문서별 하루 조회수 | 위키백과 조회수 API(Wikimedia REST API) | 키 없음. 프로그램 이름과 연락처를 담은 User-Agent 필요 |
-| 종목별 뉴스 제목, 요약, 감성 | Massive 종목 뉴스 | 시세와 같은 약관(개인, 비상업, 재배포 금지). 기사 본문은 받지 않음 |
-| 한국 검색량의 상대값 | 네이버 데이터랩 검색어 트렌드 API | 네이버 오픈API 약관을 따름. 받은 값은 재배포하지 않음 |
+| 데이터 | 출처 | 라이선스와 조건 | 적재기 |
+|---|---|---|---|
+| 주제어가 나온 기사 수, 비율, 어조 | [GDELT DOC 2.0 API](https://www.gdeltproject.org/about.html) | 이용과 재배포 허용, GDELT 출처 표기 필수. 5초에 1번까지. 최근 약 3개월만 찾음(더 오래된 날은 원본 파일이나 BigQuery 공개 데이터셋) | `loaders/attention_gdelt.py` |
+| 문서별 하루 조회수 | 위키백과 조회수 API(Wikimedia REST API) | 키 없음. 프로그램 이름과 연락처를 담은 User-Agent 필요(연락처는 `.env`의 `WIKIMEDIA_CONTACT`) | `loaders/attention_wikipedia.py` |
+| 종목별 뉴스 제목, 요약, 감성 | Massive 종목 뉴스 | 시세와 같은 약관(개인, 비상업, 재배포 금지). 기사 본문은 받지도 남기지도 않음(주소만 남기고 열지 않음). 요약은 제공처가 주는 짧은 글 | `loaders/news_massive.py` → `source.news_items`, `source.news_ticker_sentiment` |
+| 한국 검색량의 상대값 | 네이버 데이터랩 검색어 트렌드 API | 네이버 오픈API 약관을 따름. 받은 값은 재배포하지 않음. 키가 `.env`에 있을 때만 씀 | `loaders/attention_naver.py` |
 
 **관심도와 가격의 관계는 "같이 움직였다"(상관)까지만 말합니다. "그래서 움직였다"(인과)라고 하지 않습니다.** 인과 표현, 거꾸로일 가능성, 공통 원인, 우연, 추세끼리의 착시, 표본 크기를 결과마다 점검하고, 관심도 지표의 설명과 화면에 이 문구를 고정합니다.
 
