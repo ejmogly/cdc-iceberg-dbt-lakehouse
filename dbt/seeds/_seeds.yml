@@ -1,0 +1,30 @@
+version: 2
+
+seeds:
+  - name: instruments
+    description: >
+      종목 기준 정보. 원본은 loaders/instruments.csv이고 seeds/instruments.csv는 그 파일을 가리키는 링크입니다.
+      종목이 시장과 통화를 정합니다(docs/decisions/0004 6번).
+    columns:
+      - name: symbol
+        data_tests: [not_null, unique]
+      - name: market
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('markets')
+                field: market
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [KRW, USD]
+
+  - name: markets
+    description: 시장마다 거래일을 정하는 현지 시간대. 체결 시각(UTC)을 이 시간대의 날짜로 바꿉니다.
+    columns:
+      - name: market
+        data_tests: [not_null, unique]
+      - name: tz
+        data_tests: [not_null]

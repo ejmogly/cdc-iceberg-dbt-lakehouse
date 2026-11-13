@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: dim_order
+    description: 주문 1건 = 1행. Silver orders에서 삭제되지 않은 주문.
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: account_id
+        data_tests: [not_null]
+      - name: symbol
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('instruments')
+                field: symbol
+      - name: side
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [BUY, SELL]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [ACCEPTED, PARTIAL, FILLED, CANCELLED, REJECTED]
+
+  - name: fct_execution
+    description: >
+      체결 1건 = 1행. 철회된 체결 제외. trade_date는 그 시장의 현지 날짜(국내는 서울, 미국은 뉴욕).
+      exec_value는 exec_qty x exec_price이고 종목 통화 그대로입니다.
+    columns:
+      - name: execution_id
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_order')
+                field: order_id
+      - name: account_id
+        data_tests: [not_null]
+      - name: symbol
+        data_tests: [not_null]
+      - name: market
+        data_tests: [not_null]
+      - name: side
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]

@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >
+      Silver 현재 상태. sql/silver의 MERGE가 Bronze에서 만듭니다(docs/decisions/0010).
+      키마다 한 행이고, 원천에서 지워진 행은 is_deleted = true로 남습니다.
+    schema: silver
+    tables:
+      - name: orders
+        columns:
+          - name: order_id
+            data_tests: [not_null, unique]
+      - name: executions
+        columns:
+          - name: execution_id
+            data_tests: [not_null, unique]
+      - name: holdings
+        columns:
+          - name: account_id
+            data_tests: [not_null]
+          - name: symbol
+            data_tests: [not_null]
+      - name: daily_prices
+        columns:
+          - name: symbol
+            data_tests: [not_null]
+          - name: trade_date
+            data_tests: [not_null]
+      - name: fx_rates
+        description: 통화쌍과 고시일별 환율(0007). 체결 환율이 비었을 때 쓸 기준율입니다.
+        columns:
+          - name: currency_pair
+            data_tests: [not_null]
+          - name: rate_date
+            data_tests: [not_null]
+          - name: rate
+            data_tests: [not_null]

@@ -3,15 +3,53 @@
 # 기본 profile(아무 옵션 없이 up)은 2회차까지 쓰는 서비스만 띄웁니다.
 #   docker compose up -d
 # 뒤 회차의 서비스는 profile로 나눠 회차마다 이 파일에 더합니다.
-#   lake    : minio, Iceberg REST 카탈로그 (3회차)
-#   flink   : jobmanager, taskmanager      (3회차)
-#   spark   : Spark, Thrift server         (4~5회차)
-#   airflow : airflow standalone           (8회차)
+#   lake    : S3 호환 저장소, Iceberg JDBC 카탈로그용 PostgreSQL (3회차)
+#   flink   : jobmanager, taskmanager. Bronze 적재          (3회차)
+#   spark   : Spark Thrift server. Silver와 Gold            (4, 5회차)
+#   dbt     : dbt 한 번 실행(run --rm으로만 씀)              (5회차)
+#   airflow : airflow standalone. 30분마다 Silver, dbt, 증분 (8회차)
+# lake 서비스는 flink나 spark profile만 켜도 같이 뜹니다. 전체는
+#   docker compose --profile flink --profile spark up -d
+# 버전 조합과 이유는 docs/decisions/0002에 있습니다.
 #
 # 비밀값은 .env에서만 읽습니다. .env.example을 복사해 값을 바꾸세요.
 # 포트는 모두 127.0.0.1에만 엽니다.
 
 name: ${COMPOSE_PROJECT_NAME:-cdclake}
+
+# 레이크 서비스가 함께 쓰는 접속 정보
+x-lake-env: &lake-env
+  AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?S3_ACCESS_KEY를 .env에 넣으세요}
+  AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY를 .env에 넣으세요}
+  AWS_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-warehouse}
+  CATALOG_DB: ${CATALOG_DB:-iceberg_catalog}
+  CATALOG_USER: ${CATALOG_USER:-iceberg}
+  CATALOG_PASSWORD: ${CATALOG_PASSWORD:?CATALOG_PASSWORD를 .env에 넣으세요}
+
+x-flink: &flink
+  build: ./infra/flink
+  image: cdclake/flink:1.20.4-iceberg-1.10.0
+  profiles: [flink]
+  environment:
+    <<: *lake-env
+    CHECKPOINT_INTERVAL: ${CHECKPOINT_INTERVAL:-10s}
+    # 아래 값이 컨테이너의 Flink 설정 파일 뒤에 붙습니다.
+    FLINK_PROPERTIES: |
+      jobmanager.rpc.address: jobmanager
+      jobmanager.memory.process.size: 1024m
+      taskmanager.memory.process.size: 1536m
+      taskmanager.numberOfTaskSlots: 2
+      parallelism.default: 1
+      execution.checkpointing.dir: file:///opt/flink/state/checkpoints
+      execution.checkpointing.savepoint-dir: file:///opt/flink/state/savepoints
+      execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+      restart-strategy.type: fixed-delay
+      restart-strategy.fixed-delay.attempts: 10
+      restart-strategy.fixed-delay.delay: 5s
+  volumes:
+    - ./infra/flink/bronze.sql:/opt/flink/cdclake/bronze.sql:ro
+    - flink-state:/opt/flink/state
 
 services:
   postgres:
@@ -105,6 +143,160 @@ services:
     ports:
       - "127.0.0.1:${KAFKA_UI_PORT:-18080}:8080"
 
+  # ---- lake: Iceberg 테이블의 목록(카탈로그)과 파일(S3 호환 저장소) ----
+
+  # Iceberg JDBC 카탈로그. 테이블 이름과 지금 가리키는 metadata 파일 경로만 둡니다.
+  # 원천 DB와 섞지 않으려고 PostgreSQL을 따로 띄웁니다.
+  catalog-db:
+    image: postgres:16.15
+    profiles: [lake, flink, spark]
+    environment:
+      POSTGRES_DB: ${CATALOG_DB:-iceberg_catalog}
+      POSTGRES_USER: ${CATALOG_USER:-iceberg}
+      POSTGRES_PASSWORD: ${CATALOG_PASSWORD:?CATALOG_PASSWORD를 .env에 넣으세요}
+    volumes:
+      - catalog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # S3 호환 저장소. MinIO를 이어 관리하는 포크 이미지를 digest까지 고정합니다(0002).
+  s3:
+    image: docker.io/pgsty/silo:RELEASE.2026-10-18T00-00-00Z@sha256:2636fc4155d9a7e41ff58cdb65ddd13ba9304e67184e13c25bc5cb34016269d7
+    profiles: [lake, flink, spark]
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY를 .env에 넣으세요}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY를 .env에 넣으세요}
+    ports:
+      - "127.0.0.1:${S3_PORT:-19000}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - lake-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # 버킷을 한 번 만들고 끝납니다(이미 있으면 그대로).
+  s3-init:
+    image: docker.io/pgsty/mc:RELEASE.2026-10-18T00-00-00Z@sha256:6ecdaec70bc5e8cf9d0e9a70c190f3beb1c83f11617ff4333f1fcd71ab1daf18
+    profiles: [lake, flink, spark]
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment: *lake-env
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set lake http://s3:9000 "$$AWS_ACCESS_KEY_ID" "$$AWS_SECRET_ACCESS_KEY" && mc mb --ignore-existing "lake/$$S3_BUCKET"
+
+  # ---- flink: Kafka → Iceberg Bronze (infra/flink/submit-bronze.sh로 작업을 보냄) ----
+
+  jobmanager:
+    <<: *flink
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+      catalog-db:
+        condition: service_healthy
+      s3-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${FLINK_UI_PORT:-18081}:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:8081/overview"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  taskmanager:
+    <<: *flink
+    command: taskmanager
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+
+  # ---- spark: Silver MERGE(sql/silver)와 dbt Gold가 접속하는 Thrift server ----
+
+  spark:
+    build: ./infra/spark
+    image: cdclake/spark:3.5.6-iceberg-1.10.0
+    profiles: [spark]
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+      s3-init:
+        condition: service_completed_successfully
+    environment: *lake-env
+    ports:
+      - "127.0.0.1:${SPARK_THRIFT_PORT:-10000}:10000"
+      - "127.0.0.1:${SPARK_UI_PORT:-14040}:4040"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/10000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # dbt는 늘 떠 있지 않고 부를 때만 돕니다. profile을 따로 둬서 up -d로는 뜨지 않습니다.
+  #   docker compose --profile spark run --rm dbt build
+  dbt:
+    build: ./infra/dbt
+    image: cdclake/dbt:1.12.5-spark-1.9.3
+    profiles: [dbt]
+    depends_on:
+      spark:
+        condition: service_healthy
+    environment:
+      DBT_PROFILES_DIR: /workspace/dbt
+    working_dir: /workspace/dbt
+    volumes:
+      - ./dbt:/workspace/dbt
+      - ./loaders/instruments.csv:/workspace/loaders/instruments.csv:ro
+      # 증분 Gold 실행기(sql/gold_incremental/run.py)도 이 컨테이너의 pyhive로 돌립니다.
+      - ./sql:/workspace/sql:ro
+
+  # ---- airflow: Silver MERGE → dbt build → 증분 Gold를 30분마다(airflow/dags) ----
+  # 처음 만들어질 때 DAG는 멈춘 상태입니다. 화면 로그인 비밀번호는 컨테이너가 처음 뜰 때 만들어
+  # /opt/airflow/standalone_admin_password.txt에 둡니다(사용자 admin).
+  #   docker compose --profile spark --profile airflow up -d
+  airflow:
+    build:
+      context: ./infra
+      dockerfile: airflow/Dockerfile
+    image: cdclake/airflow:2.10.5-dbt-1.12.5
+    profiles: [airflow]
+    command: standalone
+    depends_on:
+      spark:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
+      AIRFLOW__WEBSERVER__WORKERS: "1"
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+      SPARK_THRIFT_HOST: spark
+      DBT_PROFILES_DIR: /workspace/dbt
+      # dbt 폴더는 읽기 전용으로 붙이고, dbt가 만드는 파일은 컨테이너 안에 둡니다.
+      DBT_TARGET_PATH: /tmp/dbt-target
+      DBT_LOG_PATH: /tmp/dbt-logs
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-18082}:8080"
+    volumes:
+      - airflow-home:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./dbt:/workspace/dbt:ro
+      - ./sql:/workspace/sql:ro
+      - ./infra/spark/run_sql.py:/workspace/infra/spark/run_sql.py:ro
+      - ./loaders/instruments.csv:/workspace/loaders/instruments.csv:ro
+
 volumes:
   pg-data:
   kafka-data:
+  catalog-data:
+  lake-data:
+  flink-state:
+  airflow-home:
