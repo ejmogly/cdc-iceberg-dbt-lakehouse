@@ -1,0 +1,309 @@
+{
+ "note": "기사 수 집계만 둡니다. 날짜는 시세에서 뽑았고 저장하지 않습니다.",
+ "big": {
+  "windows": 27,
+  "articles_median": 420,
+  "topic_hits_median": 7,
+  "topic_in_title_median": 3,
+  "with_title_hit_pct": 77.8,
+  "capped": 0
+ },
+ "calm": {
+  "windows": 9,
+  "articles_median": 397,
+  "topic_hits_median": 4,
+  "topic_in_title_median": 1,
+  "with_title_hit_pct": 77.8,
+  "capped": 0
+ },
+ "rows": [
+  {
+   "symbol": "IWM",
+   "kind": "큰 움직임",
+   "articles": 449,
+   "capped": false,
+   "topic_hits": 12,
+   "topic_in_title": 5
+  },
+  {
+   "symbol": "IWM",
+   "kind": "큰 움직임",
+   "articles": 536,
+   "capped": false,
+   "topic_hits": 2,
+   "topic_in_title": 1
+  },
+  {
+   "symbol": "IWM",
+   "kind": "큰 움직임",
+   "articles": 413,
+   "capped": false,
+   "topic_hits": 0,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "IWM",
+   "kind": "평범한 날",
+   "articles": 304,
+   "capped": false,
+   "topic_hits": 1,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "SHY",
+   "kind": "큰 움직임",
+   "articles": 560,
+   "capped": false,
+   "topic_hits": 19,
+   "topic_in_title": 9
+  },
+  {
+   "symbol": "SHY",
+   "kind": "큰 움직임",
+   "articles": 312,
+   "capped": false,
+   "topic_hits": 1,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "SHY",
+   "kind": "큰 움직임",
+   "articles": 396,
+   "capped": false,
+   "topic_hits": 17,
+   "topic_in_title": 10
+  },
+  {
+   "symbol": "SHY",
+   "kind": "평범한 날",
+   "articles": 404,
+   "capped": false,
+   "topic_hits": 11,
+   "topic_in_title": 4
+  },
+  {
+   "symbol": "TLT",
+   "kind": "큰 움직임",
+   "articles": 547,
+   "capped": false,
+   "topic_hits": 11,
+   "topic_in_title": 2
+  },
+  {
+   "symbol": "TLT",
+   "kind": "큰 움직임",
+   "articles": 711,
+   "capped": false,
+   "topic_hits": 18,
+   "topic_in_title": 7
+  },
+  {
+   "symbol": "TLT",
+   "kind": "큰 움직임",
+   "articles": 438,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 3
+  },
+  {
+   "symbol": "TLT",
+   "kind": "평범한 날",
+   "articles": 635,
+   "capped": false,
+   "topic_hits": 3,
+   "topic_in_title": 1
+  },
+  {
+   "symbol": "HYG",
+   "kind": "큰 움직임",
+   "articles": 306,
+   "capped": false,
+   "topic_hits": 0,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "HYG",
+   "kind": "큰 움직임",
+   "articles": 550,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 4
+  },
+  {
+   "symbol": "HYG",
+   "kind": "큰 움직임",
+   "articles": 571,
+   "capped": false,
+   "topic_hits": 9,
+   "topic_in_title": 5
+  },
+  {
+   "symbol": "HYG",
+   "kind": "평범한 날",
+   "articles": 397,
+   "capped": false,
+   "topic_hits": 4,
+   "topic_in_title": 3
+  },
+  {
+   "symbol": "GLD",
+   "kind": "큰 움직임",
+   "articles": 1780,
+   "capped": false,
+   "topic_hits": 11,
+   "topic_in_title": 6
+  },
+  {
+   "symbol": "GLD",
+   "kind": "큰 움직임",
+   "articles": 276,
+   "capped": false,
+   "topic_hits": 7,
+   "topic_in_title": 1
+  },
+  {
+   "symbol": "GLD",
+   "kind": "큰 움직임",
+   "articles": 332,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 4
+  },
+  {
+   "symbol": "GLD",
+   "kind": "평범한 날",
+   "articles": 363,
+   "capped": false,
+   "topic_hits": 3,
+   "topic_in_title": 3
+  },
+  {
+   "symbol": "USO",
+   "kind": "큰 움직임",
+   "articles": 566,
+   "capped": false,
+   "topic_hits": 20,
+   "topic_in_title": 8
+  },
+  {
+   "symbol": "USO",
+   "kind": "큰 움직임",
+   "articles": 255,
+   "capped": false,
+   "topic_hits": 2,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "USO",
+   "kind": "큰 움직임",
+   "articles": 420,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 2
+  },
+  {
+   "symbol": "USO",
+   "kind": "평범한 날",
+   "articles": 272,
+   "capped": false,
+   "topic_hits": 2,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "UUP",
+   "kind": "큰 움직임",
+   "articles": 306,
+   "capped": false,
+   "topic_hits": 3,
+   "topic_in_title": 2
+  },
+  {
+   "symbol": "UUP",
+   "kind": "큰 움직임",
+   "articles": 413,
+   "capped": false,
+   "topic_hits": 9,
+   "topic_in_title": 6
+  },
+  {
+   "symbol": "UUP",
+   "kind": "큰 움직임",
+   "articles": 396,
+   "capped": false,
+   "topic_hits": 2,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "UUP",
+   "kind": "평범한 날",
+   "articles": 524,
+   "capped": false,
+   "topic_hits": 4,
+   "topic_in_title": 2
+  },
+  {
+   "symbol": "EFA",
+   "kind": "큰 움직임",
+   "articles": 449,
+   "capped": false,
+   "topic_hits": 16,
+   "topic_in_title": 6
+  },
+  {
+   "symbol": "EFA",
+   "kind": "큰 움직임",
+   "articles": 434,
+   "capped": false,
+   "topic_hits": 9,
+   "topic_in_title": 0
+  },
+  {
+   "symbol": "EFA",
+   "kind": "큰 움직임",
+   "articles": 387,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 2
+  },
+  {
+   "symbol": "EFA",
+   "kind": "평범한 날",
+   "articles": 276,
+   "capped": false,
+   "topic_hits": 5,
+   "topic_in_title": 1
+  },
+  {
+   "symbol": "EEM",
+   "kind": "큰 움직임",
+   "articles": 564,
+   "capped": false,
+   "topic_hits": 14,
+   "topic_in_title": 3
+  },
+  {
+   "symbol": "EEM",
+   "kind": "큰 움직임",
+   "articles": 408,
+   "capped": false,
+   "topic_hits": 20,
+   "topic_in_title": 6
+  },
+  {
+   "symbol": "EEM",
+   "kind": "큰 움직임",
+   "articles": 318,
+   "capped": false,
+   "topic_hits": 7,
+   "topic_in_title": 4
+  },
+  {
+   "symbol": "EEM",
+   "kind": "평범한 날",
+   "articles": 406,
+   "capped": false,
+   "topic_hits": 6,
+   "topic_in_title": 1
+  }
+ ]
+}
