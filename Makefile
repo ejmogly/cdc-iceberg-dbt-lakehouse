@@ -30,13 +30,18 @@ screen-data:
 screen-golden:
 	$(PY) -m ai.screen_data golden
 
-# 화면 서버(VM 필요 없음). http://127.0.0.1:8765/
+# 화면 서버(VM 필요 없음). 브라우저로 http://127.0.0.1:8765/ 를 엶. 넣은 매매는 data/generated/f_screen/에 저장
 screen:
 	$(PY) -m ai.screen_server
 
-# 내보내기 검사 자체 시험, E04 기록 재생 회귀, 계산 서버 대조(골든, 실제, 지연, 파이프라인 상태)
+# 내보내기 검사 자체 시험, E04 기록 재생 회귀, 계산 서버 대조(골든, 실제, 지연, 파이프라인 상태, 입력 경계),
+# 화면 값 대조(헤드리스 Chrome으로 그린 화면의 글자가 API 값과 같은지, 색 대비), 입력 흐름(빠른 고침, 저장 실패 등)
 check-screen:
 	$(PY) -m ai.screen_data --selftest
 	$(PY) eval/f_screen/replay_e04.py
 	$(PY) eval/f_screen/replay_e04.py --selftest
 	$(PY) eval/f_screen/check_api.py
+	$(PY) eval/f_screen/check_screen.py --selftest
+	$(PY) eval/f_screen/check_screen.py
+	$(PY) eval/f_screen/check_flows.py --selftest
+	$(PY) eval/f_screen/check_flows.py

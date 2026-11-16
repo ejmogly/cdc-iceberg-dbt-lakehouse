@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 투자 돌아보기</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="title-row">
+    <h1>내 투자 돌아보기</h1>
+    <span id="pipe-pill" class="pill plain">데이터 확인 중</span>
+  </div>
+  <p class="lead">한 종목의 매매를 넣으면 원화 손익과 그 출처(가격, 환율), 같은 날 같은 돈을 SPY에 넣었을 때와의 차이를 한 화면에 보입니다. 내 컴퓨터에서만 돌고, 시세는 내보낸 화면 데이터 파일에서 읽습니다.</p>
+</header>
+
+<!-- 10번 칸: 파이프라인 상태 -->
+<section id="pipe" class="panel pipe" aria-labelledby="pipe-h">
+  <div class="pipe-head">
+    <h2 id="pipe-h">파이프라인 상태</h2>
+    <span id="pipe-line" class="note"></span>
+  </div>
+  <div id="pipe-fail" class="fail" hidden></div>
+  <details id="pipe-more">
+    <summary>검사 항목 보기</summary>
+    <div class="tablebox"><table class="checks">
+      <thead><tr><th scope="col">검사</th><th scope="col">값</th><th scope="col">결과</th></tr></thead>
+      <tbody id="pipe-rows"></tbody>
+    </table></div>
+  </details>
+</section>
+
+<main id="main" hidden>
+  <!-- 1번 칸: 매매 입력 -->
+  <section class="panel input" aria-labelledby="in-h">
+    <h2 id="in-h">매매</h2>
+    <div class="controls">
+      <div class="field"><label for="sym">종목</label><select id="sym"></select></div>
+      <div class="field"><label for="asof">기준일 <span class="hint">남은 수량을 평가하는 날</span></label><input id="asof" type="date" required></div>
+    </div>
+    <div class="ledger" role="table" aria-label="매매 줄" aria-describedby="ledger-note">
+      <div class="lrow lhead" role="row">
+        <span role="columnheader">날짜</span><span role="columnheader">구분</span><span role="columnheader">수량(주)</span>
+        <span role="columnheader" id="h-price">체결가</span><span role="columnheader" class="fx-col">환율(원)</span>
+        <span role="columnheader" id="h-avg">이 매매 뒤 평균 단가</span><span role="columnheader"><span class="sr">빼기</span></span>
+      </div>
+      <div id="rows" role="rowgroup"></div>
+    </div>
+    <div class="ledger-foot">
+      <button id="add" class="btn" type="button">매매 더하기</button>
+      <p id="ledger-note" class="note">체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 넣은 매매는 이 컴퓨터의 <span class="mono">data/generated/</span>에 저장됩니다.</p>
+    </div>
+    <p id="state" class="state" role="status" aria-live="polite"></p>
+    <ul id="warnings" class="warnings" aria-label="입력 경고"></ul>
+  </section>
+
+  <div id="result" hidden>
+    <p id="stale-note" class="stale-note" hidden>아래 값은 고치기 전 입력으로 계산한 것입니다. 위 입력을 고치면 다시 계산합니다.</p>
+    <!-- 2번 칸: 요약 카드 -->
+    <section class="kpis" aria-label="결과 요약">
+      <div class="kpi"><span class="label">원화 손익</span><span id="k-krw" class="value"></span><span id="k-krw-s" class="sub"></span></div>
+      <div class="kpi"><span class="label" id="k-local-l">달러 손익</span><span id="k-local" class="value"></span><span id="k-local-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">같은 날 같은 돈을 SPY에 넣었을 때와 차이</span><span id="k-bench" class="value"></span><span id="k-bench-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">보유 중 최대 낙폭</span><span id="k-mdd" class="value"></span><span id="k-mdd-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">연 환산 수익률</span><span id="k-irr" class="value"></span><span id="k-irr-s" class="sub"></span></div>
+    </section>
+    <p id="holding-line" class="holding-line"></p>
+
+    <div class="two">
+      <!-- 3번 칸: 가격과 내 매매 -->
+      <section class="panel chart-box" aria-labelledby="px-h">
+        <h3 id="px-h">가격과 내 매매 <span id="px-unit" class="note"></span></h3>
+        <p id="px-read" class="readout" aria-live="off"></p>
+        <svg id="px" viewBox="0 0 560 280" role="img" tabindex="0" aria-describedby="px-desc"></svg>
+        <div class="legend">
+          <span><i class="lg line accent"></i><span id="lg-sym">종가</span></span>
+          <span><i class="lg dash warn"></i>평균 단가</span>
+          <span class="buy">▲ 매수</span><span class="sell">▼ 매도</span>
+          <span><i class="lg dot"></i>큰 움직임</span>
+          <span><i class="lg band"></i>판정 전</span>
+        </div>
+        <p id="px-desc" class="note"></p>
+        <details id="bm-more" class="bm">
+          <summary id="bm-sum">큰 움직임 날</summary>
+          <p class="note">수정 종가의 하루 등락이 그날을 뺀 앞 60거래일 등락의 표준편차의 2배를 넘은 날입니다(E02 정의). 앞 60일이 모자란 데이터 첫 61거래일은 판정하지 않습니다.</p>
+          <ul id="bm-list" class="chips"></ul>
+        </details>
+      </section>
+
+      <!-- 5번 칸: 원화 수익 나누기 -->
+      <section class="panel" aria-labelledby="fx-h">
+        <h3 id="fx-h">원화 수익은 어디서 왔나</h3>
+        <div id="fx" class="fx-rows"></div>
+        <p id="fx-note" class="note"></p>
+        <p class="note">가격 효과는 평균 단가에서 가격이 움직인 몫(평균 매수 환율로), 환율 효과는 평균 매수 환율에서 환율이 움직인 몫(평균 단가로), 교차 효과는 둘이 함께 움직인 몫입니다. 셋을 더하면 원화 손익입니다.</p>
+      </section>
+    </div>
+
+    <div class="two">
+      <!-- 4번 칸: 누적 손익 -->
+      <section class="panel chart-box" aria-labelledby="pl-h">
+        <h3 id="pl-h">누적 손익 <span class="note">실현과 평가, 원화</span></h3>
+        <p id="pl-read" class="readout" aria-live="off"></p>
+        <svg id="pl" viewBox="0 0 560 280" role="img" tabindex="0" aria-describedby="pl-desc"></svg>
+        <div class="legend">
+          <span><i class="lg line accent"></i>내 매매</span>
+          <span><i class="lg line edge"></i>같은 날 같은 돈을 SPY에</span>
+          <span><i class="lg dd"></i>최대 낙폭 구간</span>
+        </div>
+        <p id="pl-desc" class="note"></p>
+      </section>
+
+      <!-- 6번 칸: 매도별 손익 -->
+      <section class="panel" aria-labelledby="sl-h">
+        <h3 id="sl-h">매도별 손익</h3>
+        <div class="tablebox"><table class="sells">
+          <thead><tr><th scope="col">날짜</th><th scope="col">수량</th><th scope="col" id="h-sp">가격</th><th scope="col" id="h-sa">팔기 전 평균 단가</th><th scope="col">원화 손익</th></tr></thead>
+          <tbody id="sells"></tbody>
+        </table></div>
+        <p class="note">매도 한 건마다 그때의 평균 단가와 평균 매수 환율로 계산합니다. 나눠 사고팔면 돈이 들어간 때가 달라 단순 수익률이 왜곡되므로, 연 환산 수익률(내부수익률)을 함께 봅니다.</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel later" aria-labelledby="later-h">
+    <h3 id="later-h">다음 단계에서 붙일 칸</h3>
+    <ul>
+      <li><b>앞으로의 범위</b> 그 종목의 20일 80% 범위와 지난날 적중률(n과 함께)</li>
+      <li><b>묻고 답하기</b> 손익, 시세, 환율, 범위 도구를 불러 숫자를 도구 결과에서만 옮기는 답</li>
+      <li><b>그때 무슨 일이</b> 보유 기간의 큰 움직임 날에 같은 날 나온 기사와 일정(인용과 함께)</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><b>출처</b> 국내 시세: 금융위원회_주식시세정보(공공데이터포털, 공공누리 제4유형: 출처표시, 상업적 이용금지, 변경금지). 미국 시세: Massive(옛 Polygon.io) 무료 요금제, 개인 비상업 용도. 환율: 한국은행 ECOS 원/미국달러 매매기준율(ECOS에서 제공된 정보).</p>
+  <p>시세와 환율은 내 컴퓨터에서만 보고 다시 배포하지 않습니다. 이 화면은 지난 매매를 돌아보는 도구이고, 매수나 매도를 권하지 않습니다. 빨강은 이익과 상승, 파랑은 손실과 하락입니다(한국 증권 앱 관례).</p>
+</footer>
+
+</div>
+</body>
+</html>

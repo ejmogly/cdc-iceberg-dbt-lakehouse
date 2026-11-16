@@ -1,0 +1,582 @@
+"""F 화면(screen/)이 계산 서버의 값을 그대로 보이는지 대조합니다(docs/ai/F-screen.md 4절).
+
+  - 값 대조: 실제 데이터 사례 20개(cases_real.json, 실제 12와 경고 8)를 화면 서버에 넣고, 헤드리스 Chrome으로 화면을 그린 뒤
+    DOM의 글자를 API 값과 비교합니다. 칸마다 이 파일의 표시 규칙(자릿점, 부호, 단위, 모자란 소수 자리만 0)으로 기대 글자를
+    따로 만들어 **글자째 같은지** 보고(허용 오차 없음), 색 클래스(이익 up, 손실 down)가 값의 부호와 맞는지, 「판정 전」 띠가
+    있어야 할 때만 있는지도 봅니다. 화면 코드(screen/*.js)의 표시 함수를 쓰지 않습니다. 체결가와 환율은 check_api.py처럼
+    정답 파일의 inputs(입력 값)를 넣고, 매매 줄은 저장 파일에서 다시 열린 입력 칸 값도 봅니다.
+  - 대비: screen/style.css의 밝은 화면과 어두운 화면 색 토큰으로 글자와 바탕의 대비를 셉니다(4.5:1 이상). 어두운 화면의 두
+    블록(시스템 설정, data-theme)이 같은지도 봅니다.
+  - 자체 시험(--selftest): 국내 사례 하나와 미국 사례 하나의 DOM을 일부러 틀리게 바꿔(1원, 색, 단위, 부호, 판정 전 띠 등)
+    대조기가 모두 잡는지 봅니다.
+
+사용: .venv/bin/python eval/f_screen/check_screen.py [--only R01,W03] [--selftest]
+결과: data/generated/f_screen/screen_check.json(git 제외, 실제 값이 들어 있음)
+
+화면은 저장된 매매를 열 때 그리므로, 사례마다 git 제외 폴더의 임시 저장 파일에 매매를 쓰고 서버를 그 파일로 띄웁니다.
+입력 흐름(빠른 고침, 저장 실패, 틀린 기준일, 종목 바꾸기)은 check_flows.py가 봅니다. 375px 폭과 키보드 조작은 사람이
+브라우저에서 봅니다(설계서 4절 「화면 품질」).
+"""
+import argparse
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from decimal import Decimal
+from html.parser import HTMLParser
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from ai import screen_data  # noqa: E402
+from ai.screen_server import SAFE, serve, stop  # noqa: E402
+
+CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CASES = ROOT / "eval" / "f_screen" / "cases_real.json"
+EXPECTED = SAFE / "f_screen" / "expected_real.json"
+TMP = SAFE / "f_screen" / "check_screen_trades.json"
+OUT = SAFE / "f_screen" / "screen_check.json"
+CSS = ROOT / "screen" / "style.css"
+
+
+# ---------- DOM 읽기 ----------
+
+class Node:
+    def __init__(self, tag, attrs, parent):
+        self.tag, self.attrs, self.parent, self.kids, self.parts = tag, dict(attrs), parent, [], []
+
+    def text(self):
+        out = []
+        for p in self.parts:
+            out.append(p.text() if isinstance(p, Node) else p)
+        return "".join(out)
+
+    def walk(self):
+        yield self
+        for k in self.kids:
+            yield from k.walk()
+
+    def find(self, tag=None, cls=None):
+        return [n for n in self.walk() if n is not self and (tag is None or n.tag == tag)
+                and (cls is None or cls in (n.attrs.get("class") or "").split())]
+
+
+VOID = {"meta", "link", "input", "br", "img", "hr", "source", "path", "circle", "line", "rect"}
+
+
+class Tree(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.root = Node("root", {}, None)
+        self.cur = self.root
+        self.ids = {}
+
+    def handle_starttag(self, tag, attrs):
+        n = Node(tag, attrs, self.cur)
+        self.cur.kids.append(n)
+        self.cur.parts.append(n)
+        if "id" in n.attrs:
+            self.ids[n.attrs["id"]] = n
+        if tag not in VOID:
+            self.cur = n
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in VOID:
+            self.cur = self.cur.parent
+
+    def handle_endtag(self, tag):
+        n = self.cur
+        while n is not self.root and n.tag != tag:
+            n = n.parent
+        if n is not self.root:
+            self.cur = n.parent
+
+    def handle_data(self, data):
+        self.cur.parts.append(data)
+
+
+def dom(html):
+    t = Tree()
+    t.feed(html)
+    return t
+
+
+# ---------- 기대 글자(설계서 7절 4단계 정한 것 1번: 자릿점, 부호, 단위, 모자란 소수 자리의 0만 붙임) ----------
+
+MINUS = "−"
+
+
+def fnum(v, places=0):
+    """반올림하지 않고 자릿점을 넣습니다. JSON의 21.0은 브라우저에서 21이라 정수로 봅니다."""
+    if v is None:
+        return "–"
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = format(Decimal(str(v)), "f")
+    neg = s.startswith("-")
+    if neg:
+        s = s[1:]
+    i, _, f = s.partition(".")
+    f = f.ljust(places, "0")
+    return (MINUS if neg and Decimal(s) != 0 else "") + f"{int(i):,}" + ("." + f if f else "")
+
+
+def plus(v, signed):
+    return "+" if signed and v > 0 else ""
+
+
+def fkrw(v, signed=False):
+    return "–" if v is None else plus(v, signed) + fnum(v) + "원"
+
+
+def flocal(v, cur, signed=False):
+    if v is None:
+        return "–"
+    if cur == "KRW":
+        return fkrw(v, signed)
+    return (MINUS if v < 0 else plus(v, signed)) + "$" + fnum(abs(v), 2)
+
+
+def fprice(v, cur):
+    return "–" if v is None else fnum(v) if cur == "KRW" else fnum(v, 2)
+
+
+def fpct(v, signed=True):
+    return "–" if v is None else plus(v, signed) + fnum(v, 2) + "%"
+
+
+def ftone(v):
+    return "na" if v is None else "up" if v > 0 else "down" if v < 0 else "zero"
+
+
+# ---------- 사례 하나 ----------
+
+def chrome_dom(url, width=1280):
+    with tempfile.TemporaryDirectory() as prof:
+        r = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                            f"--user-data-dir={prof}", f"--window-size={width},2400", "--virtual-time-budget=20000",
+                            "--dump-dom", url], capture_output=True, text=True, timeout=90)
+    return r.stdout
+
+
+def post(port, body):
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/pnl", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+
+def screen_trades(case, inputs):
+    """화면에 넣을 매매(글자). check_api.api_trades와 같이 정답 파일의 inputs(체결가 규칙과 환율 배수를 푼 입력 값)를 씁니다."""
+    out = []
+    for k, t in enumerate(case["trades"]):
+        u = inputs.get(str(k), t)
+        row = {"date": u["d"], "side": u["side"], "qty": str(u["q"] if str(k) in inputs else t["q"])}
+        if u.get("p") is not None:
+            row["price"] = str(u["p"])
+        if u.get("fx") is not None:
+            row["fx_rate"] = str(u["fx"])
+        out.append(row)
+    return out
+
+
+def write_saved(case, trades):
+    TMP.write_text(json.dumps({"symbols": {case["symbol"]: {"asof": case["asof"], "trades": trades}},
+                               "last": case["symbol"]}, ensure_ascii=False), encoding="utf-8")
+
+
+def check_case(case, port, inputs, html=None):
+    """화면 DOM과 API 값을 비교해 틀린 곳 목록을 돌려줍니다."""
+    trades = screen_trades(case, inputs)
+    api = post(port, {"symbol": case["symbol"], "asof": case["asof"], "trades": trades})
+    if html is None:
+        write_saved(case, trades)
+        html = chrome_dom(f"http://127.0.0.1:{port}/")
+    ids = dom(html).ids
+    bad = []
+    cur = api["currency"]
+    usd = cur != "KRW"
+    unit = "달러" if usd else "원"
+
+    def text(i):
+        return ids[i].text().strip() if i in ids else None
+
+    def cls(node):
+        return (node.attrs.get("class") or "").split()
+
+    def eq(where, got, want):
+        if got != want:
+            bad.append(f"{where}: 화면 {got!r}, 기대 {want!r}")
+
+    def toned(where, node, v):
+        if ftone(v) not in cls(node):
+            bad.append(f"{where} 색: {cls(node)}, 기대 {ftone(v)}")
+
+    def card(where, i, want, v):
+        eq(where, text(i), want)
+        toned(where, ids[i], v)
+
+    state = text("state") or ""
+    if (not re.match(r"계산 \d", state) or "err" in cls(ids["state"]) or "hidden" in ids["result"].attrs
+            or "stale" in cls(ids["result"]) or "통과" not in (text("pipe-pill") or "")):
+        return api, [f"화면이 계산을 마치지 못함: {state!r}"]
+
+    # 단위: 입력 칸 머리와 매도 표 머리
+    eq("체결가 머리", text("h-price"), f"체결가({unit})")
+    eq("평균 단가 머리", text("h-avg"), f"이 매매 뒤 평균 단가({unit})")
+    eq("매도 가격 머리", text("h-sp"), f"가격({unit})")
+    eq("매도 평균 단가 머리", text("h-sa"), f"팔기 전 평균 단가({unit})")
+
+    # 2번 칸: 요약 카드와 보유 줄
+    s = api["summary"]
+    if s is None:
+        for k in ("k-krw", "k-local", "k-bench", "k-mdd", "k-irr"):
+            eq(f"{k}(요약 없음)", text(k), "–")
+    else:
+        card("원화 손익", "k-krw", fkrw(s["total_krw"], True), s["total_krw"])
+        eq("원화 손익 보조", text("k-krw-s"), f"실현 {fkrw(s['realized_krw'], True)}, 평가 {fkrw(s['unrealized_krw'], True)}")
+        if usd:
+            card("달러 손익", "k-local", flocal(s["total_local"], cur, True), s["total_local"])
+            eq("달러 손익 보조", text("k-local-s"),
+               f"실현 {flocal(s['realized_local'], cur, True)}, 평가 {flocal(s['unrealized_local'], cur, True)}")
+        else:
+            card("단순 수익률(카드)", "k-local", fpct(s["simple_return_pct"]), s["simple_return_pct"])
+            eq("단순 수익률 보조", text("k-local-s"), f"원화 손익 / 넣은 돈 {fkrw(s['invested_krw'])}")
+        card("SPY와 차이", "k-bench", fkrw(s["total_minus_bench_krw"], True), s["total_minus_bench_krw"])
+        eq("SPY에 넣었다면", text("k-bench-s"), f"SPY에 넣었다면 {fkrw(s['bench_total_krw'], True)}"
+           + ("(이 종목이 SPY)" if api["symbol"] == api["bench"] else ""))
+        if s["max_drawdown_krw"] == 0:
+            eq("최대 낙폭", text("k-mdd"), "없음")
+        else:
+            eq("최대 낙폭", text("k-mdd"), fkrw(s["max_drawdown_krw"]))
+            if "down" not in cls(ids["k-mdd"]):
+                bad.append(f"최대 낙폭 색: {cls(ids['k-mdd'])}")
+        if s["irr_pct"] is None:
+            eq("연 환산", text("k-irr"), "계산 못 함")
+            eq("연 환산이 없는 까닭(30일)", "30일" in (text("k-irr-s") or ""), api["irr_short"])
+        else:
+            card("연 환산", "k-irr", fpct(s["irr_pct"]), s["irr_pct"])
+            eq("SPY 연 환산", text("k-irr-s"), f"SPY {fpct(s['bench_irr_pct'])}")
+        hold = {}
+        for sp in ids["holding-line"].find("span"):
+            b = sp.find("b")
+            if b:
+                hold[sp.text()[: -len(b[0].text())].strip()] = b[0].text()
+        want = {"남은 수량": f"{fnum(s['qty_left'])}주", "넣은 원화": fkrw(s["invested_krw"]),
+                "단순 수익률": fpct(s["simple_return_pct"])}
+        if s["qty_left"] > 0:
+            want["평균 단가"] = flocal(s["avg_cost_local"], cur)
+            if usd:
+                want["평균 매수 환율"] = f"{fnum(s['avg_buy_fx'])}원"
+        if api["holding"]:
+            want["보유 기간(첫 매수일 ~ 기준일)"] = f"{api['holding'][0]} ~ {api['holding'][1]}"
+        eq("보유 줄", hold, want)
+
+        # 5번 칸: 원화 수익 나누기
+        vs = ids["fx"].find(cls="v")
+        keys = ("price_effect_krw", "fx_effect_krw", "cross_effect_krw", "total_krw")
+        eq("나누기 줄 수", len(vs), 4)
+        for n, key in zip(vs, keys):
+            eq(f"나누기 {key}", n.text(), fkrw(s[key], True))
+            toned(f"나누기 {key}", n, s[key])
+        note = text("fx-note") or ""
+        total3 = s["price_effect_krw"] + s["fx_effect_krw"] + s["cross_effect_krw"]
+        if total3 != s["total_krw"]:
+            w = f"셋의 합({fkrw(total3, True)})과 원화 손익은 원 단위 반올림으로 {fkrw(abs(total3 - s['total_krw']))} 다릅니다."
+            if w not in note:
+                bad.append(f"나누기 합 문장 없음: {w!r}")
+        elif "셋의 합" in note:
+            bad.append("나누기 합이 같은데 다르다는 문장이 있음")
+        if not usd:
+            if "국내 종목이라 환율 효과와 교차 효과는 0입니다." not in note:
+                bad.append("국내 종목 문장 없음")
+        elif s["naive_minus_total_krw"]:
+            d = s["naive_minus_total_krw"]
+            w = (f"달러 손익을 기준일 환율 하나로 바꾸면 {fkrw(s['naive_krw'], True)}으로, 실제 원화 손익보다 "
+                 f"{fkrw(abs(d))} {'많게' if d > 0 else '적게'} 보입니다.")
+            if w not in note:
+                bad.append(f"기준일 환율 문장 없음: {w!r}")
+
+    # 6번 칸: 매도별 손익
+    trs = [tr for tr in ids["sells"].find("tr") if "empty" not in cls(tr)]
+    eq("매도 줄 수", len(trs), len(api["sells"]))
+    for tr, sl in zip(trs, api["sells"]):
+        tds = tr.find("td")
+        eq(f"매도 {sl['date']}", [td.text() for td in tds],
+           [sl["date"], f"{fnum(sl['qty'])}주", fprice(sl["price"], cur), fprice(sl["avg_cost_before"], cur),
+            fkrw(sl["realized_krw"], True)])
+        toned(f"매도 {sl['date']} 원화 손익", tds[4], sl["realized_krw"])
+
+    # 경고: 줄 번호, 날짜, 문구, 코드. 사례가 기대한 경고(cases_real.json)도 화면에 있는지
+    lis = ids["warnings"].find("li")
+    eq("경고 수", len(lis), len(api["warnings"]))
+    for li, w in zip(lis, api["warnings"]):
+        eq("경고 글", li.text(), f"{w['trade_index'] + 1}번 줄({w['trade_date']}): {w['message']}{w['code']}")
+    if api["warnings"] and f"입력 경고 {len(api['warnings'])}건" not in state:
+        bad.append(f"상태 줄(읽기 줄)에 경고 수가 없음: {state!r}")
+    shown = {(li.find(cls="code")[0].text(), int(li.text().split("번 줄")[0]) - 1) for li in lis}
+    for w in case.get("expect_warnings") or []:
+        if (w["code"], w["trade"]) not in shown:
+            bad.append(f"기대한 경고가 화면에 없음: {w['code']} {w['trade'] + 1}번 줄")
+
+    # 1번 칸: 다시 열린 입력 값, 평균 단가, 비운 칸에 흐리게 보이는 값
+    rows = ids["rows"].find(cls="lrow")
+    eq("매매 줄 수", len(rows), len(trades))
+    steps = {x["trade_index"]: x for x in api["steps"]}
+    for k, (row, tr) in enumerate(zip(rows, trades)):
+        inp = {n.attrs["data-k"]: n for n in row.walk() if n.tag == "input" and "data-k" in n.attrs}
+        eq(f"{k + 1}번 줄 입력", {key: inp[key].attrs.get("value", "") for key in ("date", "qty", "price", "fx_rate")},
+           {"date": tr["date"], "qty": tr["qty"], "price": tr.get("price", ""), "fx_rate": tr.get("fx_rate", "")})
+        side = [o.attrs.get("value") for n in row.walk() if n.tag == "select" for o in n.find("option")
+                if "selected" in o.attrs]
+        eq(f"{k + 1}번 줄 구분", side, [tr["side"]])
+        avg = row.find(cls="avg")[0].text()
+        st = steps.get(k)
+        used = st is not None and not st["excluded"]
+        if not used:
+            eq(f"{k + 1}번 줄 평균 단가", avg, "계산에서 빠짐")
+        elif st["qty_after"] == 0:
+            eq(f"{k + 1}번 줄 평균 단가", avg, "남은 수량 없음")
+        else:
+            eq(f"{k + 1}번 줄 평균 단가", avg, fprice(st["avg_cost_after"], cur))
+        if not tr.get("price"):
+            eq(f"{k + 1}번 줄 비운 체결가", inp["price"].attrs.get("placeholder", ""),
+               fprice(st["price"], cur) if used else "")
+        if usd and not tr.get("fx_rate"):
+            eq(f"{k + 1}번 줄 비운 환율", inp["fx_rate"].attrs.get("placeholder", ""),
+               fnum(st["fx"]) if used and st["fx"] else "")
+
+    # 3번 칸: 큰 움직임, 판정 전, 표시 수, 읽기 줄
+    bm = api["big_moves"]
+    got_dates = [li.text() for li in ids["bm-list"].find("li")]
+    if bm and got_dates != bm["dates"]:
+        bad.append(f"큰 움직임 날: 화면 {len(got_dates)}일, API {len(bm['dates'])}일")
+    if bm:
+        want = f"첫 매수일부터 기준일까지({api['holding'][0]} ~ {api['holding'][1]}) 큰 움직임 {len(bm['dates'])}일"
+        if bm["not_judged_in_holding"]:
+            want += f", {bm['judged_from'] or '데이터 끝'} 전은 판정 전"
+        eq("큰 움직임 요약", text("bm-sum"), want)
+    svg = ids["px"]
+    eq("판정 전 띠", len(svg.find(cls="band")), 1 if bm and bm["not_judged_in_holding"] else 0)
+    live = [x for x in api["steps"] if not x["excluded"]]
+    counts = {"m-buy": sum(x["side"] == "BUY" for x in live), "m-sell": sum(x["side"] == "SELL" for x in live),
+              "m-out": sum(x["excluded"] for x in api["steps"]), "m-big": len(bm["dates"]) if bm else 0}
+    for c, want in counts.items():
+        eq(f"가격 그림 {c} 수", len(svg.find(cls=c)), want)
+    last_close = dict(api["prices"]).get(api["asof_price_date"])
+    if f"종가 {fprice(last_close, cur)}" not in (text("px-read") or ""):
+        bad.append(f"가격 읽기 줄: {text('px-read')!r}, 기대 종가 {fprice(last_close, cur)}")
+
+    # 4번 칸: 누적 손익 읽기 줄과 최대 낙폭 띠
+    if api["daily"]:
+        d = api["daily"][-1]
+        eq("누적 손익 읽기 줄", text("pl-read"),
+           f"{d['date']}, 내 매매 {fkrw(d['pnl_krw'], True)}, SPY에 넣었다면 {fkrw(d['bench_krw'], True)}")
+    pl = ids["pl"]
+    dd = pl.find(cls="dd")
+    if s is None or s["max_drawdown_krw"] == 0:
+        eq("최대 낙폭 띠(낙폭 없음)", len(dd), 0)
+    elif dd:
+        lbl = [n.text() for n in pl.find(cls="lbl")]
+        eq("최대 낙폭 띠 글", lbl, [f"최대 낙폭 {fkrw(s['max_drawdown_krw'])}"])
+    return api, bad
+
+
+# ---------- 대비 ----------
+
+def tokens(css):
+    light = dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})", css.split("@media")[0]))
+    dark_block = re.search(r':root\[data-theme="dark"\]\s*\{(.*?)\}', css, re.S).group(1)
+    dark = {**light, **dict(re.findall(r"--([\w-]+):\s*(#[0-9a-fA-F]{6})", dark_block))}
+    return light, dark
+
+
+def dark_blocks_same(css):
+    """시스템 설정(prefers-color-scheme)과 data-theme="dark"의 어두운 토큰이 같은지. 대비는 뒤쪽만 셉니다."""
+    a = re.search(r':root:not\(\[data-theme="light"\]\)\s*\{(.*?)\}', css, re.S).group(1)
+    b = re.search(r':root\[data-theme="dark"\]\s*\{(.*?)\}', css, re.S).group(1)
+    pick = lambda t: dict(re.findall(r"--([\w-]+):\s*([^;]+);", t))
+    return pick(a) == pick(b)
+
+
+def lum(hexc):
+    c = [int(hexc[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+def ratio(a, b):
+    la, lb = sorted((lum(a), lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+# 화면에 실제로 놓이는 글자와 바탕의 짝(style.css에서 찾음)
+PAIRS = [("ink", "bg"), ("ink", "surface"), ("ink-2", "bg"), ("ink-2", "surface"), ("muted", "bg"), ("muted", "surface"),
+         ("muted", "surface-2"), ("accent", "surface"), ("up", "surface"), ("down", "surface"), ("up", "bg"),
+         ("down", "bg"), ("ok", "ok-soft"), ("warn", "warn-soft"), ("info", "info-soft"), ("bad", "bad-soft"),
+         ("ink", "warn-soft"), ("ink-2", "track"), ("ink", "surface-2"), ("muted", "warn-soft"), ("bad", "surface")]
+
+
+def contrast():
+    light, dark = tokens(CSS.read_text(encoding="utf-8"))
+    rows = []
+    for theme, tk in (("밝은 화면", light), ("어두운 화면", dark)):
+        for fg, bg in PAIRS:
+            r = ratio(tk[fg], tk[bg])
+            rows.append({"theme": theme, "fg": fg, "bg": bg, "ratio": round(r, 2), "ok": r >= 4.5})
+    return rows
+
+
+# ---------- 고정 문구의 금지 표현(설계서 4절 「표현」) ----------
+
+def phrases():
+    """HTML 글과 스크립트 속 한국어 문구에 E04 채점기 규칙(따옴표 안 예외 켬)을 돌림. 화면 고정 문구에만 예외를 둠."""
+    sys.path.insert(0, str(ROOT / "eval" / "e04_agent"))
+    from score import violations
+
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.out, self.skip = [], 0
+
+        def handle_starttag(self, tag, attrs):
+            self.skip += tag in ("script", "style")
+
+        def handle_endtag(self, tag):
+            self.skip -= tag in ("script", "style")
+
+        def handle_data(self, data):
+            if not self.skip and data.strip():
+                self.out.append(data.strip())
+
+    t = Text()
+    t.feed((ROOT / "screen" / "index.html").read_text(encoding="utf-8"))
+    texts = t.out
+    for js in sorted((ROOT / "screen").glob("*.js")):
+        for a, b in re.findall(r'"([^"]*[가-힣][^"]*)"|`([^`]*[가-힣][^`]*)`', js.read_text(encoding="utf-8")):
+            texts.append(a or b)
+    found = [{"text": x[:200], "kind": k} for x in texts for k, _ in violations(x, quote_exempt=True)]
+    return {"phrases": len(texts), "violations": found}
+
+
+# ---------- 실행 ----------
+
+def _span(html, i, fn):
+    """id가 i인 요소의 (여는 태그, 글자)를 fn으로 바꿈. 안에 다른 태그가 없는 요소만."""
+    return re.sub(rf'(<[a-z]+ [^>]*\bid="{i}"[^>]*>)([^<]*)', lambda m: "".join(fn(m.group(1), m.group(2))), html,
+                  count=1)
+
+
+def _flip(tag):
+    return tag.replace(" up", " @@").replace(" down", " up").replace(" @@", " down")
+
+
+def mutations(api):
+    """일부러 틀린 화면. 국내 사례와 미국 사례에 맞는 것만 돌려줌."""
+    s, usd = api["summary"], api["currency"] != "KRW"
+    m = {
+        "원화 손익 1원 바꿈": lambda h: _span(h, "k-krw", lambda t, x: (t, fkrw(s["total_krw"] + 1, True))),
+        "원화 손익 색 뒤집기": lambda h: _span(h, "k-krw", lambda t, x: (_flip(t), x)),
+        "원화 손익 단위를 $로": lambda h: _span(h, "k-krw", lambda t, x: (t, x.replace("원", "").replace("+", "+$"))),
+        "원화 손익 부호 지우기": lambda h: _span(h, "k-krw", lambda t, x: (t, x.lstrip("+" + MINUS))),
+        "SPY 차이 단위를 %로": lambda h: _span(h, "k-bench", lambda t, x: (t, x.replace("원", "%"))),
+        "연 환산 % 지우기": lambda h: _span(h, "k-irr", lambda t, x: (t, x.replace("%", ""))),
+        "매도 손익 줄 지움": lambda h: re.sub(r'(<tbody id="sells">.*?)<tr>.*?</tr>', r"\1", h, count=1, flags=re.S),
+        "매도 수량 단위 주를 원으로": lambda h: re.sub(r'(<tbody id="sells">.*?<td[^>]*>[^<]*</td><td[^>]*>[^<]*)주',
+                                             r"\1원", h, count=1, flags=re.S),
+        "큰 움직임 하루 지움": lambda h: re.sub(r'(<ul id="bm-list"[^>]*>)<li>[^<]*</li>', r"\1", h, count=1),
+        "판정 전 띠 지움": lambda h: re.sub(r'<rect class="band"[^>]*>(</rect>)?', "", h, count=1),
+        "평균 단가 칸 바꿈": lambda h: re.sub(r'(<span class="avg"[^>]*>[^<]*?)(\d)(</span>)',
+                                       lambda x: x.group(1) + str((int(x.group(2)) + 1) % 10) + x.group(3), h, count=1),
+        "다시 열린 수량 바꿈": lambda h: re.sub(r'(data-k="qty"[^>]*value=")(\d+)', lambda x: x.group(1) + x.group(2) + "0",
+                                         h, count=1),
+        "체결가 머리 단위 바꿈": lambda h: _span(h, "h-price", lambda t, x: (t, "체결가")),
+    }
+    if usd:
+        m["달러 손익 단위를 원으로"] = lambda h: _span(h, "k-local", lambda t, x: (t, x.replace("$", "") + "원"))
+    else:
+        m["단순 수익률 % 지우기"] = lambda h: _span(h, "k-local", lambda t, x: (t, x.replace("%", "")))
+    return m
+
+
+def selftest(port):
+    """대조기가 화면의 틀린 값을 잡는지: 국내 사례(R02)와 미국 사례(R03)의 DOM을 일부러 바꿔 넣음."""
+    cases = {c["id"]: c for c in json.loads(CASES.read_text(encoding="utf-8"))}
+    expected = json.loads(EXPECTED.read_text(encoding="utf-8"))
+    out = {}
+    for cid in ("R02", "R03"):
+        case, inputs = cases[cid], expected[cid]["inputs"]
+        write_saved(case, screen_trades(case, inputs))
+        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        api, bad = check_case(case, port, inputs, html)
+        assert not bad, (cid, bad)
+        for name, fn in mutations(api).items():
+            h = fn(html)
+            if h == html:
+                out[f"{cid} {name}"] = None  # 시험을 만들지 못함(그 사례에 그 칸이 없음)
+                continue
+            _, b = check_case(case, port, inputs, h)
+            out[f"{cid} {name}"] = bool(b)
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", default="")
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args()
+    if not Path(CHROME).exists():
+        print("Chrome이 없어 화면 대조를 하지 못했습니다(실패로 셈)")
+        return 1
+    TMP.parent.mkdir(parents=True, exist_ok=True)
+    httpd, _ = serve(screen_data.OUT, 0, TMP)
+    port = httpd.server_address[1]
+    try:
+        if a.selftest:
+            res = selftest(port)
+            for k, v in res.items():
+                print(f"  {'잡음' if v else '만들지 못함' if v is None else '못 잡음'}  {k}")
+            ok = all(v is True for v in res.values())
+            print(f"자체 시험 {sum(v is True for v in res.values())}/{len(res)} 잡음 → " + ("통과" if ok else "실패"))
+            return 0 if ok else 1
+        cases = json.loads(CASES.read_text(encoding="utf-8"))
+        expected = json.loads(EXPECTED.read_text(encoding="utf-8"))
+        if a.only:
+            cases = [c for c in cases if c["id"] in a.only.split(",")]
+        results, t0 = [], time.time()
+        for c in cases:
+            _, bad = check_case(c, port, expected[c["id"]]["inputs"])
+            results.append({"id": c["id"], "ok": not bad, "bad": bad})
+            print(f"  {'같음' if not bad else '다름'}  {c['id']} {c['title']}" + ("".join(f"\n      {b}" for b in bad)))
+        con = contrast()
+        worst = {th: min((r for r in con if r["theme"] == th), key=lambda r: r["ratio"]) for th in ("밝은 화면", "어두운 화면")}
+        for th, r in worst.items():
+            print(f"  대비 {th}: 가장 낮은 짝 {r['fg']}/{r['bg']} {r['ratio']}:1")
+        for r in con:
+            if not r["ok"]:
+                print(f"  대비 모자람: {r['theme']} {r['fg']}/{r['bg']} {r['ratio']}:1")
+        same_dark = dark_blocks_same(CSS.read_text(encoding="utf-8"))
+        print(f"  어두운 화면 두 블록 {'같음' if same_dark else '다름'}")
+        ph = phrases()
+        for v in ph["violations"]:
+            print(f"  금지 표현({v['kind']}): {v['text']}")
+        ok_cases = sum(r["ok"] for r in results)
+        ok = ok_cases == len(results) and all(r["ok"] for r in con) and same_dark and not ph["violations"]
+        OUT.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "cases": results, "contrast": con,
+                                   "dark_blocks_same": same_dark, "phrases": ph, "seconds": round(time.time() - t0, 1)},
+                                  ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"화면 값 대조 {ok_cases}/{len(results)}, 대비 {sum(r['ok'] for r in con)}/{len(con)}, "
+              f"고정 문구 금지 표현 {len(ph['violations'])}건({ph['phrases']}개 문구) → {'통과' if ok else '실패'}")
+        return 0 if ok else 1
+    finally:
+        stop(httpd)
+        TMP.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,561 @@
+// 내 투자 돌아보기(docs/ai/F-screen.md 2절). 계산은 모두 서버(ai/screen_server.py)가 하고, 이 파일은 입력을 모아 보내고
+// 돌려받은 값을 그대로 보입니다. 숫자를 다시 계산하거나 반올림하지 않습니다(그림의 위치와 축 눈금만 셈).
+import { drawPnl, drawPrice } from "./charts.js";
+import { krw, local, num, pct, price, tone } from "./format.js";
+
+const $ = (id) => document.getElementById(id);
+const DEFAULT_SYMBOL = "QQQ";
+const EXAMPLE = [
+  { date: "2025-03-03", side: "BUY", qty: "10" },
+  { date: "2025-08-01", side: "BUY", qty: "5" },
+  { date: "2026-02-02", side: "SELL", qty: "8" },
+];
+const NUM = /^\d+(\.\d+)?$/;
+const PRICE = /^\d+(\.\d{1,4})?$/;
+
+const st = {
+  symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
+  saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
+  saveErr: null, notes: null,
+};
+
+// ---------- 서버 ----------
+
+async function api(path, init = {}) {
+  const r = await fetch(path, { ...init, headers: init.body ? { "Content-Type": "application/json" } : {} });
+  let body = null;
+  try { body = await r.json(); } catch { /* 본문 없음 */ }
+  return { status: r.status, body };
+}
+
+// ---------- 10번 칸: 파이프라인 상태 ----------
+
+function renderPipe(s) {
+  const pill = $("pipe-pill");
+  const passed = s.checks.filter((c) => c.ok).length;
+  pill.className = "pill " + (s.ok ? "ok" : "bad");
+  pill.textContent = s.ok ? "파이프라인 검사 통과" : "파이프라인 검사 실패";
+  const when = s.exported_at ? s.exported_at.slice(0, 16).replace("T", " ") : "–";
+  $("pipe-line").textContent = s.ok
+    ? `내보낸 때 ${when}, 데이터 ${s.window[0]} ~ ${s.window[1]}, 검사 ${passed}/${s.checks.length} 통과, 기준 종목 ${s.bench}`
+    : `내보낸 때 ${when}. 검사를 통과하지 못해 숫자를 보이지 않습니다.`;
+  const tb = $("pipe-rows");
+  tb.replaceChildren(...s.checks.map((c) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td><td></td><td><span class="pill ${c.ok ? "ok" : "bad"}">${c.ok ? "통과" : "실패"}</span></td>`;
+    tr.children[0].textContent = c.name;
+    tr.children[1].textContent = c.value + (c.detail ? ` (${c.detail})` : "");
+    return tr;
+  }));
+  const fail = $("pipe-fail");
+  fail.hidden = s.ok;
+  if (!s.ok) {
+    fail.innerHTML = "<b>실패한 검사</b><ul></ul><span>원천을 확인한 뒤 <span class=\"mono\">make screen-data</span>로 다시 내보내고 서버를 다시 띄우세요.</span>";
+    fail.querySelector("ul").replaceChildren(...s.failures.map((f) => {
+      const li = document.createElement("li");
+      li.textContent = `${f.name}: ${f.value}${f.detail ? ` (${f.detail})` : ""}`;
+      return li;
+    }));
+    $("pipe-more").open = s.checks.length > 0;
+    $("pipe-more").hidden = !s.checks.length;
+    $("main").hidden = true;
+  }
+}
+
+async function pipelineFailed() {
+  const { body } = await api("/api/status");
+  if (body) renderPipe(body);
+}
+
+// ---------- 1번 칸: 매매 입력 ----------
+
+const isUSD = () => st.symbols.get(st.sym)?.currency !== "KRW";
+const unitName = () => (isUSD() ? "달러" : "원");
+const rowNo = (sentIdx) => st.map[sentIdx] + 1;
+
+function rowEl(r, i) {
+  const n = i + 1;
+  const div = document.createElement("div");
+  div.className = "lrow";
+  div.setAttribute("role", "row");
+  div.dataset.i = i;
+  const [lo, hi] = st.calendar;
+  const unit = unitName();
+  div.innerHTML = `
+    <div class="cell" role="cell"><label for="d${i}">날짜</label><input id="d${i}" data-k="date" type="date" min="${lo}" max="${hi}" aria-label="${n}번 줄 날짜"></div>
+    <div class="cell" role="cell"><label for="s${i}">구분</label><select id="s${i}" data-k="side" aria-label="${n}번 줄 구분"><option value="BUY">매수</option><option value="SELL">매도</option></select></div>
+    <div class="cell" role="cell"><label for="q${i}">수량(주)</label><input id="q${i}" data-k="qty" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 수량"></div>
+    <div class="cell" role="cell"><label for="p${i}">체결가(${unit})</label><input id="p${i}" data-k="price" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 체결가(${unit})"></div>
+    <div class="cell fxcell" role="cell"><label for="f${i}">환율(원)</label><input id="f${i}" data-k="fx_rate" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 환율(원)"></div>
+    <div class="cell avgcell" role="cell"><label>이 매매 뒤 평균 단가(${unit})</label><span class="avg" aria-label="${n}번 줄 뒤 평균 단가"></span></div>
+    <div class="cell rmcell" role="cell"><button type="button" class="btn rm" aria-label="${n}번 줄 빼기">빼기</button></div>
+    <p class="rowmsg" id="m${i}" hidden></p>`;
+  for (const inp of div.querySelectorAll("[data-k]")) {
+    inp.setAttribute("aria-describedby", `m${i}`);
+    inp.value = r[inp.dataset.k] ?? (inp.dataset.k === "side" ? "BUY" : "");
+    // 처음 연 값을 속성에도 둡니다(화면 값 대조가 저장 파일에서 다시 열린 값을 DOM으로 읽음)
+    if (inp.tagName === "SELECT") for (const o of inp.options) o.defaultSelected = o.value === inp.value;
+    else inp.defaultValue = r[inp.dataset.k] ?? "";
+    inp.addEventListener("input", () => { st.rows[i][inp.dataset.k] = inp.value.trim(); changed(); });
+  }
+  div.querySelector(".rm").addEventListener("click", () => removeRow(i));
+  return div;
+}
+
+function renderRows() {
+  $("rows").replaceChildren(...st.rows.map(rowEl));
+  document.querySelector(".ledger").classList.toggle("no-fx", !isUSD());
+  $("h-price").textContent = `체결가(${unitName()})`;
+  $("h-avg").textContent = `이 매매 뒤 평균 단가(${unitName()})`;
+}
+
+function addRow() {
+  const last = st.rows[st.rows.length - 1];
+  st.rows.push({ date: last?.date || "", side: "BUY", qty: "", price: "", fx_rate: "" });
+  renderRows();
+  $(`d${st.rows.length - 1}`).focus();
+  changed();
+}
+
+function removeRow(i) {
+  st.rows.splice(i, 1);
+  renderRows();
+  const next = $(`d${Math.min(i, st.rows.length - 1)}`);
+  (next || $("add")).focus();
+  changed();
+}
+
+function clean(v) {
+  return (v || "").replace(/[,\s]/g, "");
+}
+
+// 서버와 같은 규칙으로 먼저 봅니다(서버도 다시 검사). 틀린 줄이 있으면 계산하지 않고 그 줄을 알립니다.
+function check(r) {
+  const filled = ["date", "qty", "price", "fx_rate"].some((k) => r[k]);
+  if (!filled) return { skip: true };
+  if (!r.date || !r.qty) return { skip: true, note: "날짜와 수량을 넣으면 계산에 넣습니다" };
+  const q = clean(r.qty).replace(/^-/, "");
+  if (!NUM.test(q)) return { err: "수량은 수로 넣어 주세요", key: "qty" };
+  for (const [k, label] of [["price", "체결가"], ["fx_rate", "환율"]]) {
+    if (k === "fx_rate" && !isUSD()) continue;
+    const v = clean(r[k]);
+    if (v && (!PRICE.test(v) || Number(v) <= 0)) return { err: `${label}는 0보다 큰 수, 소수 넷째 자리까지입니다`, key: k };
+  }
+  return {};
+}
+
+function changed() {
+  st.example = false;
+  clearTimeout(st.timer);
+  st.timer = setTimeout(run, 250);
+  clearTimeout(st.saveTimer);
+  st.saveTimer = setTimeout(save, 700);
+}
+
+// 줄 표시. badKey를 주면 그 칸에 aria-invalid를 켭니다(줄 문구는 aria-describedby로 이어져 있음).
+function decorate(i, cls, msg, avgText, badKey) {
+  const div = $("rows").children[i];
+  if (!div) return;
+  div.classList.remove("warnrow", "badrow", "out");
+  if (cls) div.classList.add(cls);
+  const p = div.querySelector(".rowmsg");
+  p.hidden = !msg;
+  p.textContent = msg || "";
+  if (avgText !== undefined) div.querySelector(".avg").textContent = avgText;
+  for (const inp of div.querySelectorAll("input")) {
+    if (badKey && inp.dataset.k === badKey) inp.setAttribute("aria-invalid", "true");
+    else inp.removeAttribute("aria-invalid");
+  }
+}
+
+// 결과 칸: 지금 입력의 결과가 없으면 숨기고, 고치는 중이면 흐리게 두고 그렇다고 적습니다.
+function showResult(mode) {
+  const box = $("result");
+  box.hidden = mode === "none";
+  box.classList.toggle("stale", mode === "stale");
+  $("stale-note").hidden = mode !== "stale";
+}
+
+function setState(text, err = false) {
+  const s = $("state");
+  s.textContent = text;
+  s.classList.toggle("err", err);
+}
+
+// ---------- 계산 ----------
+
+const KEY_OF = { "날짜": "date", "수량": "qty", "체결가": "price", "환율": "fx_rate" };
+
+// 지금 입력으로 계산할 수 없을 때: 앞 결과가 있으면 흐리게 두고, 없으면 숨깁니다. 경고 목록은 앞 결과의 것이라 비웁니다.
+function hold(text) {
+  st.notes = null;
+  showResult(st.res ? "stale" : "none");
+  $("warnings").replaceChildren();
+  setState(st.saveErr ? `${text} ${st.saveErr}.` : text, true);
+}
+
+// 계산 결과 줄(st.notes)에 저장 상태를 붙여 보입니다
+function showNotes() {
+  const parts = [...st.notes];
+  if (st.saveErr) parts.push(st.saveErr);
+  else if (st.savedAt) parts.push(`저장 ${st.savedAt}`);
+  setState(parts.join(". ") + ".", Boolean(st.saveErr));
+}
+
+async function run() {
+  // 입력이 바뀌었으니 앞에서 보낸 요청의 답은 버립니다. 일찍 끝나는 갈래(틀린 줄, 보낼 줄 없음)도 마찬가지입니다.
+  const my = ++st.seq;
+  st.ctl?.abort();
+  st.ctl = null;
+  const sent = [], map = [], errs = [];
+  let pending = 0;
+  st.rows.forEach((r, i) => {
+    const c = check(r);
+    if (c.err) { decorate(i, "badrow", c.err, "", c.key); errs.push(`${i + 1}번 줄 ${c.err}`); return; }
+    if (c.skip) { decorate(i, null, c.note || "", ""); if (c.note) pending++; return; }
+    const t = { date: r.date, side: r.side || "BUY", qty: clean(r.qty) };
+    if (clean(r.price)) t.price = clean(r.price);
+    if (isUSD() && clean(r.fx_rate)) t.fx_rate = clean(r.fx_rate);
+    sent.push(t); map.push(i);
+  });
+  if (st.asofErr) errs.unshift(st.asofErr);
+  if (errs.length) { hold(`${errs.join(". ")}. 고치면 다시 계산합니다.`); return; }
+  if (!sent.length) {
+    st.res = null;
+    showResult("none");
+    $("warnings").replaceChildren();
+    st.notes = [pending ? "날짜와 수량을 넣으면 계산합니다" : "매매를 넣으면 계산합니다"];
+    showNotes();
+    return;
+  }
+  st.ctl = new AbortController();
+  st.notes = null;
+  setState("계산하는 중");
+  let r;
+  try {
+    const resp = await fetch("/api/pnl", {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: st.ctl.signal,
+      body: JSON.stringify({ symbol: st.sym, asof: st.asof, trades: sent }),
+    });
+    r = { status: resp.status, body: await resp.json().catch(() => null) };
+  } catch (e) {
+    if (e.name === "AbortError" || my !== st.seq) return;
+    hold("서버에 닿지 못했습니다. make screen으로 서버가 떠 있는지 확인하세요.");
+    return;
+  }
+  if (my !== st.seq) return;
+  if (r.status === 200) {
+    st.res = r.body; st.map = map;
+    render(pending);
+  } else if (r.status === 503) {
+    await pipelineFailed();
+  } else if (r.status === 400 && r.body) {
+    const k = r.body.trade_index;
+    if (k !== undefined && map[k] !== undefined) {
+      const msg = r.body.message.replace(/\d+번 줄/, `${map[k] + 1}번 줄`);
+      const m = msg.match(/번 줄의 (날짜|수량|체결가|환율)/);
+      decorate(map[k], "badrow", msg, "", m ? KEY_OF[m[1]] : undefined);
+      hold(msg);
+    } else {
+      hold(r.body.message || "입력을 읽지 못했습니다.");
+    }
+  } else {
+    hold(`계산하지 못했습니다(${r.status}${r.body?.message ? ", " + r.body.message : ""}).`);
+  }
+}
+
+// ---------- 결과 보이기 ----------
+
+function render(pending) {
+  const res = st.res, cur = res.currency;
+  showResult("ok");
+  // 경고: 줄마다 모아 그 줄에 붙이고, 아래에 목록으로도 보임
+  const byRow = new Map();
+  for (const w of res.warnings) {
+    const i = st.map[w.trade_index];
+    byRow.set(i, [...(byRow.get(i) || []), w]);
+  }
+  const stepByRow = new Map(res.steps.map((s) => [st.map[s.trade_index], s]));
+  st.rows.forEach((r, i) => {
+    if (!st.map.includes(i)) return;
+    const s = stepByRow.get(i), ws = byRow.get(i) || [];
+    const avg = s ? (s.excluded ? "계산에서 빠짐" : s.qty_after > 0 ? price(s.avg_cost_after, cur) : "남은 수량 없음") : "계산에서 빠짐";
+    decorate(i, ws.length ? "warnrow" : null, ws.map((w) => w.message).join(" "), avg);
+    const div = $("rows").children[i];
+    if (!s) div.classList.add("out");
+    // 비운 칸에는 계산에 쓴 값을 흐리게 보임(서버가 채운 그날 종가와 매매기준율). 계산에서 빠진 줄은 비움
+    const used = s && !s.excluded;
+    div.querySelector('[data-k="price"]').placeholder = used && s.price !== null ? price(s.price, cur) : "";
+    div.querySelector('[data-k="fx_rate"]').placeholder = used && isUSD() && s.fx ? num(s.fx) : "";
+  });
+  $("warnings").replaceChildren(...res.warnings.map((w) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span></span><span class="code"></span>`;
+    li.children[0].textContent = `${rowNo(w.trade_index)}번 줄(${w.trade_date}): ${w.message}`;
+    li.children[1].textContent = w.code;
+    return li;
+  }));
+
+  const notes = [`계산 ${res.seconds}초`];
+  if (res.asof_price_date && res.asof_price_date !== res.asof) {
+    notes.push(`기준일이 이 종목의 거래일이 아니라, 기준일 이전 마지막 거래일 ${res.asof_price_date}의 종가로 평가했습니다`);
+  }
+  if (res.warnings.length) notes.push(`입력 경고 ${res.warnings.length}건(아래 목록)`);
+  if (pending) notes.push(`넣는 중인 줄 ${pending}개는 아직 계산에 넣지 않았습니다`);
+  st.notes = notes;
+  showNotes();
+
+  renderKpis(res);
+  renderEffects(res);
+  renderSells(res);
+  $("px-unit").textContent = cur === "KRW" ? "원" : "달러";
+  $("lg-sym").textContent = `${res.symbol} 종가`;
+  drawCharts();
+  renderBigMoves(res);
+}
+
+function drawCharts() {
+  if (!st.res) return;
+  $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo);
+  $("pl-desc").textContent = drawPnl($("pl"), $("pl-read"), st.res);
+}
+
+function setKpi(id, text, cls, sub) {
+  const v = $(id);
+  v.textContent = text;
+  // 긴 금액은 숫자 중간에서 줄이 나뉘지 않게 글자를 줄입니다(375px 폭의 두 칸 카드)
+  const size = text.length > 14 ? " longer" : text.length > 11 ? " long" : "";
+  v.className = "value " + (cls || "") + size;
+  if (sub !== undefined) $(id + "-s").textContent = sub;
+}
+
+function renderKpis(res) {
+  const s = res.summary, cur = res.currency;
+  $("k-local-l").textContent = cur === "KRW" ? "단순 수익률" : "달러 손익";
+  if (!s) {
+    for (const id of ["k-krw", "k-local", "k-bench", "k-mdd", "k-irr"]) setKpi(id, "–", "na", "");
+    $("k-krw-s").textContent = "계산에 들어간 매매가 없습니다(경고를 보세요)";
+    $("holding-line").replaceChildren();
+    return;
+  }
+  setKpi("k-krw", krw(s.total_krw, true), tone(s.total_krw), `실현 ${krw(s.realized_krw, true)}, 평가 ${krw(s.unrealized_krw, true)}`);
+  if (cur === "KRW") {
+    setKpi("k-local", pct(s.simple_return_pct), tone(s.simple_return_pct), `원화 손익 / 넣은 돈 ${krw(s.invested_krw)}`);
+  } else {
+    setKpi("k-local", local(s.total_local, cur, true), tone(s.total_local),
+      `실현 ${local(s.realized_local, cur, true)}, 평가 ${local(s.unrealized_local, cur, true)}`);
+  }
+  setKpi("k-bench", krw(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
+    `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`);
+  if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없습니다");
+  else setKpi("k-mdd", krw(s.max_drawdown_krw), "down", "누적 손익이 앞선 고점에서 가장 크게 내려간 폭");
+  if (s.irr_pct === null) {
+    setKpi("k-irr", "계산 못 함", "na", res.irr_short
+      ? "첫 매매일부터 기준일까지 30일이 안 되어 셈하지 않습니다"
+      : "현금 흐름으로 풀리는 값이 없습니다");
+  }
+  else setKpi("k-irr", pct(s.irr_pct), tone(s.irr_pct), `SPY ${pct(s.bench_irr_pct)}`);
+
+  const items = [];
+  if (!res.booked) items.push(["장부에 들어간 매수가 없습니다", null]);
+  items.push(["남은 수량", `${num(s.qty_left)}주`]);
+  if (s.qty_left > 0) items.push(["평균 단가", local(s.avg_cost_local, cur)]);
+  if (cur !== "KRW" && s.qty_left > 0) items.push(["평균 매수 환율", `${num(s.avg_buy_fx)}원`]);
+  items.push(["넣은 원화", krw(s.invested_krw)], ["단순 수익률", pct(s.simple_return_pct)]);
+  if (res.holding) items.push(["보유 기간(첫 매수일 ~ 기준일)", `${res.holding[0]} ~ ${res.holding[1]}`]);
+  $("holding-line").replaceChildren(...items.map(([k, v]) => {
+    const span = document.createElement("span");
+    span.textContent = v === null ? k : `${k} `;
+    if (v !== null) { const b = document.createElement("b"); b.textContent = v; span.appendChild(b); }
+    return span;
+  }));
+}
+
+function renderEffects(res) {
+  const s = res.summary, box = $("fx");
+  if (!s) { box.replaceChildren(); $("fx-note").textContent = ""; return; }
+  const rows = [["가격 효과", s.price_effect_krw], ["환율 효과", s.fx_effect_krw], ["교차 효과", s.cross_effect_krw]];
+  const max = Math.max(1, ...rows.map(([, v]) => Math.abs(v)), Math.abs(s.total_krw));
+  const parts = [];
+  for (const [name, v] of [...rows, ["원화 손익", s.total_krw]]) {
+    const total = name === "원화 손익";
+    const w = (Math.abs(v) / max) * 50;
+    const bar = `<div class="fx-track"><i class="${v >= 0 ? "pos" : "neg"}" style="left:${v >= 0 ? 50 : 50 - w}%;width:${w}%"></i><span class="mid"></span></div>`;
+    parts.push(`<span class="${total ? "fx-total" : ""}">${name}</span>`, total ? `<div class="fx-total">${bar}</div>` : bar,
+      `<span class="v ${tone(v)} ${total ? "fx-total" : ""}">${krw(v, true)}</span>`);
+  }
+  box.innerHTML = parts.join("");
+  const notes = [];
+  const sum = s.price_effect_krw + s.fx_effect_krw + s.cross_effect_krw;
+  if (sum !== s.total_krw) notes.push(`셋의 합(${krw(sum, true)})과 원화 손익은 원 단위 반올림으로 ${krw(Math.abs(sum - s.total_krw))} 다릅니다.`);
+  if (res.currency === "KRW") {
+    notes.push("국내 종목이라 환율 효과와 교차 효과는 0입니다.");
+  } else if (s.naive_minus_total_krw !== 0) {
+    notes.push(`달러 손익을 기준일 환율 하나로 바꾸면 ${krw(s.naive_krw, true)}으로, 실제 원화 손익보다 ${krw(Math.abs(s.naive_minus_total_krw))} ${s.naive_minus_total_krw > 0 ? "많게" : "적게"} 보입니다. 매매마다 그날 환율로 셈해야 하는 까닭입니다.`);
+  }
+  $("fx-note").textContent = notes.join(" ");
+}
+
+function renderSells(res) {
+  const tb = $("sells"), cur = res.currency, unit = cur === "KRW" ? "원" : "달러";
+  $("h-sp").textContent = `가격(${unit})`;
+  $("h-sa").textContent = `팔기 전 평균 단가(${unit})`;
+  if (!res.sells.length) {
+    tb.innerHTML = `<tr class="empty"><td colspan="5">매도가 없습니다</td></tr>`;
+    return;
+  }
+  tb.replaceChildren(...res.sells.map((s) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td>`;
+    const cells = [s.date, `${num(s.qty)}주`, price(s.price, cur), price(s.avg_cost_before, cur), krw(s.realized_krw, true)];
+    const labels = ["날짜", "수량", `가격(${unit})`, `팔기 전 평균 단가(${unit})`, "원화 손익"];
+    cells.forEach((t, k) => { tr.children[k].textContent = t; tr.children[k].dataset.l = labels[k]; });
+    tr.children[4].className = "num " + tone(s.realized_krw);
+    return tr;
+  }));
+}
+
+function renderBigMoves(res) {
+  const bm = res.big_moves, list = $("bm-list"), sum = $("bm-sum");
+  if (!bm) { sum.textContent = "큰 움직임 날: 장부에 들어간 매수가 없어 보유 기간이 없습니다"; list.replaceChildren(); return; }
+  let text = `첫 매수일부터 기준일까지(${res.holding[0]} ~ ${res.holding[1]}) 큰 움직임 ${bm.dates.length}일`;
+  if (bm.not_judged_in_holding) text += `, ${bm.judged_from ?? "데이터 끝"} 전은 판정 전`;
+  sum.textContent = text;
+  list.replaceChildren(...bm.dates.map((d) => { const li = document.createElement("li"); li.textContent = d; return li; }));
+}
+
+// ---------- 저장(설계서 6절 4번) ----------
+
+function snapshot() {
+  const trades = st.rows.map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== "" && v !== undefined)));
+  return { symbol: st.sym, asof: st.asof, trades };
+}
+
+// 서버에 저장합니다. 실패해도 이 화면 안의 기억은 고쳐 두어, 종목을 바꿨다 돌아와도 고친 것이 남습니다.
+async function save() {
+  clearTimeout(st.saveTimer);
+  st.saveTimer = null;
+  if (!st.saveOn || st.example) return;
+  const snap = snapshot();
+  st.saved.symbols[snap.symbol] = { asof: snap.asof, trades: snap.trades };
+  st.saved.last = snap.symbol;
+  let status = 0, body = null;
+  try {
+    ({ status, body } = await api("/api/trades", { method: "PUT", body: JSON.stringify(snap) }));
+  } catch { /* 서버에 닿지 못함 */ }
+  if (status === 200) {
+    st.saveErr = null;
+    st.savedAt = body.saved_at.slice(11);
+  } else {
+    st.saveErr = `저장하지 못했습니다(${status ? `${status}${body?.message ? ", " + body.message : ""}` : "서버에 닿지 못함"}). 이 화면을 닫으면 고친 것이 사라집니다`;
+  }
+  if (snap.symbol === st.sym && st.notes) showNotes();
+}
+
+// 창을 닫거나 다른 쪽으로 옮길 때, 아직 보내지 않은 고침을 보냅니다
+function flush() {
+  if (!st.saveOn || st.example || !st.saveTimer) return;
+  clearTimeout(st.saveTimer);
+  st.saveTimer = null;
+  try {
+    fetch("/api/trades", { method: "PUT", keepalive: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snapshot()) });
+  } catch { /* 닫히는 중 */ }
+}
+
+// ---------- 종목과 기준일 ----------
+
+function load(sym) {
+  st.sym = sym;
+  st.seq++;
+  st.ctl?.abort();
+  st.asofErr = null;
+  $("asof").removeAttribute("aria-invalid");
+  const saved = st.saved.symbols[sym];
+  if (saved) {
+    st.rows = saved.trades.map((t) => ({ price: "", fx_rate: "", side: "BUY", ...t }));
+    st.asof = saved.asof;
+    st.example = false;
+  } else if (!Object.keys(st.saved.symbols).length && sym === DEFAULT_SYMBOL) {
+    st.rows = EXAMPLE.map((t) => ({ price: "", fx_rate: "", ...t }));
+    st.example = true;
+  } else {
+    st.rows = [{ date: "", side: "BUY", qty: "", price: "", fx_rate: "" }];
+    st.example = false;
+  }
+  if (!st.rows.length) st.rows = [{ date: "", side: "BUY", qty: "", price: "", fx_rate: "" }];
+  $("sym").value = sym;
+  $("asof").value = st.asof;
+  renderRows();
+  st.res = null;
+  showResult("none");
+  run().then(() => { if (st.example) setState($("state").textContent + " 예시 매매입니다. 고치면 이 종목의 매매로 저장됩니다."); });
+}
+
+async function boot() {
+  const { status, body } = await api("/api/status");
+  if (!body) { $("pipe-line").textContent = `서버 응답을 읽지 못했습니다(${status}).`; return; }
+  renderPipe(body);
+  if (!body.ok) return;
+  const sy = await api("/api/symbols");
+  if (sy.status !== 200) { await pipelineFailed(); return; }
+  st.calendar = sy.body.calendar;
+  for (const s of sy.body.symbols) st.symbols.set(s.symbol, s);
+  const sel = $("sym");
+  for (const [label, test] of [["국내", (s) => s.market === "KRX"], ["미국", (s) => s.market !== "KRX"]]) {
+    const og = document.createElement("optgroup");
+    og.label = label;
+    for (const s of sy.body.symbols.filter(test)) {
+      const o = document.createElement("option");
+      o.value = s.symbol;
+      o.textContent = `${s.symbol} ${s.name}`;
+      og.appendChild(o);
+    }
+    sel.appendChild(og);
+  }
+  const asof = $("asof");
+  asof.min = st.calendar[0]; asof.max = st.calendar[1];
+  st.asof = st.calendar[1];
+  const tr = await api("/api/trades");
+  if (tr.status === 200 && tr.body.enabled) {
+    st.saveOn = true;
+    st.saved = { symbols: tr.body.symbols || {}, last: tr.body.last };
+  } else if (tr.status !== 200) {
+    $("ledger-note").textContent = `넣어 둔 매매를 읽지 못해 저장을 껐습니다. ${tr.body?.message || `(${tr.status})`}`;
+    $("ledger-note").classList.add("err");
+  } else {
+    $("ledger-note").textContent = "체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 이 서버는 매매를 저장하지 않습니다.";
+  }
+  sel.addEventListener("change", () => {
+    // 앞 종목 저장은 기다리지 않습니다(실패해도 종목은 바뀌고, 실패는 상태 줄에 남음)
+    if (st.saveTimer) save();
+    load(sel.value);
+  });
+  // 기준일이 틀린 동안은 계산하지 않습니다(앞 기준일로 계산한 값이 최신처럼 보이지 않게)
+  asof.addEventListener("change", () => {
+    if (!asof.value || asof.value < st.calendar[0] || asof.value > st.calendar[1]) {
+      st.asofErr = `기준일은 ${st.calendar[0]} ~ ${st.calendar[1]} 안의 날짜로 넣어 주세요`;
+      asof.setAttribute("aria-invalid", "true");
+      run();
+      return;
+    }
+    st.asofErr = null;
+    asof.removeAttribute("aria-invalid");
+    st.asof = asof.value;
+    changed();
+  });
+  window.addEventListener("pagehide", flush);
+  $("add").addEventListener("click", addRow);
+  let rz = null, lastW = window.innerWidth;
+  window.addEventListener("resize", () => {
+    if (window.innerWidth === lastW) return;
+    lastW = window.innerWidth;
+    clearTimeout(rz);
+    rz = setTimeout(drawCharts, 150);
+  });
+  $("main").hidden = false;
+  const first = st.saved.last && st.symbols.has(st.saved.last) ? st.saved.last : DEFAULT_SYMBOL;
+  load(first);
+}
+
+boot();

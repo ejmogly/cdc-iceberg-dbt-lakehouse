@@ -37,7 +37,7 @@ import duckdb  # noqa: E402
 import real_world  # noqa: E402  독립 정답과 같은 원본 읽기(정답 쪽 코드). 문구의 날짜를 따로 셀 때만 씀
 
 from ai import screen_data  # noqa: E402
-from ai.screen_server import serve, stop  # noqa: E402
+from ai.screen_server import SAFE, serve, stop  # noqa: E402
 
 E01 = ROOT / "eval" / "e01_pnl"
 HERE = Path(__file__).parent
@@ -369,7 +369,34 @@ def check_edges():
     tests.append(("모든 줄이 앞에서 빠짐", c == 200 and r["summary"] is None and not r["booked"]
                   and sorted(w["code"] for w in r["warnings"]) == ["FRACTIONAL_QTY", "OUT_OF_DATA_RANGE"],
                   f"{c} summary={r.get('summary')}"))
+    # 손익 SQL의 decimal 범위를 넘는 금액(미국 종목에 원화 체결가를 넣은 실수): 500이 아니라 400과 금액이 가장 큰 줄
+    c, r = pnl([buy("2025-03-04", 1), buy("2025-04-01", 10, price="7000000")])
+    tests.append(("금액이 계산 범위를 넘음", c == 400 and r.get("error") == "AMOUNT_TOO_LARGE" and r.get("trade_index") == 1,
+                  f"{c} {r.get('error')} trade_index={r.get('trade_index')}"))
+    c, r = pnl([buy("2026-10-20")])
+    c2, r2 = pnl([buy("2025-03-04")])
+    tests.append(("연 환산이 없는 까닭(30일 미만)", c == 200 and r["summary"]["irr_pct"] is None and r["irr_short"] is True
+                  and c2 == 200 and r2["irr_short"] is False, f"{c} irr_short={r.get('irr_short')}, 대조 {r2.get('irr_short')}"))
     stop(httpd)
+
+    # 깨진 저장 파일: 읽기와 저장 모두 500으로 알리고 파일을 덮어쓰지 않음
+    broken = SAFE / "f_screen" / "check_api_broken_trades.json"
+    broken.write_text('{"symbols": ', encoding="utf-8")
+    httpd, _ = serve(screen_data.OUT, 0, broken)
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    c, r = http(base, "/api/trades")
+    req = urllib.request.Request(base + "/api/trades", method="PUT", headers={"Content-Type": "application/json"},
+                                 data=json.dumps({"symbol": "SPY", "asof": "2026-11-11", "trades": []}).encode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            c2, r2 = resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        c2, r2 = e.code, json.loads(e.read())
+    stop(httpd)
+    kept = broken.read_text(encoding="utf-8") == '{"symbols": '
+    broken.unlink()
+    tests.append(("깨진 저장 파일", c == 500 and r.get("error") == "SAVED_FILE_BROKEN" and c2 == 500
+                  and r2.get("error") == "SAVED_FILE_BROKEN" and kept, f"읽기 {c} 저장 {c2} 파일 그대로 {kept}"))
     n = sum(ok for _, ok, _ in tests)
     print(f"입력 경계: {n}/{len(tests)}")
     for name, ok, got in tests:
