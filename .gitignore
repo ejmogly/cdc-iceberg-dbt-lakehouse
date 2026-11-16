@@ -14,6 +14,7 @@ data/generated/
 *.parquet
 *.avro
 *.duckdb
+*.duckdb.wal
 
 # 실행 중 생기는 것
 checkpoints/

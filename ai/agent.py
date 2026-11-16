@@ -79,7 +79,7 @@ def _summary_data():
 
 
 def _ask(prompt, system, schema, tag, calls):
-    r = llm.call(prompt, system, schema=schema, tag=tag)
+    r = llm.call(prompt, system, schema=schema, tag=tag, kind=T.FAKE.data.kind)  # E04는 가짜 세계만 씀
     calls.append({k: r[k] for k in ("cost_usd", "seconds", "usage", "error")})
     return r["output"]
 
@@ -169,8 +169,8 @@ def h1(q):
         tool_calls.append({"name": name, "args": args, "result": T.call(name, args)})
     if plan.get("intent") == "biggest_move_events" and len(tool_calls) < MAX_TOOL_CALLS:
         r = tool_calls[0]["result"] if tool_calls else {}
-        if r.get("biggest_move_date"):
-            args = {"date": r["biggest_move_date"], "symbol": r["symbol"]}
+        if r.get("largest_day_move_date"):
+            args = {"date": r["largest_day_move_date"], "symbol": r["symbol"]}
             tool_calls.append({"name": "search_events", "args": args, "result": T.call("search_events", args)})
     derived = derive(tool_calls)
     data = {"intent": plan.get("intent"), "tool_results": [{"tool": c["name"], "args": c["args"], "result": c["result"]}
