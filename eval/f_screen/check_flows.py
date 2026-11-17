@@ -5,9 +5,13 @@
      「고치기 전 입력」으로 흐리게 남음
   2. 틀린 기준일: 기준일을 지우면 계산 요청을 보내지 않고, 다른 칸을 고쳐도 오류가 남음
   3. 큰 금액: 손익 SQL의 범위를 넘는 금액은 서버가 400으로 돌려주고 화면이 그 줄을 표시함
-  4. 저장 실패와 종목 바꾸기: 저장 요청이 서버에 닿지 못해도 종목이 바뀌고, 상태 줄에 「저장하지 못했습니다」가 남고,
+  4. 넣는 중인 줄만 남음: 수량을 모두 지우면 같은 종목의 앞 결과를 숨기지 않고 흐리게 둠(다듬기 독립 검토
+     2026-11-17 중간 1번. 결과 칸이 매매 칸 위라 숨기면 매매 칸이 밀림)
+  5. 저장 실패와 종목 바꾸기: 저장 요청이 서버에 닿지 못해도 종목이 바뀌고, 상태 줄에 「저장하지 못했습니다」가 남고,
      잡히지 않은 오류가 없으며, 매매가 없는 종목은 앞 종목의 결과를 숨기고, 돌아오면 고친 값이 남아 있음
-  5. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
+  6. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
+
+결과 칸은 매매 칸 위(result)와 아래(result-more) 둘이라, 흐림과 숨김은 두 칸을 함께 봅니다(같은 검토 중간 2번).
 
 사용: .venv/bin/python eval/f_screen/check_flows.py [--selftest]
 자체 시험은 화면 사본에 고치기 전의 잘못을 하나씩 되살려, 맡은 흐름이 실패로 잡는지 봅니다.
@@ -188,8 +192,14 @@ def state_has(text, err=True):
     return f"document.getElementById('state').textContent.includes({json.dumps(text)}){cls}"
 
 
+# 결과 칸은 매매 칸 위(result)와 아래(result-more) 둘이라, 둘이 함께 흐리거나 함께 숨어야 합니다
 def stale():
-    return "document.getElementById('result').classList.contains('stale') && !document.getElementById('stale-note').hidden"
+    return ("['result', 'result-more'].every(i => document.getElementById(i).classList.contains('stale') "
+            "&& !document.getElementById(i).hidden) "
+            "&& ['stale-note', 'stale-note-2'].every(i => !document.getElementById(i).hidden)")
+
+
+HIDDEN = "['result', 'result-more'].every(i => document.getElementById(i).hidden)"
 
 
 def run_flows(page, port):
@@ -267,7 +277,25 @@ def run_flows(page, port):
         bad.append(f"체결가를 지워도 다시 계산하지 않음: {page.js(STATE)!r}")
     out["큰 금액은 그 줄을 표시함"] = bad
 
-    # 4. 저장 실패와 종목 바꾸기
+    # 4. 넣는 중인 줄만 남음: 같은 종목의 앞 결과를 숨기지 않고 흐리게 둠(결과 칸이 매매 칸 위라 숨기면 칸이 밀림)
+    bad = []
+    keep = {k: page.js(f"document.getElementById('{k}').value") for k in ("q0", "q1", "q2")}
+    for k in keep:
+        type_in(page, k, "")
+    if not page.wait(state_has("날짜와 수량을 넣으면", err=False), 3):
+        bad.append(f"넣는 중이라는 안내가 없음: {page.js(STATE)!r}")
+    page.pump(0.3)
+    if not page.js(stale()):
+        bad.append("넣는 중인 줄만 남았는데 앞 결과가 흐림으로 남지 않음(숨거나 그대로)")
+    for k, v in keep.items():
+        type_in(page, k, v)
+    if not page.wait(CALC_DONE):
+        bad.append(f"수량을 되돌려도 다시 계산하지 않음: {page.js(STATE)!r}")
+    if page.js("['result', 'result-more'].some(i => document.getElementById(i).classList.contains('stale'))"):
+        bad.append("다시 계산한 뒤에도 흐림이 남음")
+    out["넣는 중인 줄만 남으면 앞 결과를 흐리게 둠"] = bad
+
+    # 5. 저장 실패와 종목 바꾸기
     bad = []
     page.errors.clear()
 
@@ -287,7 +315,7 @@ def run_flows(page, port):
     page.pump(1)
     if page.js("document.getElementById('sym').value") != "SPY":
         bad.append("종목을 바꾸지 못함")
-    if not page.js("document.getElementById('result').hidden"):
+    if not page.js(HIDDEN):
         bad.append("매매가 없는 종목인데 앞 종목의 결과가 보임")
     if page.js("document.getElementById('q0').value") != "":
         bad.append("매매가 없는 종목인데 앞 종목의 줄이 남음")
@@ -302,7 +330,7 @@ def run_flows(page, port):
     page.call("Fetch.disable")
     out["저장 실패에도 종목이 바뀌고 고친 값이 남음"] = bad
 
-    # 5. 닫을 때 저장
+    # 6. 닫을 때 저장
     bad = []
     type_in(page, "q0", "11")
     page.call("Page.navigate", url="about:blank")
@@ -332,14 +360,18 @@ BUGS = [
         ("    if (st.saveTimer) save();", "    if (st.saveTimer) await save();")]),
     ("저장 실패에도 종목이 바뀌고 고친 값이 남음", "매매가 없는 종목에 앞 결과를 흐리게 남김", [
         ("  showResult(\"none\");\n  run().then", "  run().then"),
-        ("    st.res = null;\n    showResult(\"none\");", "    st.res = null;\n    showResult(\"stale\");")]),
+        ("      st.res = null;\n      showResult(\"none\");", "      st.res = null;\n      showResult(\"stale\");")]),
+    ("넣는 중인 줄만 남으면 앞 결과를 흐리게 둠", "넣는 중인 줄만 남으면 결과를 숨김", [
+        ("    if (pending && st.res) {", "    if (false) {")]),
+    ("틀린 기준일이면 계산하지 않음", "결과 칸 하나만 흐리게 함", [
+        ('  for (const id of ["result", "result-more"]) {', '  for (const id of ["result"]) {')]),
     ("떠나기 직전 고친 값도 저장", "떠날 때 보내지 않음", [
         ("  window.addEventListener(\"pagehide\", flush);\n", "")]),
 ]
 
 
 def one_run(static=None):
-    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 다섯을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
+    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 여섯을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
     TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START}}, "last": "QQQ"}),
                    encoding="utf-8")
     old = screen_server.STATIC

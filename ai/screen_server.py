@@ -120,6 +120,21 @@ class App:
         if self.data:
             self.data.close()
 
+    def warm(self):
+        """서버를 띄운 뒤 첫 계산만 손익 SQL을 처음 준비하느라 2 ~ 3초 걸려(그 뒤는 0.1초 안), 띄울 때 한 번 미리 돌려
+        둡니다. 결과는 버리고, 실패해도 서버는 그대로 뜹니다(그때는 첫 계산이 느릴 뿐)."""
+        d = self.data
+        if not d or not self.status.get("ok"):
+            return None
+        t0 = time.perf_counter()
+        try:
+            days = d.rows[d.bench]
+            self.api_pnl({"symbol": d.bench, "asof": days[-1], "trades": [{"date": days[0], "side": "BUY", "qty": "1"}]})
+        except Exception as e:  # noqa: BLE001 - 미리 돌리기는 실패해도 됨(첫 계산이 느릴 뿐)
+            print(f"계산 미리 돌리기 실패(첫 계산이 느릴 수 있음): {type(e).__name__}: {e}")
+            return None
+        return round(time.perf_counter() - t0, 2)
+
     # ---------- API ----------
 
     def api_status(self):
@@ -211,6 +226,7 @@ class App:
         live = [cd for _, cd, _, _, _, _, over, *_ in steps if not over]
         end = _last_on_or_before(d.calendar, asof)
         irr_short = bool(live) and (date.fromisoformat(end) - min(live)).days < 30
+        took = time.perf_counter() - t0
         return {
             "symbol": symbol, "name": d.symbols[symbol]["name"], "currency": d.symbols[symbol]["currency"],
             "asof": asof, "asof_price_date": _last_on_or_before(d.rows[symbol], asof), "bench": d.bench,
@@ -227,7 +243,8 @@ class App:
             "big_moves": big_moves(rows, holding[0], holding[1]) if holding else None,
             "holding": holding,
             "irr_short": irr_short,
-            "seconds": round(time.perf_counter() - t0, 4),
+            "seconds": round(took, 4),
+            "ms": round(took * 1000),
         }
 
 
@@ -442,8 +459,14 @@ if __name__ == "__main__":
     a = ap.parse_args()
     httpd, th = serve(a.db, a.port, a.trades or None)
     st = httpd.app.status
+    try:
+        warm = httpd.app.warm()
+    except KeyboardInterrupt:
+        stop(httpd)
+        raise SystemExit(130) from None
     print(f"화면 서버: http://127.0.0.1:{httpd.server_address[1]}/  데이터 {Path(a.db).name}, "
-          f"파이프라인 검사 {'통과' if st['ok'] else '실패: ' + ', '.join(f['name'] for f in st['failures'])}")
+          f"파이프라인 검사 {'통과' if st['ok'] else '실패: ' + ', '.join(f['name'] for f in st['failures'])}"
+          + (f", 계산 준비 {warm}초" if warm is not None else ""))
     try:
         th.join()
     except KeyboardInterrupt:

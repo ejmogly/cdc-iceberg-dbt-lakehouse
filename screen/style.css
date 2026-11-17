@@ -36,9 +36,9 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); font-
   word-break: keep-all; overflow-wrap: anywhere; padding: 0 16px 48px; }
 .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 main { display: flex; flex-direction: column; gap: 18px; }
-#result { display: flex; flex-direction: column; gap: 18px; }
-#result > * { transition: opacity .15s; }
-#result.stale > :not(.stale-note) { opacity: .6; }
+.result { display: flex; flex-direction: column; gap: 18px; }
+.result > * { transition: opacity .15s; }
+.result.stale > :not(.stale-note) { opacity: .6; }
 .stale-note { background: var(--warn-soft); color: var(--ink); border-radius: 10px; padding: 8px 12px; font-size: 13.5px; }
 h1, h2, h3 { margin: 0; line-height: 1.3; }
 h1 { font-size: clamp(22px, 3.4vw, 28px); font-weight: 700; letter-spacing: -0.01em; }
@@ -81,6 +81,13 @@ th { font-size: 12.5px; color: var(--muted); font-weight: 600; background: var(-
 tr:last-child td { border-bottom: none; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 .checks td:last-child { white-space: nowrap; }
+
+/* 종목과 기준일 */
+.pick { padding: 12px 18px; }
+
+/* 결론 문장 */
+.verdict { font-size: clamp(16.5px, 2.1vw, 19px); line-height: 1.6; color: var(--ink); max-width: 72ch; }
+.verdict .n { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* 1번 칸 */
 .controls { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px; }
@@ -155,7 +162,7 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 .l-bench { fill: none; stroke: var(--edge); stroke-width: 2; stroke-linejoin: round; }
 .l-avg { fill: none; stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 6 4; }
 .m-buy { fill: var(--up); } .m-sell { fill: var(--down); } .m-out { fill: none; stroke: var(--muted); stroke-width: 1.4; }
-.m-big { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.4; }
+.m-big { stroke: var(--ink-2); stroke-width: 1.6; }
 .band { fill: var(--band); } .dd { fill: var(--dd); }
 .cross { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 2 3; }
 .dot-now { fill: var(--surface); stroke: var(--ink); stroke-width: 1.6; }
@@ -166,7 +173,7 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 .lg { display: inline-block; width: 18px; }
 .lg.line { height: 0; border-top: 2.5px solid var(--edge); } .lg.line.accent { border-color: var(--accent); }
 .lg.dash { height: 0; border-top: 2px dashed var(--warn); }
-.lg.dot { width: 9px; height: 9px; border-radius: 50%; border: 1.4px solid var(--ink-2); background: var(--surface); }
+.lg.tick { width: 2px; height: 11px; background: var(--ink-2); }
 .lg.band { height: 12px; background: var(--band); border: 1px solid var(--line); }
 .lg.dd { height: 12px; background: var(--dd); border: 1px solid var(--line); }
 .bm summary { cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
@@ -175,6 +182,9 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 .chips li { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; }
 
 /* 5번 칸 */
+.fx-wrap { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px 28px; align-items: start; }
+@media (max-width: 760px) { .fx-wrap { grid-template-columns: minmax(0, 1fr); } }
+.fx-notes { display: flex; flex-direction: column; gap: 8px; }
 .fx-rows { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; font-size: 13.5px; }
 .fx-rows .v { font-variant-numeric: tabular-nums; text-align: right; font-weight: 700; white-space: nowrap; }
 .fx-track { position: relative; height: 14px; background: var(--track); border-radius: 4px; }
@@ -197,6 +207,7 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
   .sells .empty td::before { content: none; }
 }
 .empty td { color: var(--muted); }
+.sells-empty { font-size: 13.5px; color: var(--ink-2); }
 
 .later ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
 .later b { color: var(--ink); margin-right: 6px; }

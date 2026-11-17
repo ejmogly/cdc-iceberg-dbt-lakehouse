@@ -35,13 +35,44 @@
 </section>
 
 <main id="main" hidden>
-  <!-- 1번 칸: 매매 입력 -->
-  <section class="panel input" aria-labelledby="in-h">
-    <h2 id="in-h">매매</h2>
+  <!-- 무엇을 보나: 종목과 기준일 -->
+  <section class="panel pick" aria-label="종목과 기준일">
     <div class="controls">
       <div class="field"><label for="sym">종목</label><select id="sym"></select></div>
       <div class="field"><label for="asof">기준일 <span class="hint">남은 수량을 평가하는 날</span></label><input id="asof" type="date" required></div>
     </div>
+  </section>
+
+  <!-- 결과 요약: 결론 문장, 2번 칸 요약 카드, 5번 칸 원화 수익 나누기 -->
+  <div id="result" class="result" hidden>
+    <h2 class="sr">결과 요약</h2>
+    <p id="stale-note" class="stale-note" hidden>흐리게 보이는 값은 고치기 전 입력으로 계산한 것입니다. 입력을 고치면 다시 계산합니다.</p>
+    <p id="verdict" class="verdict"></p>
+    <section class="kpis" aria-label="결과 요약">
+      <div class="kpi"><span class="label">원화 손익</span><span id="k-krw" class="value"></span><span id="k-krw-s" class="sub"></span></div>
+      <div class="kpi"><span class="label" id="k-local-l">달러 손익</span><span id="k-local" class="value"></span><span id="k-local-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">SPY와 차이</span><span id="k-bench" class="value"></span><span id="k-bench-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">보유 중 최대 낙폭</span><span id="k-mdd" class="value"></span><span id="k-mdd-s" class="sub"></span></div>
+      <div class="kpi"><span class="label">연 환산 수익률</span><span id="k-irr" class="value"></span><span id="k-irr-s" class="sub"></span></div>
+    </section>
+    <p id="holding-line" class="holding-line"></p>
+
+    <!-- 5번 칸: 원화 수익 나누기(미국 종목만. 국내 종목은 결론 문장 한 줄) -->
+    <section id="fx-box" class="panel fx-box" aria-labelledby="fx-h">
+      <h3 id="fx-h">원화 수익은 어디서 왔나</h3>
+      <div class="fx-wrap">
+        <div id="fx" class="fx-rows"></div>
+        <div class="fx-notes">
+          <p id="fx-note" class="note"></p>
+          <p class="note">가격 효과는 평균 단가에서 가격이 움직인 몫(평균 매수 환율로), 환율 효과는 평균 매수 환율에서 환율이 움직인 몫(평균 단가로), 교차 효과는 둘이 함께 움직인 몫입니다. 셋을 더하면 원화 손익입니다.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 1번 칸: 매매 입력 -->
+  <section class="panel input" aria-labelledby="in-h">
+    <h2 id="in-h">매매</h2>
     <div class="ledger" role="table" aria-label="매매 줄" aria-describedby="ledger-note">
       <div class="lrow lhead" role="row">
         <span role="columnheader">날짜</span><span role="columnheader">구분</span><span role="columnheader">수량(주)</span>
@@ -58,18 +89,10 @@
     <ul id="warnings" class="warnings" aria-label="입력 경고"></ul>
   </section>
 
-  <div id="result" hidden>
-    <p id="stale-note" class="stale-note" hidden>아래 값은 고치기 전 입력으로 계산한 것입니다. 위 입력을 고치면 다시 계산합니다.</p>
-    <!-- 2번 칸: 요약 카드 -->
-    <section class="kpis" aria-label="결과 요약">
-      <div class="kpi"><span class="label">원화 손익</span><span id="k-krw" class="value"></span><span id="k-krw-s" class="sub"></span></div>
-      <div class="kpi"><span class="label" id="k-local-l">달러 손익</span><span id="k-local" class="value"></span><span id="k-local-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">같은 날 같은 돈을 SPY에 넣었을 때와 차이</span><span id="k-bench" class="value"></span><span id="k-bench-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">보유 중 최대 낙폭</span><span id="k-mdd" class="value"></span><span id="k-mdd-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">연 환산 수익률</span><span id="k-irr" class="value"></span><span id="k-irr-s" class="sub"></span></div>
-    </section>
-    <p id="holding-line" class="holding-line"></p>
-
+  <!-- 결과 자세히: 3, 4번 칸 그림과 6번 칸 매도별 손익 -->
+  <div id="result-more" class="result" hidden>
+    <h2 class="sr">그림과 매도</h2>
+    <p id="stale-note-2" class="stale-note" hidden>흐리게 보이는 그림과 표도 고치기 전 입력으로 계산한 것입니다.</p>
     <div class="two">
       <!-- 3번 칸: 가격과 내 매매 -->
       <section class="panel chart-box" aria-labelledby="px-h">
@@ -80,7 +103,7 @@
           <span><i class="lg line accent"></i><span id="lg-sym">종가</span></span>
           <span><i class="lg dash warn"></i>평균 단가</span>
           <span class="buy">▲ 매수</span><span class="sell">▼ 매도</span>
-          <span><i class="lg dot"></i>큰 움직임</span>
+          <span><i class="lg tick"></i>큰 움직임(아래 눈금)</span>
           <span><i class="lg band"></i>판정 전</span>
         </div>
         <p id="px-desc" class="note"></p>
@@ -91,16 +114,6 @@
         </details>
       </section>
 
-      <!-- 5번 칸: 원화 수익 나누기 -->
-      <section class="panel" aria-labelledby="fx-h">
-        <h3 id="fx-h">원화 수익은 어디서 왔나</h3>
-        <div id="fx" class="fx-rows"></div>
-        <p id="fx-note" class="note"></p>
-        <p class="note">가격 효과는 평균 단가에서 가격이 움직인 몫(평균 매수 환율로), 환율 효과는 평균 매수 환율에서 환율이 움직인 몫(평균 단가로), 교차 효과는 둘이 함께 움직인 몫입니다. 셋을 더하면 원화 손익입니다.</p>
-      </section>
-    </div>
-
-    <div class="two">
       <!-- 4번 칸: 누적 손익 -->
       <section class="panel chart-box" aria-labelledby="pl-h">
         <h3 id="pl-h">누적 손익 <span class="note">실현과 평가, 원화</span></h3>
@@ -113,17 +126,18 @@
         </div>
         <p id="pl-desc" class="note"></p>
       </section>
-
-      <!-- 6번 칸: 매도별 손익 -->
-      <section class="panel" aria-labelledby="sl-h">
-        <h3 id="sl-h">매도별 손익</h3>
-        <div class="tablebox"><table class="sells">
-          <thead><tr><th scope="col">날짜</th><th scope="col">수량</th><th scope="col" id="h-sp">가격</th><th scope="col" id="h-sa">팔기 전 평균 단가</th><th scope="col">원화 손익</th></tr></thead>
-          <tbody id="sells"></tbody>
-        </table></div>
-        <p class="note">매도 한 건마다 그때의 평균 단가와 평균 매수 환율로 계산합니다. 나눠 사고팔면 돈이 들어간 때가 달라 단순 수익률이 왜곡되므로, 연 환산 수익률(내부수익률)을 함께 봅니다.</p>
-      </section>
     </div>
+
+    <!-- 6번 칸: 매도별 손익 -->
+    <section class="panel" aria-labelledby="sl-h">
+      <h3 id="sl-h">매도별 손익</h3>
+      <p id="sells-empty" class="sells-empty" hidden></p>
+      <div id="sells-box" class="tablebox"><table class="sells">
+        <thead><tr><th scope="col">날짜</th><th scope="col">수량</th><th scope="col" id="h-sp">가격</th><th scope="col" id="h-sa">팔기 전 평균 단가</th><th scope="col">원화 손익</th></tr></thead>
+        <tbody id="sells"></tbody>
+      </table></div>
+      <p id="sells-note" class="note">매도 한 건마다 그때의 평균 단가와 평균 매수 환율로 계산합니다. 나눠 사고팔면 돈이 들어간 때가 달라 단순 수익률이 왜곡되므로, 연 환산 수익률(내부수익률)을 함께 봅니다.</p>
+    </section>
   </div>
 
   <section class="panel later" aria-labelledby="later-h">

@@ -43,11 +43,12 @@ function monthTicks(dates) {
   return firsts.filter((_, k) => k % every === 0);
 }
 
-function frame(svg, dates, lo, hi, yfmt) {
+// strip을 주면 그림 아래에 그 높이만큼 띠를 비워 둡니다(가격 그림의 큰 움직임 눈금 자리)
+function frame(svg, dates, lo, hi, yfmt, strip = 0) {
   svg.replaceChildren();
   const w = W, h = H;
   const x = (i) => M.l + (dates.length < 2 ? 0 : (i * (w - M.l - M.r)) / (dates.length - 1));
-  const y = (v) => M.t + ((hi - v) * (h - M.t - M.b)) / (hi - lo || 1);
+  const y = (v) => M.t + ((hi - v) * (h - M.t - M.b - strip)) / (hi - lo || 1);
   const g = el("g", {}, svg);
   for (const t of niceTicks(lo, hi)) {
     if (t < lo || t > hi) continue;
@@ -141,7 +142,9 @@ export function drawPrice(svg, readout, res, rowNo) {
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.08 || hi * 0.05 || 1;
   lo -= pad; hi += pad;
-  const { x, y } = frame(svg, dates, lo, hi, (t) => priceShort(t, cur));
+  // 큰 움직임은 가격 선 위가 아니라 그림 아래 띠에 눈금으로 그립니다(30개 넘게 몰리면 선을 덮음)
+  const STRIP = 12;
+  const { x, y } = frame(svg, dates, lo, hi, (t) => priceShort(t, cur), STRIP);
 
   const bm = res.big_moves;
   if (bm && bm.not_judged_in_holding && res.holding) {
@@ -152,7 +155,7 @@ export function drawPrice(svg, readout, res, rowNo) {
   el("path", { class: "l-avg", d: pathOf(avg.map((v, i) => (v === null ? null : [x(i), y(v)]))) }, svg);
   el("path", { class: "l-main", d: pathOf(pts.map(([, c], i) => [x(i), y(c)])) }, svg);
   for (const d of bm ? bm.dates : []) {
-    if (pos.has(d)) el("circle", { class: "m-big", cx: x(pos.get(d)), cy: y(pts[pos.get(d)][1]), r: 2.8 }, svg);
+    if (pos.has(d)) el("line", { class: "m-big", x1: x(pos.get(d)), x2: x(pos.get(d)), y1: H - M.b - STRIP + 2, y2: H - M.b - 1 }, svg);
   }
   for (const s of res.steps || []) {
     const i = at(s.date);

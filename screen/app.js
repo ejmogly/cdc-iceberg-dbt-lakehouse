@@ -168,12 +168,14 @@ function decorate(i, cls, msg, avgText, badKey) {
   }
 }
 
-// 결과 칸: 지금 입력의 결과가 없으면 숨기고, 고치는 중이면 흐리게 두고 그렇다고 적습니다.
+// 결과 칸(매매 칸 위의 요약과 아래의 그림, 매도): 지금 입력의 결과가 없으면 숨기고, 고치는 중이면 흐리게 두고 그렇다고 적습니다.
 function showResult(mode) {
-  const box = $("result");
-  box.hidden = mode === "none";
-  box.classList.toggle("stale", mode === "stale");
-  $("stale-note").hidden = mode !== "stale";
+  for (const id of ["result", "result-more"]) {
+    const box = $(id);
+    box.hidden = mode === "none";
+    box.classList.toggle("stale", mode === "stale");
+  }
+  for (const id of ["stale-note", "stale-note-2"]) $(id).hidden = mode !== "stale";
 }
 
 function setState(text, err = false) {
@@ -221,8 +223,14 @@ async function run() {
   if (st.asofErr) errs.unshift(st.asofErr);
   if (errs.length) { hold(`${errs.join(". ")}. 고치면 다시 계산합니다.`); return; }
   if (!sent.length) {
-    st.res = null;
-    showResult("none");
+    // 넣는 중인 줄만 남았으면 앞 결과(같은 종목, 종목을 바꾸면 load가 지움)를 흐리게 둡니다. 결과 칸이 매매 칸 위에 있어
+    // 숨겼다 다시 보이면 매매 칸이 위아래로 크게 밀리기 때문입니다. 줄이 하나도 없으면 숨깁니다
+    if (pending && st.res) {
+      showResult("stale");
+    } else {
+      st.res = null;
+      showResult("none");
+    }
     $("warnings").replaceChildren();
     st.notes = [pending ? "날짜와 수량을 넣으면 계산합니다" : "매매를 넣으면 계산합니다"];
     showNotes();
@@ -296,7 +304,7 @@ function render(pending) {
     return li;
   }));
 
-  const notes = [`계산 ${res.seconds}초`];
+  const notes = [`계산 ${res.ms}ms`];
   if (res.asof_price_date && res.asof_price_date !== res.asof) {
     notes.push(`기준일이 이 종목의 거래일이 아니라, 기준일 이전 마지막 거래일 ${res.asof_price_date}의 종가로 평가했습니다`);
   }
@@ -305,6 +313,7 @@ function render(pending) {
   st.notes = notes;
   showNotes();
 
+  renderVerdict(res);
   renderKpis(res);
   renderEffects(res);
   renderSells(res);
@@ -346,7 +355,7 @@ function renderKpis(res) {
       `실현 ${local(s.realized_local, cur, true)}, 평가 ${local(s.unrealized_local, cur, true)}`);
   }
   setKpi("k-bench", krw(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
-    `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`);
+    `같은 날 같은 돈을 SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`);
   if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없습니다");
   else setKpi("k-mdd", krw(s.max_drawdown_krw), "down", "누적 손익이 앞선 고점에서 가장 크게 내려간 폭");
   if (s.irr_pct === null) {
@@ -371,9 +380,55 @@ function renderKpis(res) {
   }));
 }
 
+// 국내 종목은 환율 효과와 교차 효과가 0이라 나누기 칸 대신 결론 문장 한 줄로 적습니다
+const priceOnly = (res) => res.currency === "KRW" && res.summary.fx_effect_krw === 0 && res.summary.cross_effect_krw === 0;
+
+// 결론 문장: 요약 카드와 나누기 칸의 API 값을 문장으로 옮깁니다(다시 계산하지 않고, 차이는 부호만 뗌)
+function renderVerdict(res) {
+  const p = $("verdict"), s = res.summary;
+  p.replaceChildren();
+  p.hidden = !s;
+  if (!s) return;
+  const n = (text, v) => {
+    const b = document.createElement("b");
+    b.className = "n " + tone(v);
+    b.textContent = text;
+    p.append(b);
+  };
+  if (!res.booked) {
+    p.append("장부에 들어간 매수가 없어 손익을 말할 수 없습니다. 매매 칸의 경고를 보세요.");
+    return;
+  }
+  p.append("원화 손익은 ");
+  n(krw(s.total_krw, true), s.total_krw);
+  p.append("입니다. ");
+  if (priceOnly(res)) {
+    p.append("국내 종목이라 환율 효과 없이 모두 가격 효과입니다.");
+  } else {
+    p.append("가격 효과 ");
+    n(krw(s.price_effect_krw, true), s.price_effect_krw);
+    p.append(", 환율 효과 ");
+    n(krw(s.fx_effect_krw, true), s.fx_effect_krw);
+    p.append(", 교차 효과 ");
+    n(krw(s.cross_effect_krw, true), s.cross_effect_krw);
+    const gap = s.price_effect_krw + s.fx_effect_krw + s.cross_effect_krw - s.total_krw;
+    p.append(gap ? `으로 나뉩니다(원 단위 반올림으로 셋의 합과 ${krw(Math.abs(gap))} 차이).` : "으로 나뉩니다.");
+  }
+  if (res.symbol === res.bench) return;
+  const d = s.total_minus_bench_krw;
+  p.append(" 같은 날 같은 돈을 SPY에 넣었다면 ");
+  n(krw(s.bench_total_krw, true), s.bench_total_krw);
+  if (d === 0) { p.append("으로 이 매매와 같습니다."); return; }
+  p.append("으로, 이 매매가 ");
+  n(krw(Math.abs(d)), d);
+  p.append(d > 0 ? " 많습니다." : " 적습니다.");
+}
+
 function renderEffects(res) {
   const s = res.summary, box = $("fx");
-  if (!s) { box.replaceChildren(); $("fx-note").textContent = ""; return; }
+  const off = !s || !res.booked || priceOnly(res);
+  $("fx-box").hidden = off;
+  if (off) { box.replaceChildren(); $("fx-note").textContent = ""; return; }
   const rows = [["가격 효과", s.price_effect_krw], ["환율 효과", s.fx_effect_krw], ["교차 효과", s.cross_effect_krw]];
   const max = Math.max(1, ...rows.map(([, v]) => Math.abs(v)), Math.abs(s.total_krw));
   const parts = [];
@@ -388,9 +443,7 @@ function renderEffects(res) {
   const notes = [];
   const sum = s.price_effect_krw + s.fx_effect_krw + s.cross_effect_krw;
   if (sum !== s.total_krw) notes.push(`셋의 합(${krw(sum, true)})과 원화 손익은 원 단위 반올림으로 ${krw(Math.abs(sum - s.total_krw))} 다릅니다.`);
-  if (res.currency === "KRW") {
-    notes.push("국내 종목이라 환율 효과와 교차 효과는 0입니다.");
-  } else if (s.naive_minus_total_krw !== 0) {
+  if (res.currency !== "KRW" && s.naive_minus_total_krw !== 0) {
     notes.push(`달러 손익을 기준일 환율 하나로 바꾸면 ${krw(s.naive_krw, true)}으로, 실제 원화 손익보다 ${krw(Math.abs(s.naive_minus_total_krw))} ${s.naive_minus_total_krw > 0 ? "많게" : "적게"} 보입니다. 매매마다 그날 환율로 셈해야 하는 까닭입니다.`);
   }
   $("fx-note").textContent = notes.join(" ");
@@ -400,8 +453,18 @@ function renderSells(res) {
   const tb = $("sells"), cur = res.currency, unit = cur === "KRW" ? "원" : "달러";
   $("h-sp").textContent = `가격(${unit})`;
   $("h-sa").textContent = `팔기 전 평균 단가(${unit})`;
-  if (!res.sells.length) {
-    tb.innerHTML = `<tr class="empty"><td colspan="5">매도가 없습니다</td></tr>`;
+  // 매도가 없으면 표 대신 한 줄로 적습니다(빈 표가 칸을 차지하지 않게)
+  const none = !res.sells.length;
+  $("sells-box").hidden = none;
+  $("sells-note").hidden = none;
+  $("sells-empty").hidden = !none;
+  // 넣은 매도 줄이 계산에서 빠졌는지(초과 매도, 기준일 뒤, 데이터 기간 밖 등): 장부에 남은 매도 단계가 없는 매도 줄
+  const dropped = st.map.some((row, k) => (st.rows[row].side || "BUY") === "SELL"
+    && !res.steps.some((x) => x.trade_index === k && !x.excluded));
+  $("sells-empty").textContent = !none ? ""
+    : dropped ? "계산에 들어간 매도가 없습니다. 빠진 매도 줄은 매매 칸의 경고를 보세요." : "매도가 없습니다.";
+  if (none) {
+    tb.replaceChildren();
     return;
   }
   tb.replaceChildren(...res.sells.map((s) => {

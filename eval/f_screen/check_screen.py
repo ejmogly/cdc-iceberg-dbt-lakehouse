@@ -171,6 +171,35 @@ def post(port, body):
         return json.loads(r.read())
 
 
+sys.path.insert(0, str(ROOT / "eval" / "e04_agent"))
+from score import violations  # noqa: E402  E04 채점기의 금지 표현 규칙
+
+# 개발 검사 사례(평가셋이 아님): 평가셋 20개에 없는 화면 갈래. 정답 파일 없이 API 값과 화면을 대조합니다(2026-11-17 다듬기 독립 검토 낮음 7번)
+EXTRA = [
+    {"id": "X01", "title": "매도만 넣어 장부에 매수가 없음", "symbol": "QQQ", "asof": "2026-11-12",
+     "trades": [{"d": "2025-03-03", "side": "SELL", "q": 10}]},
+    {"id": "X02", "title": "SPY와 차이가 0원", "symbol": "QQQ", "asof": "2026-11-12",
+     "trades": [{"d": "2026-11-11", "side": "BUY", "q": 1}]},
+    {"id": "X03", "title": "모든 줄이 계산 앞에서 빠져 요약이 없음(소수 수량)", "symbol": "QQQ", "asof": "2026-11-12",
+     "trades": [{"d": "2025-03-03", "side": "BUY", "q": "1.5"}]},
+    {"id": "X04", "title": "매도가 초과 매도로 빠짐", "symbol": "QQQ", "asof": "2026-11-12",
+     "trades": [{"d": "2025-03-03", "side": "BUY", "q": 10}, {"d": "2025-08-01", "side": "SELL", "q": 20}]},
+    {"id": "X05", "title": "매도 없음, 줄을 빼지 않는 경고(환율 직전 값)", "symbol": "QQQ", "asof": "2026-11-12",
+     "trades": [{"d": "2025-03-03", "side": "BUY", "q": 10}]},
+]
+
+# 개발 검사 사례의 자체 시험 변형
+EXTRA_MUT = {
+    "X01": {"매수 없음 문장을 숨김": lambda h: h.replace('<p id="verdict" class="verdict">', '<p id="verdict" class="verdict" hidden="">', 1)},
+    "X02": {"차이 0을 많음으로": lambda h: h.replace("으로 이 매매와 같습니다.", "으로, 이 매매가 0원 많습니다.", 1)},
+    "X04": {"빠진 매도 안내를 매도 없음으로": lambda h: h.replace(
+                "계산에 들어간 매도가 없습니다. 빠진 매도 줄은 매매 칸의 경고를 보세요.", "매도가 없습니다.", 1),
+            "매도 표 보임": lambda h: h.replace('<div id="sells-box" class="tablebox" hidden="">', '<div id="sells-box" class="tablebox">', 1)},
+    "X05": {"빠지지 않았는데 빠진 매도 안내": lambda h: h.replace(
+                ">매도가 없습니다.<", ">계산에 들어간 매도가 없습니다. 빠진 매도 줄은 매매 칸의 경고를 보세요.<", 1)},
+}
+
+
 def screen_trades(case, inputs):
     """화면에 넣을 매매(글자). check_api.api_trades와 같이 정답 파일의 inputs(체결가 규칙과 환율 배수를 푼 입력 값)를 씁니다."""
     out = []
@@ -188,6 +217,44 @@ def screen_trades(case, inputs):
 def write_saved(case, trades):
     TMP.write_text(json.dumps({"symbols": {case["symbol"]: {"asof": case["asof"], "trades": trades}},
                                "last": case["symbol"]}, ensure_ascii=False), encoding="utf-8")
+
+
+def verdict(api):
+    """결론 문장의 기대 글자와 숫자 색(화면 코드를 쓰지 않고 같은 규칙으로 따로 만듦). 요약이 없으면 (None, [])."""
+    s = api["summary"]
+    if s is None:
+        return None, []
+    if not api["booked"]:
+        return "장부에 들어간 매수가 없어 손익을 말할 수 없습니다. 매매 칸의 경고를 보세요.", []
+    parts, tones = [], []
+
+    def n(text, v):
+        parts.append(text)
+        tones.append(ftone(v))
+
+    parts.append("원화 손익은 ")
+    n(fkrw(s["total_krw"], True), s["total_krw"])
+    parts.append("입니다. ")
+    if api["currency"] == "KRW" and s["fx_effect_krw"] == 0 and s["cross_effect_krw"] == 0:
+        parts.append("국내 종목이라 환율 효과 없이 모두 가격 효과입니다.")
+    else:
+        for i, (name, key) in enumerate((("가격 효과", "price_effect_krw"), ("환율 효과", "fx_effect_krw"),
+                                         ("교차 효과", "cross_effect_krw"))):
+            parts.append(("" if i == 0 else ", ") + name + " ")
+            n(fkrw(s[key], True), s[key])
+        gap = s["price_effect_krw"] + s["fx_effect_krw"] + s["cross_effect_krw"] - s["total_krw"]
+        parts.append(f"으로 나뉩니다(원 단위 반올림으로 셋의 합과 {fkrw(abs(gap))} 차이)." if gap else "으로 나뉩니다.")
+    if api["symbol"] != api["bench"]:
+        d = s["total_minus_bench_krw"]
+        parts.append(" 같은 날 같은 돈을 SPY에 넣었다면 ")
+        n(fkrw(s["bench_total_krw"], True), s["bench_total_krw"])
+        if d == 0:
+            parts.append("으로 이 매매와 같습니다.")
+        else:
+            parts.append("으로, 이 매매가 ")
+            n(fkrw(abs(d)), d)
+            parts.append(" 많습니다." if d > 0 else " 적습니다.")
+    return "".join(parts), tones
 
 
 def check_case(case, port, inputs, html=None):
@@ -222,8 +289,9 @@ def check_case(case, port, inputs, html=None):
         toned(where, ids[i], v)
 
     state = text("state") or ""
-    if (not re.match(r"계산 \d", state) or "err" in cls(ids["state"]) or "hidden" in ids["result"].attrs
-            or "stale" in cls(ids["result"]) or "통과" not in (text("pipe-pill") or "")):
+    boxes = [ids[i] for i in ("result", "result-more")]
+    if (not re.match(r"계산 \d", state) or "err" in cls(ids["state"]) or any("hidden" in b.attrs for b in boxes)
+            or any("stale" in cls(b) for b in boxes) or "통과" not in (text("pipe-pill") or "")):
         return api, [f"화면이 계산을 마치지 못함: {state!r}"]
 
     # 단위: 입력 칸 머리와 매도 표 머리
@@ -233,7 +301,22 @@ def check_case(case, port, inputs, html=None):
     eq("매도 평균 단가 머리", text("h-sa"), f"팔기 전 평균 단가({unit})")
 
     # 2번 칸: 요약 카드와 보유 줄
+    eq("흐림 안내 숨김", ["hidden" in ids[i].attrs for i in ("stale-note", "stale-note-2")], [True, True])
     s = api["summary"]
+    want_v, want_tones = verdict(api)
+    # 5번 칸 숨김: 요약이 없거나, 장부에 매수가 없거나, 국내 종목(환율 효과와 교차 효과가 0)이면 숨기고 결론 문장으로 대신함
+    price_only = bool(s) and not usd and s["fx_effect_krw"] == 0 and s["cross_effect_krw"] == 0
+    fx_off = s is None or not api["booked"] or price_only
+    eq("나누기 칸 숨김", "hidden" in ids["fx-box"].attrs, fx_off)
+    if want_v is None:
+        eq("결론 문장(요약 없음)", "hidden" in ids["verdict"].attrs, True)
+    else:
+        eq("결론 문장 숨김", "hidden" in ids["verdict"].attrs, False)
+        for kind, _ in violations(text("verdict") or "", quote_exempt=False):
+            bad.append(f"결론 문장 금지 표현: {kind}")
+        eq("결론 문장", text("verdict"), want_v)
+        eq("결론 문장 색", [next((c for c in cls(b) if c in ("up", "down", "zero")), None)
+                         for b in ids["verdict"].find("b")], want_tones)
     if s is None:
         for k in ("k-krw", "k-local", "k-bench", "k-mdd", "k-irr"):
             eq(f"{k}(요약 없음)", text(k), "–")
@@ -248,7 +331,7 @@ def check_case(case, port, inputs, html=None):
             card("단순 수익률(카드)", "k-local", fpct(s["simple_return_pct"]), s["simple_return_pct"])
             eq("단순 수익률 보조", text("k-local-s"), f"원화 손익 / 넣은 돈 {fkrw(s['invested_krw'])}")
         card("SPY와 차이", "k-bench", fkrw(s["total_minus_bench_krw"], True), s["total_minus_bench_krw"])
-        eq("SPY에 넣었다면", text("k-bench-s"), f"SPY에 넣었다면 {fkrw(s['bench_total_krw'], True)}"
+        eq("SPY에 넣었다면", text("k-bench-s"), f"같은 날 같은 돈을 SPY에 넣었다면 {fkrw(s['bench_total_krw'], True)}"
            + ("(이 종목이 SPY)" if api["symbol"] == api["bench"] else ""))
         if s["max_drawdown_krw"] == 0:
             eq("최대 낙폭", text("k-mdd"), "없음")
@@ -277,32 +360,38 @@ def check_case(case, port, inputs, html=None):
             want["보유 기간(첫 매수일 ~ 기준일)"] = f"{api['holding'][0]} ~ {api['holding'][1]}"
         eq("보유 줄", hold, want)
 
-        # 5번 칸: 원화 수익 나누기
-        vs = ids["fx"].find(cls="v")
+        # 5번 칸: 원화 수익 나누기(숨김은 위에서 봄)
+        vs = [] if fx_off else ids["fx"].find(cls="v")
         keys = ("price_effect_krw", "fx_effect_krw", "cross_effect_krw", "total_krw")
-        eq("나누기 줄 수", len(vs), 4)
+        eq("나누기 줄 수", len(vs), 0 if fx_off else 4)
         for n, key in zip(vs, keys):
             eq(f"나누기 {key}", n.text(), fkrw(s[key], True))
             toned(f"나누기 {key}", n, s[key])
         note = text("fx-note") or ""
         total3 = s["price_effect_krw"] + s["fx_effect_krw"] + s["cross_effect_krw"]
-        if total3 != s["total_krw"]:
+        if fx_off:
+            pass
+        elif total3 != s["total_krw"]:
             w = f"셋의 합({fkrw(total3, True)})과 원화 손익은 원 단위 반올림으로 {fkrw(abs(total3 - s['total_krw']))} 다릅니다."
             if w not in note:
                 bad.append(f"나누기 합 문장 없음: {w!r}")
         elif "셋의 합" in note:
             bad.append("나누기 합이 같은데 다르다는 문장이 있음")
-        if not usd:
-            if "국내 종목이라 환율 효과와 교차 효과는 0입니다." not in note:
-                bad.append("국내 종목 문장 없음")
-        elif s["naive_minus_total_krw"]:
+        if usd and s["naive_minus_total_krw"]:
             d = s["naive_minus_total_krw"]
             w = (f"달러 손익을 기준일 환율 하나로 바꾸면 {fkrw(s['naive_krw'], True)}으로, 실제 원화 손익보다 "
                  f"{fkrw(abs(d))} {'많게' if d > 0 else '적게'} 보입니다.")
             if w not in note:
                 bad.append(f"기준일 환율 문장 없음: {w!r}")
 
-    # 6번 칸: 매도별 손익
+    # 6번 칸: 매도별 손익. 매도가 없으면 표 대신 한 줄
+    none = not api["sells"]
+    eq("매도 표 숨김", ["hidden" in ids[i].attrs for i in ("sells-box", "sells-note", "sells-empty")], [none, none, not none])
+    if none:
+        live = {x["trade_index"] for x in api["steps"] if not x["excluded"]}
+        dropped = any(t["side"] == "SELL" and k not in live for k, t in enumerate(trades))
+        eq("매도 없음 문장", text("sells-empty"),
+           "계산에 들어간 매도가 없습니다. 빠진 매도 줄은 매매 칸의 경고를 보세요." if dropped else "매도가 없습니다.")
     trs = [tr for tr in ids["sells"].find("tr") if "empty" not in cls(tr)]
     eq("매도 줄 수", len(trs), len(api["sells"]))
     for tr, sl in zip(trs, api["sells"]):
@@ -496,11 +585,27 @@ def mutations(api):
         "다시 열린 수량 바꿈": lambda h: re.sub(r'(data-k="qty"[^>]*value=")(\d+)', lambda x: x.group(1) + x.group(2) + "0",
                                          h, count=1),
         "체결가 머리 단위 바꿈": lambda h: _span(h, "h-price", lambda t, x: (t, "체결가")),
+        "결론 문장 원화 손익 1원 바꿈": lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*<b[^>]*>)[^<]*',
+                                               lambda x: x.group(1) + fkrw(s["total_krw"] + 1, True), h, count=1),
+        "결론 문장 색 뒤집기": lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*)<b class="n (up|down)"',
+                                         lambda x: x.group(1) + '<b class="n ' + ("down" if x.group(2) == "up" else "up") + '"',
+                                         h, count=1),
     }
+    if api["symbol"] != api["bench"] and s["total_minus_bench_krw"] != 0:  # SPY 자체는 비교 문장이 없음
+        m["결론 문장 많고 적음 뒤집기"] = lambda h: re.sub(
+            r'(<p id="verdict".*?) (많|적)습니다\.', lambda x: x.group(1) + (" 적" if x.group(2) == "많" else " 많") + "습니다.",
+            h, count=1, flags=re.S)
+    if api["sells"]:
+        m["매도 표 숨김"] = lambda h: h.replace('<div id="sells-box" class="tablebox">', '<div id="sells-box" class="tablebox" hidden="">', 1)
     if usd:
         m["달러 손익 단위를 원으로"] = lambda h: _span(h, "k-local", lambda t, x: (t, x.replace("$", "") + "원"))
+        m["나누기 칸 환율 효과 1원 바꿈"] = lambda h: re.sub(
+            r'(<div id="fx"[^>]*>(?:.*?<span class="v[^"]*">){1}.*?<span class="v[^"]*">)[^<]*',
+            lambda x: x.group(1) + fkrw(s["fx_effect_krw"] + 1, True), h, count=1, flags=re.S)
     else:
         m["단순 수익률 % 지우기"] = lambda h: _span(h, "k-local", lambda t, x: (t, x.replace("%", "")))
+        m["국내 종목에 나누기 칸 보임"] = lambda h: h.replace('<section id="fx-box" class="panel fx-box" aria-labelledby="fx-h" hidden="">',
+                                                      '<section id="fx-box" class="panel fx-box" aria-labelledby="fx-h">', 1)
     return m
 
 
@@ -521,6 +626,20 @@ def selftest(port):
                 out[f"{cid} {name}"] = None  # 시험을 만들지 못함(그 사례에 그 칸이 없음)
                 continue
             _, b = check_case(case, port, inputs, h)
+            out[f"{cid} {name}"] = bool(b)
+    extra = {c["id"]: c for c in EXTRA}
+    for cid, muts in EXTRA_MUT.items():
+        case = extra[cid]
+        write_saved(case, screen_trades(case, {}))
+        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        api, bad = check_case(case, port, {}, html)
+        assert not bad, (cid, bad)
+        for name, fn in muts.items():
+            h = fn(html)
+            if h == html:
+                out[f"{cid} {name}"] = None
+                continue
+            _, b = check_case(case, port, {}, h)
             out[f"{cid} {name}"] = bool(b)
     return out
 
@@ -553,6 +672,12 @@ def main():
             _, bad = check_case(c, port, expected[c["id"]]["inputs"])
             results.append({"id": c["id"], "ok": not bad, "bad": bad})
             print(f"  {'같음' if not bad else '다름'}  {c['id']} {c['title']}" + ("".join(f"\n      {b}" for b in bad)))
+        extra = []
+        if not a.only:
+            for c in EXTRA:
+                _, bad = check_case(c, port, {})
+                extra.append({"id": c["id"], "ok": not bad, "bad": bad})
+                print(f"  {'같음' if not bad else '다름'}  {c['id']} {c['title']}(개발 사례)" + ("".join(f"\n      {b}" for b in bad)))
         con = contrast()
         worst = {th: min((r for r in con if r["theme"] == th), key=lambda r: r["ratio"]) for th in ("밝은 화면", "어두운 화면")}
         for th, r in worst.items():
@@ -566,11 +691,13 @@ def main():
         for v in ph["violations"]:
             print(f"  금지 표현({v['kind']}): {v['text']}")
         ok_cases = sum(r["ok"] for r in results)
-        ok = ok_cases == len(results) and all(r["ok"] for r in con) and same_dark and not ph["violations"]
-        OUT.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "cases": results, "contrast": con,
+        ok_extra = sum(r["ok"] for r in extra)
+        ok = (ok_cases == len(results) and ok_extra == len(extra) and all(r["ok"] for r in con) and same_dark
+              and not ph["violations"])
+        OUT.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "cases": results, "extra": extra, "contrast": con,
                                    "dark_blocks_same": same_dark, "phrases": ph, "seconds": round(time.time() - t0, 1)},
                                   ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"화면 값 대조 {ok_cases}/{len(results)}, 대비 {sum(r['ok'] for r in con)}/{len(con)}, "
+        print(f"화면 값 대조 {ok_cases}/{len(results)}" + (f", 개발 사례 {ok_extra}/{len(extra)}" if extra else "") + f", 대비 {sum(r['ok'] for r in con)}/{len(con)}, "
               f"고정 문구 금지 표현 {len(ph['violations'])}건({ph['phrases']}개 문구) → {'통과' if ok else '실패'}")
         return 0 if ok else 1
     finally:
