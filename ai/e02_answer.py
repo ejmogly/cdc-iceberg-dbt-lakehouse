@@ -25,9 +25,10 @@ from ai import llm, news_search
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "eval" / "e04_agent"))
-from score import text_numbers, violations  # noqa: E402  채점기와 같은 규칙
+from score import sentences, text_numbers, violations  # noqa: E402  채점기와 같은 규칙
 
-RULES = (Path(__file__).parent / "prompts" / "e02_write_v2.txt").read_text(encoding="utf-8")  # v1은 「360,000」을 「36만」으로 옮김
+# v1은 「360,000」을 「36만」으로 옮김, v2는 투자자의 「비중을 늘리고」를 옮겨 조언 금지에 걸림(F25)
+RULES = (Path(__file__).parent / "prompts" / "e02_write_v3.txt").read_text(encoding="utf-8")
 LOOKBACK, FIRST = 60, 61
 NAMES = {"SPY": ("SPDR S&P 500 ETF", "미국 증시 전체"), "QQQ": ("Invesco QQQ", "나스닥과 미국 기술주"),
          "IWM": ("iShares 러셀 2000 ETF", "미국 소형주"), "SHY": ("iShares 1 ~ 3년 미국 국채 ETF", "미국 국채 금리와 연준"),
@@ -85,9 +86,10 @@ def move_line(sym, d, mv, name=None):
 
 
 def check_text(text, cited_text):
-    """(금지 표현 문장, 근거 없는 숫자). 숫자는 인용한 기사 제목과 요약에 있어야 합니다(v2 규칙의 글 속 숫자)."""
-    t = re.sub(r"([.!?])(?=[^\s\d])", r"\1 ", text or "")
-    bad = [k for k, _ in violations(CITE.sub("", t))] + (["strict"] if STRICT.search(CITE.sub("", t)) else [])
+    """(금지 표현 [(종류, 문장)], 근거 없는 숫자). 숫자는 인용한 기사 제목과 요약에 있어야 합니다(v2 규칙의 글 속 숫자).
+    문장을 함께 돌려줘 다시 쓰기 때 어느 문장이 걸렸는지 짚습니다(11/17 F25: 종류만 알려 주니 같은 문장을 되풀이함)."""
+    t = CITE.sub("", re.sub(r"([.!?])(?=[^\s\d])", r"\1 ", text or ""))
+    bad = list(violations(t)) + [("strict", x) for x in sentences(t) if STRICT.search(x)]
     pool = [v for v, _ in text_numbers(cited_text, "v2")]
     # 분기와 반기 표기(Q1, first quarter, H2)는 종목 코드처럼 지워지므로 그 숫자를 근거에 더함(「1분기」로 옮겨도 됨)
     pool += [float(m) for m in re.findall(r"\b[QH]([1-4])\b", cited_text)]
@@ -117,41 +119,22 @@ def _prompt(sym, d, arts):
     return "\n".join(lines)
 
 
-def answer(con, days, rows, sym, d, version="h1", drop_evidence=False, tag=""):
-    """(답, 기록). 답: {"status", "text", "move", "citations": [기사], "found"}. rows는 그 종목의 가격 행(수정한 종가)."""
-    t0, calls = time.perf_counter(), []
-    mv = day_move(rows, d)
-    head = move_line(sym, d, mv)
-    arts, n_window = [], 0
-    if not drop_evidence:
-        arts, n_window, _ = news_search.search(con, days, date.fromisoformat(d), sym, version)
-    trace = {"version": version, "window_articles": n_window, "retrieved": [a["id"] for a in arts], "llm": calls,
-             "decided_by": None, "rewrite": None}
-
-    def done(status, body, cites=(), found=False):
-        trace["seconds"] = time.perf_counter() - t0
-        return {"status": status, "text": f"{head} {body}".strip(), "head": head, "body": body, "move": mv, "found": found,
-                "citations": [{"n": n, "id": arts[n - 1]["id"], "title": arts[n - 1]["title"],
-                               "publisher": arts[n - 1]["publisher"], "time": arts[n - 1]["time"]} for n in cites]}, trace
-
+def summarize(arts, sym, d, ask, tag=""):
+    """기사 요약(모델)과 검사. ask(prompt, system, schema, tag) → 모델 답(dict) 또는 None. 7번 칸(answer)과 9번 칸(ai/qa.py)이
+    함께 씁니다. (결과, 기록). 결과는 {"found", "body", "cites"(기사 번호 목록)}, 기록은 {"decided_by", "rewrite"}."""
+    rec = {"decided_by": None, "rewrite": None}
     if not arts:
-        trace["decided_by"] = "code:no_evidence"
-        return done("unknown", TEXT["not_found"])
-
-    def ask(prompt, t):
-        r = llm.call(prompt, RULES, schema=SCHEMA, tag=t, kind="real")
-        calls.append({k: r[k] for k in ("cost_usd", "seconds", "usage", "error")})
-        return r["output"]
-
+        rec["decided_by"] = "code:no_evidence"
+        return {"found": False, "body": TEXT["not_found"], "cites": []}, rec
     prompt = _prompt(sym, d, arts)
-    out = ask(prompt, f"e02-write:{tag}")
+    out = ask(prompt, RULES, SCHEMA, f"e02-write:{tag}")
     if out is None:
-        trace["decided_by"] = "code:llm_failed"
-        return done("unknown", TEXT["llm_failed"])
+        rec["decided_by"] = "code:llm_failed"
+        return {"found": False, "body": TEXT["llm_failed"], "cites": []}, rec
 
     def verdict(o):
         if not _cites_ok(o, len(arts)):
-            return ["citation"], []
+            return [("citation", "인용 번호가 1 ~ 5 밖이거나 글에 번호가 없음")], []
         if not o.get("found"):
             return [], []
         cited = " ".join(f"{arts[n - 1]['title']} {arts[n - 1]['summary']}" for n in sorted(set(map(int, CITE.findall(o["text"])))))
@@ -159,19 +142,48 @@ def answer(con, days, rows, sym, d, version="h1", drop_evidence=False, tag=""):
 
     bad, untraced = verdict(out)
     if bad or untraced:
-        trace["rewrite"] = {"before": out, "violations": bad, "untraced": untraced}
+        rec["rewrite"] = {"before": out, "violations": [k for k, _ in bad], "untraced": untraced}
+        notes = [f"- [{k}] {x}" for k, x in bad]
+        if untraced:
+            notes.append(f"- [number] not in the cited articles: {untraced}")
         fix = (prompt + "\n\nYour previous answer (JSON):\n" + json.dumps(out, ensure_ascii=False) +
-               f"\n\nIt breaks these rules: {bad or ''} {('numbers not in the cited articles: ' + str(untraced)) if untraced else ''}."
-               "\nRewrite. Cite only article numbers 1 to " + str(len(arts)) + ", use no cause words, and copy numbers only from the cited article.")
-        out2 = ask(fix, f"e02-rewrite:{tag}")
-        bad2, untraced2 = verdict(out2) if out2 is not None else (["llm_failed"], [])
-        trace["rewrite"].update(after_violations=bad2, after_untraced=untraced2)
+               "\n\nThese sentences break the rules (advice or direction words even when an article says them, cause words, "
+               "numbers not in the article):\n" + "\n".join(notes) +
+               "\nRewrite the whole answer without those words. Cite only article numbers 1 to " + str(len(arts)) +
+               ". If a fact cannot be told without them, leave it out.")
+        out2 = ask(fix, RULES, SCHEMA, f"e02-rewrite:{tag}")
+        bad2, untraced2 = verdict(out2) if out2 is not None else ([("llm_failed", "")], [])
+        rec["rewrite"].update(after_violations=[k for k, _ in bad2], after_untraced=untraced2)
         if out2 is None or bad2 or untraced2:
-            trace["decided_by"] = "code:not_verified"
-            return done("unknown", TEXT["not_verified"])
+            rec["decided_by"] = "code:not_verified"
+            return {"found": False, "body": TEXT["not_verified"], "cites": []}, rec
         out = out2
     if not out.get("found"):
-        trace["decided_by"] = "model:not_found"
-        return done("unknown", TEXT["not_found"])
-    cites = sorted(set(map(int, CITE.findall(out["text"]))))
-    return done("answered", out["text"].strip(), cites, found=True)
+        rec["decided_by"] = "model:not_found"
+        return {"found": False, "body": TEXT["not_found"], "cites": []}, rec
+    return {"found": True, "body": out["text"].strip(), "cites": sorted(set(map(int, CITE.findall(out["text"]))))}, rec
+
+
+def answer(con, days, rows, sym, d, version="h1", drop_evidence=False, tag=""):
+    """(답, 기록). 답: {"status", "text", "head", "body", "move", "citations": [기사], "found"}. rows는 그 종목의 가격 행."""
+    t0, calls = time.perf_counter(), []
+    mv = day_move(rows, d)
+    head = move_line(sym, d, mv)
+    arts, n_window = [], 0
+    if not drop_evidence:
+        arts, n_window, _ = news_search.search(con, days, date.fromisoformat(d), sym, version)
+    trace = {"version": version, "window_articles": n_window, "retrieved": [a["id"] for a in arts], "llm": calls}
+
+    def ask(prompt, system, schema, t):
+        r = llm.call(prompt, system, schema=schema, tag=t, kind="real")
+        calls.append({k: r[k] for k in ("cost_usd", "seconds", "usage", "error")})
+        return r["output"]
+
+    res, rec = summarize(arts, sym, d, ask, tag)
+    trace.update(rec)
+    trace["seconds"] = time.perf_counter() - t0
+    cites = res["cites"]
+    return {"status": "answered" if res["found"] else "unknown", "text": f"{head} {res['body']}".strip(), "head": head,
+            "body": res["body"], "move": mv, "found": res["found"],
+            "citations": [{"n": n, "id": arts[n - 1]["id"], "title": arts[n - 1]["title"],
+                           "publisher": arts[n - 1]["publisher"], "time": arts[n - 1]["time"]} for n in cites]}, trace

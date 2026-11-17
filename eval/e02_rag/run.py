@@ -42,7 +42,7 @@ from ai import llm, screen_data  # noqa: E402
 
 RUNS = ROOT / "data" / "generated" / "e02" / "runs"
 WORKERS = 3
-VARIANT = "e02w2"  # 답 규칙 e02_write_v2
+VARIANT = "e02w3"  # 답 규칙 e02_write_v3(v2: e02w2)
 
 
 def arg(name, default=None):
@@ -151,7 +151,7 @@ def main():
     cost, calls = llm.spent()
     summary = {"variant": VARIANT, "split": split, "versions": versions, "boot_s": boot, "recall_judge_provisional": rec,
                "code_sha256": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()[:16] for p in
-                               [ROOT / "ai/e02_answer.py", ROOT / "ai/news_search.py", ROOT / "ai/prompts/e02_write_v2.txt",
+                               [ROOT / "ai/e02_answer.py", ROOT / "ai/news_search.py", ROOT / "ai/prompts/e02_write_v3.txt",
                                 Path(__file__)]},
                "ledger_total_usd": round(cost, 4), "ledger_calls": calls, "by_version": {}}
     for v in versions:

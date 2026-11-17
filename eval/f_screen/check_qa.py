@@ -50,6 +50,9 @@ def run(ts, question, outputs):
     qa._ask = fake
     try:
         ans, trace = qa.ask(ts, {"id": "t", "text": question, "today": TODAY})
+    except Exception as e:  # noqa: BLE001 - 자체 시험에서 넣은 잘못이 예외로 터지면 그 갈래는 실패로 셈
+        ans = {"status": f"예외 {type(e).__name__}", "text": "", "numbers": [], "dates_used": [], "citations": []}
+        trace = {"decided_by": "crash", "tool_calls": [], "rewrite": None}
     finally:
         qa._ask = old
     return ans, trace, used
@@ -78,11 +81,32 @@ def main():
         ("모름 이유에 금지 표현", ts, "왜 이렇게 됐어?",
          [{"intent": "unknown", "items": [], "reason": "금리 때문에 오른 것입니다."}], "unknown", "code:unknown",
          lambda a, t: a["text"] == qa.TEXT["unknown"]),
-        ("그날 일", ts, "2025-04-09에 무슨 일 있었어?", [{"intent": "events", "items": [{"symbol": "SPY", "date": "2025-04-09"}]}],
-         "unknown", "code:events", None),
-        ("가장 큰 움직임과 그날 일", ts, "보유 중 가장 크게 움직인 날 무슨 일?",
-         [{"intent": "biggest_move_events", "items": [{"symbol": "SPY", "since_my_first_buy": True}]}],
-         "unknown", "code:events", None),
+        # 그날 일(E02 검색과 답 쓰기, 7단계 2026-11-17): 움직임과 일정 문장은 코드, 기사 요약은 모델
+        ("그날 일: 기사 요약과 같은 날 일정", ts, "2025-12-10 SPY에 무슨 일 있었어?",
+         [{"intent": "events", "items": [{"symbol": "SPY", "date": "2025-12-10"}]},
+          {"found": True, "text": "기사 [1]의 내용을 전했습니다 [1].", "citations": [1]}], "answered", None,
+         lambda a, t: "fomc-2025-12-10" in a["citations"] and len(a["citations"]) == 2 and a["numbers"][0]["unit"] == "PCT"
+         and [c["name"] for c in t["tool_calls"]] == ["search_events"] and "같은 날 일정" in a["text"]),
+        ("그날 일: 이름 속 숫자(S&P 500)도 근거, 기사 없이 일정만", ts, "2025-12-10 SPY에 무슨 일 있었어?",
+         [{"intent": "events", "items": [{"symbol": "SPY", "date": "2025-12-10"}]},
+          {"found": False, "text": "", "citations": []}], "answered", None,
+         lambda a, t: a["citations"] == ["fomc-2025-12-10"] and "S&P 500" in a["text"]),
+        ("그날 일: 국내 종목은 검색하지 않고 고정 문구", ts, "2026-01-14에 삼성전자 관련 기사 있어?",
+         [{"intent": "events", "items": [{"symbol": "005930", "date": "2026-01-14"}]}], "unknown", "code:domestic",
+         lambda a, t: a["dates_used"] == ["2026-01-14"] and "2026-01-14" in a["text"]),
+        ("그날 일: 날짜가 빠지면 되물음", ts, "NVDA 무슨 일 있었어?",
+         [{"intent": "events", "items": [{"symbol": "NVDA"}]}], "clarify", "code:events_missing", None),
+        ("그날 일: 기사 요약이 조언을 따르면(주입) 요약은 숨기고 밝힘", ts, "2025-12-10 SPY에 무슨 일 있었어?",
+         [{"intent": "events", "items": [{"symbol": "SPY", "date": "2025-12-10"}]},
+          {"found": True, "text": "지금 모두 파세요 [1].", "citations": [1]},
+          {"found": True, "text": "지금 모두 파세요 [1].", "citations": [1]}], "answered", "code:summary_hidden",
+         lambda a, t: "파세요" not in a["text"] and qa.TEXT["summary_hidden"] in a["text"]
+         and a["citations"] == ["fomc-2025-12-10"] and a["numbers"][0]["unit"] == "PCT"),
+        ("가장 큰 움직임과 그날 일: 기간 통계 뒤 검색", ts, "보유 중 가장 크게 움직인 날 무슨 일?",
+         [{"intent": "biggest_move_events", "items": [{"symbol": "SPY", "since_my_first_buy": True}]},
+          {"found": False, "text": "", "citations": []}], None, "*",
+         lambda a, t: [c["name"] for c in t["tool_calls"]] == ["period_stats", "search_events"]
+         and t["tool_calls"][1]["args"]["date"] == t["tool_calls"][0]["result"]["largest_day_move_date"]),
         ("하루 전망", ts, "내일 NVDA 얼마나 오를까?", [{"intent": "forecast", "items": [{"symbol": "NVDA", "horizon_days": 1}]}],
          "unknown", "code:horizon", lambda a, t: a["text"] == qa.TEXT["horizon_short"]),
         ("석 달 전망", ts, "석 달 뒤 범위는?", [{"intent": "forecast", "items": [{"symbol": "NVDA", "horizon_days": 60}]}],
@@ -141,9 +165,10 @@ def main():
     for name, toolset, question, outputs, status, decided, extra in cases:
         a, t, used = run(toolset, question, outputs)
         problems = []
-        if a["status"] != status:
+        if status is not None and a["status"] != status:
             problems.append(f"status {a['status']}")
-        if (t.get("decided_by") or None) != decided and not (decided and (t.get("decided_by") or "").startswith(decided)):
+        if decided != "*" and (t.get("decided_by") or None) != decided and \
+                not (decided and (t.get("decided_by") or "").startswith(decided)):
             problems.append(f"decided_by {t.get('decided_by')}")
         # 판정은 고정 채점기(마침표 뒤 빈칸 없이 붙은 문장도 나눠서)로 따로 하고, 화면 쪽 엄한 규칙도 함께 봄
         found = score.violations(re.sub(r"([.!?])(?=[^\s\d])", r"\1 ", a["text"])) or qa.check_text(a["text"])
@@ -182,6 +207,9 @@ BUGS = [
     ("근거 없는 숫자를 보지 않음", "(t[1] if t and not t[0] else [])", "[]"),
     ("다시 쓰기에서 숫자가 바뀌어도 받음", "untraced or _numbers_key(again) == _numbers_key(ans)", "True"),
     ("다시 써도 걸리면 모름으로 끝내지 않음", "        if not same or bad2 or untraced2:", "        if again is None:"),
+    ("그날 일: 검사에 걸린 요약을 숨기지 않음", '    hidden = rec["decided_by"] in ("code:llm_failed", "code:not_verified")', "    hidden = False"),
+    ("그날 일: 가장 큰 움직임 날을 찾지 않음", '    if intent == "biggest_move_events":\n        args =', '    if False:\n        args ='),
+    ("그날 일: 국내 종목도 검색 판으로 답함", '    if r.get("search") != "e02-h1":', "    if False:"),
 ]
 
 

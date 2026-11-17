@@ -1,12 +1,20 @@
 {
  "note": "E02 답 문장의 판정(근거 충실도, 인과 표현). 문장 글은 git 제외 파일.",
- "run": "data/generated/e02/runs/e02w2_dev_20261117-141908.jsonl",
+ "run": "data/generated/e02/runs/e02w3_dev_20261117-154845.jsonl",
  "judge_prompt": "e02_judge_ans_v1.txt",
  "judge_model": "claude-sonnet-5-5",
  "items": {
   "E02-06:baseline": [
    {
     "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
     "cites": [
      1
     ],
@@ -40,14 +48,6 @@
     ],
     "supported": true,
     "causal": false
-   },
-   {
-    "s": 2,
-    "cites": [
-     5
-    ],
-    "supported": true,
-    "causal": false
    }
   ],
   "E02-11:h1": [
@@ -62,13 +62,31 @@
    {
     "s": 2,
     "cites": [
-     4
+     5
     ],
     "supported": true,
     "causal": false
    },
    {
     "s": 3,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-13:baseline": [
+   {
+    "s": 1,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
     "cites": [
      5
     ],
@@ -132,6 +150,14 @@
    {
     "s": 2,
     "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
      4
     ],
     "supported": true,
@@ -160,7 +186,7 @@
    {
     "s": 1,
     "cites": [
-     2
+     3
     ],
     "supported": true,
     "causal": false
@@ -175,14 +201,6 @@
    },
    {
     "s": 3,
-    "cites": [
-     3
-    ],
-    "supported": true,
-    "causal": false
-   },
-   {
-    "s": 4,
     "cites": [
      4
     ],
@@ -202,7 +220,7 @@
    {
     "s": 2,
     "cites": [
-     5
+     4
     ],
     "supported": true,
     "causal": false
@@ -210,7 +228,7 @@
    {
     "s": 3,
     "cites": [
-     4
+     2
     ],
     "supported": true,
     "causal": false
@@ -238,7 +256,7 @@
    {
     "s": 1,
     "cites": [
-     2
+     4
     ],
     "supported": true,
     "causal": false
@@ -246,13 +264,21 @@
    {
     "s": 2,
     "cites": [
-     4
+     1
     ],
     "supported": true,
     "causal": false
    },
    {
     "s": 3,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 4,
     "cites": [
      5
     ],
@@ -283,14 +309,6 @@
     "s": 2,
     "cites": [
      2
-    ],
-    "supported": true,
-    "causal": false
-   },
-   {
-    "s": 3,
-    "cites": [
-     3
     ],
     "supported": true,
     "causal": false

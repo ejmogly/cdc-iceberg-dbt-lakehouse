@@ -65,7 +65,7 @@ def model_part(text):
 
 
 def latest_run(split):
-    runs = sorted(RUNS.glob(f"e02w2_{split}_2*.jsonl"))  # 일부만 돌린 기록(_part)은 빼고 전체 실행만
+    runs = sorted(RUNS.glob(f"e02w*_{split}_2*.jsonl"))  # 일부만 돌린 기록(_part)은 빼고 전체 실행만(판 이름 순, 같은 판은 시각 순)
     if not runs:
         sys.exit("판정할 실행 기록이 없습니다(run.py를 먼저)")
     return runs[-1]
@@ -118,10 +118,11 @@ def sample(split):
         arts = [dict(zip(("id", "title", "summary", "publisher"), con.execute(
             "select id, title, description, publisher from news where id = ?", [i]).fetchone())) for i in ids]
         text = next(d["text"] for d in detail[key] if d["s"] == r["s"])
-        out.append({"key": f"S{k:02d}", "answer": key, "s": r["s"], "date": rec["item"]["date"],
+        out.append({"key": f"S{k:02d}", "answer": key, "s": r["s"], "judge_supported": r["supported"], "date": rec["item"]["date"],
                     "symbol": rec["item"]["symbol"], "text": text, "cites": r["cites"], "articles": arts})
     con.close()
     (GEN / f"faith_sample_{split}.json").write_text(json.dumps({"seed": SEED, "rule": f"판정 「아니오」 모두(최대 {MAX_NO}) + 「예」에서 시드로 채움",
+                                                                "judge_file": f"eval/e02_rag/answer_judge_{split}.json({j['run']})",
                                                                 "judge_no_in_sample": min(len(no), MAX_NO), "items": out},
                                                                ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"사람 표본 {len(out)}문장(판정 「아니오」 {min(len(no), MAX_NO)}개 포함, 전체 문장 {len(flat)}개)")

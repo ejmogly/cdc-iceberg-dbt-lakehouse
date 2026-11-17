@@ -51,8 +51,10 @@ TEXT = {
                "지난 손익이나 앞으로 20거래일의 범위(참고용)는 보여 드릴 수 있습니다.",
     "clarify": "무엇을 묻는지 조금 더 알려 주세요. 종목과 날짜를 함께 적어 주시면 됩니다.",
     "unknown": "이 질문에는 가진 데이터로 답할 수 없습니다.",
-    "events": "그날 있었던 일(기사와 일정)을 찾는 기능은 아직 붙지 않았습니다. 지금은 손익, 시세, 환율, 기간 통계, "
-              "앞으로 20거래일의 범위만 답합니다.",
+    "events_missing": "어느 종목의 어느 날 일인지 함께 적어 주세요. 예: 2025-04-09 NVDA에 무슨 일이 있었어?",
+    "domestic": "국내 종목이라 기사 근거가 없습니다(다음 판).",
+    "summary_hidden": "기사 요약은 규칙(조언, 방향, 원인 표현 금지와 숫자 확인) 검사를 통과하지 못해 보이지 않습니다.",
+    "events_not_found": "그날의 검색 창에서 이 종목이나 시장의 일을 전한 기사를 찾지 못했고, 같은 날 일정(FOMC, CPI, 고용 보고서)도 없습니다.",
     "horizon_short": "하루나 며칠 뒤의 가격은 내지 않습니다. 앞으로 20거래일의 범위(참고용)만 낼 수 있습니다.",
     "horizon_long": "범위는 앞으로 20거래일만 냅니다. 더 긴 기간의 범위는 내지 않습니다.",
     "too_many": "한 번에 부를 수 있는 도구 수를 넘는 질문입니다. 종목이나 기간을 나눠 물어 주세요.",
@@ -67,6 +69,7 @@ ERRORS = {
     "FUTURE_DATE": "기준일(오늘) 뒤의 값은 없습니다.",
     "OUT_OF_RANGE": "데이터 기간 밖의 날짜라 값이 없습니다.",
     "BAD_DATE": "날짜를 알아보지 못했습니다. YYYY-MM-DD로 적어 주세요.",
+    "BAD_PERIOD": "기간의 시작이 끝보다 늦습니다.",
     "UNSUPPORTED_HORIZON": TEXT["horizon_long"],
 }
 # 화면 쪽에서 채점기 규칙보다 엄하게 보는 낱말(조언과 방향 단정의 다른 꼴)
@@ -166,6 +169,77 @@ def _numbers_key(ans):
     return sorted({(n["unit"], round(float(n["value"]), 6)) for n in ans.get("numbers", [])})
 
 
+def _events(toolset, q, plan, calls, trace, code, done):
+    """그날 일(E02, 7번 칸과 같은 검색과 답 쓰기). events는 {symbol, date}, biggest_move_events는 기간(첫 매수부터면 코드가
+    채움)의 가장 큰 하루 움직임 날. 움직임 문장과 일정 문장은 코드가, 기사 요약은 e02_answer.summarize가 씁니다."""
+    from ai import e02_answer as A2
+    intent, items = plan.get("intent"), plan.get("items") or []
+    it = dict(items[0]) if items else {}
+    tool_calls = trace["tool_calls"]
+
+    def tool(name, args):
+        r = toolset.call(name, args)
+        tool_calls.append({"name": name, "args": args, "result": r})
+        return r
+
+    def failed(r):
+        if r["error"] == "NOT_YOUR_ACCOUNT":
+            return code("refused", "refused", "account")
+        trace["decided_by"] = "code:no_data"
+        return done(_fixed("unknown", ERRORS.get(r["error"], TEXT["unknown"])))
+
+    sym, day = it.get("symbol"), it.get("date")
+    if intent == "biggest_move_events":
+        args = {k: it[k] for k in ("symbol", "start", "end") if it.get(k)}
+        buys = [t["d"] for t in toolset.account["trades"].get(it.get("symbol"), []) if t["side"] == "BUY"]
+        if it.get("since_my_first_buy") and buys:
+            args["start"] = min(buys)
+        r = tool("period_stats", args)
+        if "error" in r:
+            return failed(r)
+        sym, day = r["symbol"], r.get("largest_day_move_date")
+    if not sym or not day:
+        return code("clarify", "events_missing")
+    r = tool("search_events", {"date": day, "symbol": sym})
+    if "error" in r:
+        return failed(r)
+    s, used = r["symbol"], r.get("window_date_used", r["date"])
+    name = toolset.data.symbols[s]["name"]
+    if r.get("search") != "e02-h1":  # 국내 종목(E02 1판 범위 밖)
+        trace["decided_by"] = "code:domestic"
+        return done(_fixed("unknown", f"{used} {name}는 {TEXT['domestic']}", dates_used=[used]))  # 종목 코드(005930)는 숫자로 읽혀 넣지 않음
+    mv = {"pct": r.get("day_move_pct"), "ratio": r.get("move_ratio_sd"), "big": r.get("big_move"), "judged": r.get("judged")}
+    head = A2.move_line(s, used, mv, name)
+    arts = r["news"]
+    summary, rec = A2.summarize(arts, s, used, lambda p, sy, sc, tg: _ask(p, sy, sc, tg, calls), q["id"])
+    trace["rewrite"] = rec["rewrite"]
+    sched = r.get("events") or []
+    hidden = rec["decided_by"] in ("code:llm_failed", "code:not_verified")
+    if hidden:  # 요약이 검사를 못 넘으면 요약은 숨기고 그렇다고 밝힘. 코드가 쓴 움직임과 일정 문장은 그대로(11/17 F25)
+        summary = {"found": False, "cites": [], "body": TEXT["summary_hidden" if rec["decided_by"] == "code:not_verified"
+                                                                 else "llm_failed"]}
+    sched_text = "".join(f" 같은 날 일정: {e['date']} {e['title']}." for e in sched)
+    found = summary["found"] or bool(sched) or hidden
+    body = summary["body"] if summary["found"] or hidden or not sched else "그날의 검색 창에서 이 종목이나 시장의 일을 전한 기사는 찾지 못했습니다."
+    text = f"{head} {body}{sched_text}".strip()
+    ans = {"status": "answered" if found else "unknown", "text": text,
+           "numbers": [{"name": "move", "value": mv["pct"], "unit": "PCT"}] if mv["pct"] is not None else [],
+           "dates_used": [used], "warnings": list(r.get("warnings", [])),
+           "citations": [arts[n - 1]["id"] for n in summary["cites"]] + [e["id"] for e in sched]}
+    trace["data"] = [{"intent": intent, "tool_results": [{"tool": c["name"], "args": c["args"], "result": c["result"]}
+                                                         for c in tool_calls]}]
+    if hidden:
+        trace["decided_by"] = "code:summary_hidden"
+    elif not found:
+        trace["decided_by"] = rec["decided_by"] or "code:no_evidence"
+    t = traced(ans, q, trace, "v3")
+    if check_text(text) or (t and not t[0]):  # 움직임과 일정 문장은 코드가 쓰므로, 걸리면 기사 요약 쪽의 문제
+        trace["rewrite"] = {**(trace["rewrite"] or {}), "final_violations": check_text(text),
+                            "final_untraced": t[1] if t and not t[0] else []}
+        return code("unknown", "not_verified")
+    return done(ans)
+
+
 def ask(toolset, q):
     """q: {"id", "text", "today"}. toolset의 today는 q["today"]여야 합니다."""
     calls, t0 = [], time.perf_counter()
@@ -196,7 +270,7 @@ def ask(toolset, q):
         trace["decided_by"] = "code:unknown"
         return done(_fixed("unknown", f"{TEXT['unknown']} {_clean_reason(plan.get('reason'), '', q['text'])}".strip()))
     if intent in ("events", "biggest_move_events"):
-        return code("unknown", "events")
+        return _events(toolset, q, plan, calls, trace, code, done)
     if intent == "forecast":
         hs = [int(it.get("horizon_days") or screen_range.AHEAD) for it in items]
         if any(h < screen_range.AHEAD for h in hs):

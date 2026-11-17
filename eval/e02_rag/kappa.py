@@ -65,11 +65,13 @@ def selftest():
 def faith(split, db):
     """근거 충실도 표본: 사람(e02_faith)과 판정 모델(answer_judge_{split}.json의 supported). 표본은 판정 「아니오」를 모두 넣고
     「예」로 채운 것이라(judge_answers.py), 판정이 모두 「예」면 카파를 셀 수 없어 일치율(사람도 「예」라 한 비율)을 봅니다."""
-    judge = json.loads((HERE / f"answer_judge_{split}.json").read_text(encoding="utf-8"))["items"]
+    # 표본을 고를 때의 판정(표본 파일에 붙여 둠). answer_judge_{split}.json은 다시 판정하면 새 답으로 바뀌어서 쓰지 않음
+    sample = json.loads((HERE.parents[1] / "data" / "generated" / "e02" / f"faith_sample_{split}.json").read_text(encoding="utf-8"))
+    judge = {(it["answer"], it["s"]): it["judge_supported"] for it in sample["items"]}
     pairs, rows = [], []
     for f in sorted(Path(db).rglob("*.json")):
         body = json.loads(f.read_text(encoding="utf-8"))
-        j = next(r["supported"] for r in judge[body["answer"]] if r["s"] == body["s"])
+        j = judge[(body["answer"], body["s"])]
         pairs.append((j, bool(body["label"])))
         rows.append({"key": f.stem, "answer": body["answer"], "s": body["s"], "judge": j, "human": bool(body["label"])})
     k, po, t = kappa(pairs)
