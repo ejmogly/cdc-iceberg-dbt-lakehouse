@@ -145,15 +145,21 @@
     <section id="ev-box" class="panel ev-box" aria-labelledby="ev-h">
       <h3 id="ev-h">그때 무슨 일이 <span class="note">보유 기간의 큰 움직임 날</span> <span class="pill plain">확인 전</span></h3>
       <p id="ev-sum" class="note"></p>
+      <p class="note">위 가격 그림의 큰 움직임 눈금 근처를 누르거나, 그림에서 화살표로 그 날에 간 뒤 Enter를 눌러도 열립니다.</p>
       <div id="ev-days" class="ev-days" role="group" aria-label="큰 움직임 날 고르기"></div>
       <p id="ev-state" class="state" role="status" aria-live="polite"></p>
       <article id="ev-card" class="ev-card" hidden>
-        <p id="ev-head" class="ev-head"></p>
+        <div class="ev-top"><span id="ev-day" class="ev-day"></span><span id="ev-pct" class="ev-pct"></span><span id="ev-pill" class="pill"></span></div>
+        <p id="ev-head" class="ev-head note"></p>
         <p id="ev-body" class="ev-body"></p>
         <ol id="ev-cites" class="ev-cites" aria-label="인용한 기사"></ol>
         <div id="ev-sched-box">
           <h4 class="ev-h4">같은 날 일정 <span class="note">전날 장 마감부터 그날 장 마감 전까지 발표</span></h4>
           <ul id="ev-sched" class="ev-sched"></ul>
+        </div>
+        <div id="ev-others-box">
+          <h4 class="ev-h4">같은 날 다른 자산 <span class="note">함께 움직인 것을 보이는 것이고, 원인이라는 뜻은 아닙니다</span></h4>
+          <ul id="ev-others" class="ev-others"></ul>
         </div>
         <p id="ev-meta" class="note"></p>
       </article>

@@ -461,7 +461,9 @@ def run_flows(page, port):
                                               "time": "2026-01-01T10:00:00Z"}],
                                "schedule": [{"id": "fomc-x", "date": d, "kind": "fomc", "title": "FOMC 금리 결정 발표"}],
                                "decided_by": None, "n_llm": 1, "seconds": 3.2, "cost_usd": 0.01, "cached": False,
-                               "window_articles": 300}
+                               "window_articles": 300,
+                               "others": [{"symbol": "SPY", "name": '이름<img id="ev-xss3" src="x">', "pct": -1.5,
+                                           "ratio": 2.4, "big": True}]}
     fulfill = lambda p, code, body: page.call("Fetch.fulfillRequest", requestId=p["requestId"], responseCode=code,
                                               responseHeaders=[{"name": "Content-Type", "value": "application/json"}],
                                               body=base64.b64encode(json.dumps(body).encode()).decode())
@@ -484,8 +486,11 @@ def run_flows(page, port):
             fulfill(held[0], 200, fake_ev(d0, "머리 문장"))
             if not page.wait("!document.getElementById('ev-card').hidden && document.getElementById('ev-head').textContent === '머리 문장'", 3):
                 bad.append("받은 답이 칸에 없음")
-            elif page.js("!!document.querySelector('#ev-xss, #ev-xss2') || !!window.evXss"):
-                bad.append("답이나 기사 제목의 태그가 화면 요소가 됨")
+            elif page.js("!!document.querySelector('#ev-xss, #ev-xss2, #ev-xss3') || !!window.evXss"):
+                bad.append("답, 기사 제목, 다른 자산 이름의 태그가 화면 요소가 됨")
+            elif "표준편차 2.1배" not in page.js("document.getElementById('ev-pill').textContent") or \
+                    page.js("document.querySelectorAll('#ev-others li').length") != 1:
+                bad.append("큰 움직임 표시나 같은 날 다른 자산이 다르게 보임")
             elif page.js("document.querySelectorAll('#ev-cites li').length") != 1 or \
                     "FOMC" not in page.js("document.getElementById('ev-sched').textContent"):
                 bad.append("인용 기사나 일정이 다르게 보임")
@@ -514,6 +519,25 @@ def run_flows(page, port):
                     bad.append("종목을 바꿨다 돌아오니 앞 답이 남음")
             else:
                 bad.append("둘째 요청을 붙잡지 못함")
+            # 가격 그림의 큰 움직임 눈금을 누르면 그날을 물음(눈금끼리 2px 안팎으로 붙은 곳도 있어 눈금 바로 위를 누름)
+            held.clear()
+            page.wait(f"{chips}.length > 1", 5)
+            tick_d = page.js("document.querySelector('#px line.m-big')?.dataset.d")
+            page.js("""(() => { const svg = document.getElementById('px'); svg.scrollIntoView({block: 'center'});
+                const r = document.querySelector('#px line.m-big').getBoundingClientRect();
+                const o = {clientX: r.left, clientY: r.top - 2, bubbles: true, pointerId: 1, isPrimary: true};
+                svg.dispatchEvent(new PointerEvent('pointerdown', o)); svg.dispatchEvent(new MouseEvent('click', o)); })()""")
+            end = time.time() + 5
+            while not held and time.time() < end:
+                page.pump(0.1)
+            if not held:
+                bad.append("그림의 큰 움직임 눈금을 눌러도 묻지 않음")
+            else:
+                sent = json.loads(held[0]["request"].get("postData") or "{}")
+                if sent.get("date") != tick_d:
+                    bad.append(f"눈금의 날({tick_d})이 아닌 날을 물음: {sent.get('date')}")
+                fulfill(held[0], 200, fake_ev(tick_d, "그림에서 연 답"))
+                page.wait("document.getElementById('ev-head').textContent === '그림에서 연 답'", 3)
             # 실패(429): 안내만 하고 칸은 비운 채
             held.clear()
             page.on_pause = lambda p: fulfill(p, 429, {"error": "BUSY", "message": "앞 날짜를 정리하는 중"})
@@ -584,6 +608,9 @@ BUGS = [
     ("그때 무슨 일이: 날짜 단추, 받은 답, 늦은 답, 실패", "종목을 바꿔도 오는 중인 답을 버리지 않음", [
         ("    resetEvents();\n    load(sel.value);", "    load(sel.value);"),
         ("  if (my !== st.eseq || !st.res || st.res.symbol !== symbol) return;", "  if (!st.res) return;")]),
+    ("그때 무슨 일이: 날짜 단추, 받은 답, 늦은 답, 실패", "그림 눈금을 눌러도 열지 않음", [
+        ('  $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo, openEvents);',
+         '  $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo);')]),
     ("떠나기 직전 고친 값도 저장", "떠날 때 보내지 않음", [
         ("  window.addEventListener(\"pagehide\", flush);\n", "")]),
 ]

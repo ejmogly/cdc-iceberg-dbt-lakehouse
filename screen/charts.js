@@ -74,7 +74,7 @@ function pathOf(points) {
 }
 
 // 마우스, 손가락, 키보드로 날짜를 고르는 공통 부분
-function interact(svg, n, x, onPick, initial) {
+function interact(svg, n, x, onPick, initial, onActivate) {
   const w = W;
   const cross = el("line", { class: "cross", y1: M.t, y2: H - M.b, visibility: "hidden" }, svg);
   let cur = initial;
@@ -92,7 +92,9 @@ function interact(svg, n, x, onPick, initial) {
   svg.onpointermove = (ev) => pick(fromEvent(ev));
   svg.onpointerdown = (ev) => pick(fromEvent(ev));
   svg.onpointerleave = () => pick(initial, false);
+  svg.onclick = () => onActivate?.(cur);
   svg.onkeydown = (ev) => {
+    if (ev.key === "Enter" && onActivate) { ev.preventDefault(); onActivate(cur); return; }
     const step = ev.shiftKey ? 20 : 1;
     const k = { ArrowLeft: cur - step, ArrowRight: cur + step, Home: 0, End: n - 1 }[ev.key];
     if (k === undefined) return;
@@ -105,7 +107,8 @@ function interact(svg, n, x, onPick, initial) {
 
 // ---------- 3번 칸: 가격과 내 매매 ----------
 
-export function drawPrice(svg, readout, res, rowNo) {
+// onBig(날짜): 큰 움직임 눈금 근처(6px 안)를 누르거나 그 날에서 Enter를 누르면 7번 칸을 엶
+export function drawPrice(svg, readout, res, rowNo, onBig) {
   fit(svg);
   const cur = res.currency;
   const all = res.prices;
@@ -155,7 +158,7 @@ export function drawPrice(svg, readout, res, rowNo) {
   el("path", { class: "l-avg", d: pathOf(avg.map((v, i) => (v === null ? null : [x(i), y(v)]))) }, svg);
   el("path", { class: "l-main", d: pathOf(pts.map(([, c], i) => [x(i), y(c)])) }, svg);
   for (const d of bm ? bm.dates : []) {
-    if (pos.has(d)) el("line", { class: "m-big", x1: x(pos.get(d)), x2: x(pos.get(d)), y1: H - M.b - STRIP + 2, y2: H - M.b - 1 }, svg);
+    if (pos.has(d)) el("line", { class: "m-big", "data-d": d, x1: x(pos.get(d)), x2: x(pos.get(d)), y1: H - M.b - STRIP + 2, y2: H - M.b - 1 }, svg);
   }
   for (const s of res.steps || []) {
     const i = at(s.date);
@@ -181,10 +184,17 @@ export function drawPrice(svg, readout, res, rowNo) {
       const when = s.date !== d ? `(${s.date} 휴장일 매매)` : "";
       parts.push(`${rowNo(s.trade_index)}번 줄 ${s.side === "BUY" ? "매수" : "매도"} ${s.qty}주 @ ${price(s.price, cur)}${when}${s.excluded ? "(계산에서 빠짐)" : ""}`);
     }
-    if (bigSet.has(d)) parts.push("큰 움직임");
+    if (bigSet.has(d)) parts.push(onBig ? "큰 움직임(누르거나 Enter로 「그때 무슨 일이」)" : "큰 움직임");
     readout.innerHTML = parts.join(", ");
   };
-  interact(svg, pts.length, x, show, pts.length - 1);
+  // 누른 자리에서 6px 안의 가장 가까운 큰 움직임 날. 하루가 1px 안팎이라 눈금을 정확히 누르기 어려워서
+  const bigIdx = dates.map((d, j) => (bigSet.has(d) ? j : -1)).filter((j) => j >= 0);
+  const nearBig = (i) => {
+    let best = null, gap = 6;
+    for (const j of bigIdx) { const g = Math.abs(x(j) - x(i)); if (g <= gap) { gap = g; best = dates[j]; } }
+    return best;
+  };
+  interact(svg, pts.length, x, show, pts.length - 1, onBig ? (i) => { const d = nearBig(i); if (d) onBig(d); } : undefined);
 
   const buys = live.filter((s) => s.side === "BUY").length, sells = live.filter((s) => s.side === "SELL").length;
   const label = `${res.name} ${dates[0]} ~ ${dates[dates.length - 1]} 종가 흐름. 매수 ${buys}번, 매도 ${sells}번, 보유 기간의 큰 움직임 ${bm ? bm.dates.length : 0}일.`;

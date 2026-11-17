@@ -239,7 +239,14 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 .ev-days .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
 .ev-days .chip:disabled { opacity: 0.6; cursor: default; }
 .ev-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-.ev-head { font-weight: 600; color: var(--ink); }
+.ev-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.ev-day { font-weight: 700; color: var(--ink); }
+.ev-pct { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ev-head { font-size: 13px; }
+.ev-others { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.ev-others li { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+.ev-others li .n { color: var(--ink-2); overflow-wrap: anywhere; }
+.ev-others li .v { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .ev-body { white-space: pre-line; color: var(--ink); }
 .ev-cites, .ev-sched { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
 .ev-cites .src { color: var(--muted); font-size: 12.5px; }

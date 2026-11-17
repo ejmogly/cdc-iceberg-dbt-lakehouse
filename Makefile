@@ -1,7 +1,7 @@
 # 키와 Docker 없이 도는 확인. CI(.github/workflows/check.yml)도 같은 목표를 씁니다.
 PY ?= .venv/bin/python
 
-.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen check-screen
+.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen
 
 setup:
 	python3 -m venv .venv
@@ -33,6 +33,10 @@ screen-golden:
 # 화면 서버(VM 필요 없음). 브라우저로 http://127.0.0.1:8765/ 를 엶. 넣은 매매는 data/generated/f_screen/에 저장
 screen:
 	$(PY) -m ai.screen_server
+
+# 저장을 끈 예시 화면(8766). 넣어 둔 매매 파일을 건드리지 않고, 매매가 없는 종목은 예시 매매로 보임
+screen-example:
+	$(PY) -m ai.screen_server --port 8766 --trades ""
 
 # 내보내기 검사 자체 시험, E04 기록 재생 회귀, 계산 서버 대조(골든, 실제, 지연, 파이프라인 상태, 입력 경계),
 # 범위 칸 대조(8번 칸: 독립 정답 38행, 미래 바꾸기 시험, 화면 글자 38행), 화면 값 대조(헤드리스 Chrome으로 그린 화면의 글자가 API 값과

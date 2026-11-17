@@ -61,6 +61,8 @@ STATIC = (ROOT / "screen").resolve()
 TRADES = SAFE / "f_screen" / "screen_trades.json"
 MAX_TRADES = 200
 MAX_QUESTION = 300
+# 7번 칸의 「같은 날 다른 자산」: 미국 증시, 나스닥, 장기 국채, 금, 달러, 비트코인, 원유
+OTHERS = ["SPY", "QQQ", "TLT", "GLD", "UUP", "IBIT", "USO"]
 MAX_ASKS = 200  # 서버를 한 번 띄운 동안 9번 칸이 물을 수 있는 수(모델 호출 상한과 따로 두는 화면 쪽 상한)
 TRADE_KEYS = ("date", "side", "qty", "price", "fx_rate")
 SIX = Decimal("0.000001")
@@ -355,11 +357,19 @@ class App:
         finally:
             self.events_lock.release()
         calls = trace.get("llm", [])
+        others = []  # 같은 날 다른 자산의 움직임(코드). 같이 움직였다는 것이지 원인이 아님
+        for o in OTHERS:
+            orows = d.symbols.get(o, {}).get("rows", {})
+            if o == symbol or day not in orows:
+                continue
+            m = A.day_move(orows, day)
+            others.append({"symbol": o, "name": d.symbols[o]["name"], "pct": m["pct"], "ratio": m["ratio"], "big": m["big"]})
         out = {"symbol": symbol, "name": name, "date": day, "status": ans["status"], "head": ans.get("head"),
                "body": ans.get("body"), "move": ans["move"], "citations": ans["citations"], "schedule": schedule,
                "decided_by": trace.get("decided_by"), "n_llm": len(calls), "seconds": round(trace.get("seconds", 0), 1),
                "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 4), "version": "h1",
-               "window": [x.isoformat() for x in SW.window(days, t)], "window_articles": trace.get("window_articles")}
+               "window": [x.isoformat() for x in SW.window(days, t)], "window_articles": trace.get("window_articles"),
+               "others": others}
         if not any(c.get("error") for c in calls):  # 모델 호출이 실패한 답은 다시 부를 수 있게 기억하지 않음
             self.events_cache[key] = out
         return {**out, "cached": False}

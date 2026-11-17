@@ -326,7 +326,7 @@ function render(pending) {
 
 function drawCharts() {
   if (!st.res) return;
-  $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo);
+  $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo, openEvents);
   $("pl-desc").textContent = drawPnl($("pl"), $("pl-read"), st.res);
 }
 
@@ -539,6 +539,12 @@ function li(text, cls) {
   return e;
 }
 
+// 가격 그림의 큰 움직임 눈금에서 열 때: 7번 칸으로 옮겨 가고 그날을 물음
+function openEvents(day) {
+  $("ev-box").scrollIntoView({ block: "start", behavior: "smooth" });
+  askEvents(day);
+}
+
 async function askEvents(day) {
   if (st.evBusy || !st.res) return;
   const symbol = st.res.symbol, my = ++st.eseq;
@@ -564,7 +570,12 @@ async function askEvents(day) {
     evState(`답을 받지 못했습니다(${r.status || "서버에 닿지 못함"}${r.body?.message ? ", " + r.body.message : ""}).`, true);
     return;
   }
-  const a = r.body;
+  const a = r.body, mv = a.move || {};
+  $("ev-day").textContent = `${a.date} ${a.name}`;
+  $("ev-pct").textContent = mv.pct === null || mv.pct === undefined ? "" : pct(mv.pct);
+  $("ev-pct").className = "ev-pct " + tone(mv.pct);
+  $("ev-pill").textContent = !mv.judged ? "판정 전" : mv.big ? `큰 움직임, 표준편차 ${mv.ratio}배` : `보통 날, 표준편차 ${mv.ratio}배`;
+  $("ev-pill").className = "pill " + (!mv.judged ? "plain" : mv.big ? "warn" : "plain");
   $("ev-head").textContent = a.head || "";
   $("ev-body").textContent = a.body || "";
   $("ev-cites").replaceChildren(...a.citations.map((c) => {
@@ -581,6 +592,16 @@ async function askEvents(day) {
   $("ev-sched").replaceChildren(...a.schedule.map((e) => li(`${e.date} ${KIND[e.kind] || e.kind}: ${e.title}`)));
   $("ev-sched-box").hidden = !a.schedule.length && a.decided_by === "code:domestic";
   if (!a.schedule.length && a.decided_by !== "code:domestic") $("ev-sched").replaceChildren(li("이 창에 FOMC, CPI, 고용 보고서 발표가 없습니다."));
+  const others = a.others || [];
+  $("ev-others").replaceChildren(...others.map((o) => {
+    const e = document.createElement("li");
+    const n = document.createElement("span"); n.className = "n"; n.textContent = `${o.name}(${o.symbol})`;
+    const v = document.createElement("span"); v.className = "v " + tone(o.pct);
+    v.textContent = pct(o.pct) + (o.big ? ", 큰 움직임" : "");
+    e.append(n, v);
+    return e;
+  }));
+  $("ev-others-box").hidden = !others.length;
   const how = a.cached ? "저장해 둔 답(모델을 다시 부르지 않음)"
     : a.decided_by === "code:domestic" ? "모델 없이 코드가 정한 답"
     : `검색 판 H1, 창 안 기사 ${a.window_articles ?? "?"}건, 모델 호출 ${a.n_llm}번, ${a.seconds}초, 약 ${a.cost_usd}달러`;

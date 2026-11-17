@@ -442,6 +442,10 @@ def check_edges():
                                     headers={"Content-Type": "text/plain"}), 415, "BAD_CONTENT_TYPE")
     c1, r1 = ev({"symbol": "TSLA", "date": "2026-04-02"})
     c2, r2 = ev({"symbol": "TSLA", "date": "2026-04-02"})
+    others = [o["symbol"] for o in r1.get("others", [])]
+    tests.append(("그날 일: 같은 날 다른 자산(자기 종목은 빼고, 코드가 셈)",
+                  c1 == 200 and "TSLA" not in others and {"SPY", "TLT", "GLD", "UUP"} <= set(others)
+                  and all(isinstance(o.get("pct"), (int, float)) for o in r1["others"]), f"{others}"))
     tests.append(("그날 일: 같은 날 두 번째는 모델을 다시 부르지 않음",
                   c1 == c2 == 200 and r1.get("cached") is False and r2.get("cached") is True and called == [("TSLA", "2026-04-02")],
                   f"{c1} {c2} 부른 수 {len(called)}"))
