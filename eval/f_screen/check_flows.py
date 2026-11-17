@@ -7,9 +7,11 @@
   3. 큰 금액: 손익 SQL의 범위를 넘는 금액은 서버가 400으로 돌려주고 화면이 그 줄을 표시함
   4. 넣는 중인 줄만 남음: 수량을 모두 지우면 같은 종목의 앞 결과를 숨기지 않고 흐리게 둠(다듬기 독립 검토
      2026-11-17 중간 1번. 결과 칸이 매매 칸 위라 숨기면 매매 칸이 밀림)
-  5. 저장 실패와 종목 바꾸기: 저장 요청이 서버에 닿지 못해도 종목이 바뀌고, 상태 줄에 「저장하지 못했습니다」가 남고,
+  5. 범위 칸(8번): 앞 종목의 범위 요청을 붙잡아 둔 사이 종목을 되돌려도 늦게 온 답이 지금 범위를 덮지 않고, 기준일이
+     틀린 동안 범위가 흐려지고, 범위를 불러오지 못하면 앞 숫자 대신 그렇다고 적음(5단계 독립 검토 2026-11-17 낮음 5번)
+  6. 저장 실패와 종목 바꾸기: 저장 요청이 서버에 닿지 못해도 종목이 바뀌고, 상태 줄에 「저장하지 못했습니다」가 남고,
      잡히지 않은 오류가 없으며, 매매가 없는 종목은 앞 종목의 결과를 숨기고, 돌아오면 고친 값이 남아 있음
-  6. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
+  7. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
 
 결과 칸은 매매 칸 위(result)와 아래(result-more) 둘이라, 흐림과 숨김은 두 칸을 함께 봅니다(같은 검토 중간 2번).
 
@@ -295,7 +297,55 @@ def run_flows(page, port):
         bad.append("다시 계산한 뒤에도 흐림이 남음")
     out["넣는 중인 줄만 남으면 앞 결과를 흐리게 둠"] = bad
 
-    # 5. 저장 실패와 종목 바꾸기
+    # 5. 범위 칸(8번): 늦게 온 답, 틀린 기준일, 불러오기 실패(5단계 독립 검토 2026-11-17 낮음 5번)
+    bad, held = [], []
+    shown = ("(() => {{ const b = document.getElementById('range-box'); return !b.hidden && !b.classList.contains('stale')"
+             " && b.dataset.symbol === '{}'; }})()")
+    page.on_pause = held.append
+    page.call("Fetch.enable", patterns=[{"urlPattern": "*/api/range*", "requestStage": "Request"}])
+    type_in(page, "sym", "SPY", "change")
+    end = time.time() + 5
+    while not held and time.time() < end:
+        page.pump(0.1)
+    if not held:
+        bad.append("범위 요청을 붙잡지 못함")
+    page.on_pause = lambda p: page.call("Fetch.continueRequest", requestId=p["requestId"])
+    type_in(page, "sym", "QQQ", "change")
+    if not page.wait(shown.format("QQQ"), 5):
+        bad.append("돌아온 종목의 범위가 뜨지 않음")
+    for h in held:  # 화면이 이미 취소한 요청이면 Chrome이 거절함(그래도 됨)
+        try:
+            page.call("Fetch.continueRequest", requestId=h["requestId"])
+        except RuntimeError:
+            pass
+    page.pump(1.0)
+    if page.js("document.getElementById('range-box').dataset.symbol") != "QQQ":
+        bad.append("늦게 온 앞 종목의 범위가 지금 종목의 범위를 덮음")
+    asof = page.js("document.getElementById('asof').value")
+    type_in(page, "asof", "", "change")
+    page.pump(0.3)
+    if not page.js("document.getElementById('range-box').classList.contains('stale') && !document.getElementById('rg-stale').hidden"):
+        bad.append("기준일이 틀린 동안 범위가 흐려지지 않음")
+    type_in(page, "asof", asof, "change")
+    if not page.wait(shown.format("QQQ"), 5):
+        bad.append("기준일을 되돌려도 범위가 다시 뜨지 않음")
+    page.on_pause = lambda p: page.call("Fetch.failRequest", requestId=p["requestId"], errorReason="ConnectionRefused")
+    type_in(page, "asof", "2026-06-01", "change")
+    if not page.wait("document.getElementById('rg-sub').textContent.includes('범위를 불러오지 못했습니다')", 5):
+        bad.append(f"불러오기 실패 문구가 없음: {page.js("document.getElementById('rg-sub').textContent")!r}")
+    if page.js("document.getElementById('rg-range').textContent") != "–":
+        bad.append("불러오기 실패인데 앞 범위 숫자가 남음")
+    page.on_pause = None
+    page.call("Fetch.disable")
+    type_in(page, "asof", asof, "change")
+    if not page.wait(shown.format("QQQ"), 5):
+        bad.append("다시 불러온 범위가 뜨지 않음")
+    page.wait(CALC_DONE)
+    if page.errors:
+        bad.append(f"잡히지 않은 오류: {page.errors}")
+    out["범위 칸: 늦게 온 답, 틀린 기준일, 불러오기 실패"] = bad
+
+    # 6. 저장 실패와 종목 바꾸기
     bad = []
     page.errors.clear()
 
@@ -330,7 +380,7 @@ def run_flows(page, port):
     page.call("Fetch.disable")
     out["저장 실패에도 종목이 바뀌고 고친 값이 남음"] = bad
 
-    # 6. 닫을 때 저장
+    # 7. 닫을 때 저장
     bad = []
     type_in(page, "q0", "11")
     page.call("Page.navigate", url="about:blank")
@@ -359,19 +409,26 @@ BUGS = [
         ("""  sel.addEventListener("change", () => {""", """  sel.addEventListener("change", async () => {"""),
         ("    if (st.saveTimer) save();", "    if (st.saveTimer) await save();")]),
     ("저장 실패에도 종목이 바뀌고 고친 값이 남음", "매매가 없는 종목에 앞 결과를 흐리게 남김", [
-        ("  showResult(\"none\");\n  run().then", "  run().then"),
+        ("  showResult(\"none\");\n  showRange(\"none\");", "  showRange(\"none\");"),
         ("      st.res = null;\n      showResult(\"none\");", "      st.res = null;\n      showResult(\"stale\");")]),
     ("넣는 중인 줄만 남으면 앞 결과를 흐리게 둠", "넣는 중인 줄만 남으면 결과를 숨김", [
         ("    if (pending && st.res) {", "    if (false) {")]),
     ("틀린 기준일이면 계산하지 않음", "결과 칸 하나만 흐리게 함", [
         ('  for (const id of ["result", "result-more"]) {', '  for (const id of ["result"]) {')]),
+    ("범위 칸: 늦게 온 답, 틀린 기준일, 불러오기 실패", "늦게 온 범위 답을 버리지 않음", [
+        ("  st.rctl?.abort();\n  st.rctl = new AbortController();", "  st.rctl = new AbortController();"),
+        ("  if (my !== st.rseq) return;\n  if (r.status === 503)", "  if (r.status === 503)")]),
+    ("범위 칸: 늦게 온 답, 틀린 기준일, 불러오기 실패", "틀린 기준일에 범위를 흐리게 두지 않음", [
+        ("      holdRange();\n", "")]),
+    ("범위 칸: 늦게 온 답, 틀린 기준일, 불러오기 실패", "불러오기 실패에 앞 범위를 그대로 둠", [
+        ("  if (r.status !== 200) {\n    renderRange(null,", "  if (r.status !== 200 && r.status !== 0) {\n    renderRange(null,")]),
     ("떠나기 직전 고친 값도 저장", "떠날 때 보내지 않음", [
         ("  window.addEventListener(\"pagehide\", flush);\n", "")]),
 ]
 
 
 def one_run(static=None):
-    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 여섯을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
+    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 일곱을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
     TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START}}, "last": "QQQ"}),
                    encoding="utf-8")
     old = screen_server.STATIC

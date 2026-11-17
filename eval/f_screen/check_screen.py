@@ -508,7 +508,8 @@ def ratio(a, b):
 PAIRS = [("ink", "bg"), ("ink", "surface"), ("ink-2", "bg"), ("ink-2", "surface"), ("muted", "bg"), ("muted", "surface"),
          ("muted", "surface-2"), ("accent", "surface"), ("up", "surface"), ("down", "surface"), ("up", "bg"),
          ("down", "bg"), ("ok", "ok-soft"), ("warn", "warn-soft"), ("info", "info-soft"), ("bad", "bad-soft"),
-         ("ink", "warn-soft"), ("ink-2", "track"), ("ink", "surface-2"), ("muted", "warn-soft"), ("bad", "surface")]
+         ("ink", "warn-soft"), ("ink-2", "track"), ("ink", "surface-2"), ("muted", "warn-soft"), ("bad", "surface"),
+         ("ink-2", "surface-2")]
 
 
 def contrast():

@@ -9,6 +9,8 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
                      요약(2번 칸), 가격과 내 매매와 큰 움직임(3번), 누적 손익과 SPY 선(4번), 원화 수익 나누기(5번),
                      매도별 손익(6번), 경고(코드, 줄 번호, 문구). 한 줄의 입력이 틀리면 400과 그 줄 번호(trade_index).
                      금액이 손익 SQL의 decimal 범위를 넘으면(약 100억 원) 400 AMOUNT_TOO_LARGE와 금액이 가장 큰 줄
+  GET  /api/range?symbol=&asof=  8번 칸(앞으로의 범위). 기준일 이전 마지막 거래일까지의 종가로 낸 20거래일 80% 범위와
+                     지난날 적중률(n, 맞은 수, 창마다의 범위와 실제 값). 계산은 ai/screen_range.py
   GET  /api/trades   화면에 넣어 둔 매매(종목마다). 저장 파일을 주지 않고 띄우면 {"enabled": false}
   PUT  /api/trades   {"symbol", "asof", "trades"} 한 종목의 매매를 저장(설계서 6절 4번: data/generated/ 아래 파일)
 
@@ -30,14 +32,16 @@ import sys
 import threading
 import time
 import traceback
+from bisect import bisect_right
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 
-from ai import screen_data
+from ai import screen_data, screen_range
 from ai.pnl import compute, iso_date, number
 from ai.tools import real_data
 
@@ -115,6 +119,7 @@ class App:
         if self.trades_path and not self.trades_path.is_relative_to(SAFE):
             raise ValueError(f"매매 저장 파일은 {SAFE} 아래여야 합니다: {self.trades_path}")
         self.trades_lock = threading.Lock()
+        self.px = {}  # 8번 칸용 종목별 가격 목록(수정한 종가, 없으면 종가)
 
     def close(self):
         if self.data:
@@ -248,6 +253,32 @@ class App:
         }
 
 
+    def api_range(self, query):
+        """8번 칸. query는 parse_qs 결과. 기준일은 데이터 기간 안이어야 하고, 그 종목의 기준일 이전 마지막 거래일로 셉니다."""
+        d = self.data
+        symbol = (query.get("symbol") or [None])[0]
+        if not symbol:
+            raise BadRequest("UNKNOWN_SYMBOL", "종목을 주세요")
+        if symbol not in d.symbols:
+            raise BadRequest("UNKNOWN_SYMBOL", f"없는 종목입니다: {symbol}")
+        asof = (query.get("asof") or [None])[0]
+        if not iso_date(asof):
+            raise BadRequest("BAD_DATE", "기준일은 YYYY-MM-DD로 주세요")
+        if not d.calendar[0] <= asof <= d.calendar[-1]:
+            raise BadRequest("OUT_OF_DATA_RANGE", f"기준일은 데이터 기간({d.calendar[0]} ~ {d.calendar[-1]}) 안이어야 합니다")
+        days = d.rows[symbol]
+        t = bisect_right(days, asof) - 1
+        if t < 0:
+            raise BadRequest("OUT_OF_DATA_RANGE", "기준일 앞에 이 종목의 거래일이 없습니다")
+        if symbol not in self.px:
+            rows = d.symbols[symbol]["rows"]
+            self.px[symbol] = [float(rows[x]["adj_close"] if rows[x].get("adj_close") is not None else rows[x]["close"])
+                               for x in days]
+        t0 = time.perf_counter()
+        v = screen_range.view(days, self.px[symbol], t)
+        return {"symbol": symbol, "name": d.symbols[symbol]["name"], "currency": d.symbols[symbol]["currency"],
+                "asof": asof, **v, "ms": round((time.perf_counter() - t0) * 1000)}
+
     # ---------- 넣은 매매 저장(설계서 6절 4번) ----------
 
     def _amount(self, symbol, t):
@@ -325,8 +356,13 @@ def make_handler(app, port_holder):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                # 받는 쪽이 이미 떠남(화면이 요청을 취소했거나 창을 닫음). 보낼 곳이 없으니 조용히 넘깁니다
+                self.close_connection = True
+            return None
 
         def _host_ok(self):
             port = port_holder[0]
@@ -367,6 +403,13 @@ def make_handler(app, port_holder):
                     return self._gate() and self._send(200, app.api_symbols())
                 if path == "/api/trades":
                     return self._gate() and self._send(200, app.api_trades())
+                if path == "/api/range":
+                    if not self._gate():
+                        return None
+                    try:
+                        return self._send(200, app.api_range(parse_qs(urlsplit(self.path).query)))
+                    except BadRequest as e:
+                        return self._send(400, e.payload())
                 return self._static(path)
             except SavedFileError as e:
                 return self._send(500, {"error": "SAVED_FILE_BROKEN", "message": str(e)})

@@ -16,7 +16,7 @@ const PRICE = /^\d+(\.\d{1,4})?$/;
 const st = {
   symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
   saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
-  saveErr: null, notes: null,
+  saveErr: null, notes: null, rseq: 0, rctl: null,
 };
 
 // ---------- 서버 ----------
@@ -487,6 +487,82 @@ function renderBigMoves(res) {
   list.replaceChildren(...bm.dates.map((d) => { const li = document.createElement("li"); li.textContent = d; return li; }));
 }
 
+// ---------- 8번 칸: 앞으로의 범위 ----------
+
+// 범위는 종목과 기준일로만 정해집니다. 기준일이 틀린 동안은 앞 범위를 흐리게 두고, 종목을 바꾸면 숨겼다 새로 보입니다
+function showRange(mode) {
+  const box = $("range-box");
+  box.hidden = mode === "none";
+  box.classList.toggle("stale", mode === "stale");
+  $("rg-stale").hidden = mode !== "stale";
+}
+
+function holdRange() {
+  st.rseq++;
+  st.rctl?.abort();
+  st.rctl = null;
+  if (!$("range-box").hidden) showRange("stale");
+}
+
+async function fetchRange() {
+  const my = ++st.rseq;
+  st.rctl?.abort();
+  st.rctl = new AbortController();
+  let r;
+  try {
+    const q = `symbol=${encodeURIComponent(st.sym)}&asof=${encodeURIComponent(st.asof)}`;
+    const resp = await fetch(`/api/range?${q}`, { signal: st.rctl.signal });
+    r = { status: resp.status, body: await resp.json().catch(() => null) };
+  } catch (e) {
+    if (e.name === "AbortError" || my !== st.rseq) return;
+    r = { status: 0, body: null };
+  }
+  if (my !== st.rseq) return;
+  if (r.status === 503) { await pipelineFailed(); return; }
+  if (r.status !== 200) {
+    renderRange(null, `범위를 불러오지 못했습니다(${r.status || "서버에 닿지 못함"}${r.body?.message ? ", " + r.body.message : ""}).`);
+    return;
+  }
+  renderRange(r.body);
+}
+
+// 서버가 정한 보일 값(범위 %는 소수 둘째 자리, 적중률은 소수 첫째 자리)을 그대로 옮깁니다
+function renderRange(v, err) {
+  const box = $("range-box"), flag = $("rg-flag");
+  box.dataset.symbol = v ? v.symbol : "";
+  box.dataset.base = v ? v.base_date : "";
+  if (!v) {
+    $("rg-unit").textContent = "";
+    $("rg-range").textContent = "–";
+    $("rg-sub").textContent = err;
+    $("rg-hit").textContent = "";
+    flag.hidden = true;
+    showRange("ok");
+    return;
+  }
+  $("rg-unit").textContent = `${v.currency === "KRW" ? "원" : "달러"} 가격, 앞으로 ${v.ahead}거래일`;
+  if (v.ok) {
+    $("rg-range").textContent = `${pct(v.lo_pct)} ~ ${pct(v.hi_pct)}`;
+    $("rg-sub").textContent = `${v.base_date} 종가에서 ${v.ahead}거래일 뒤까지 가격 변화의 80% 범위입니다. 최근 ${v.past}일 변동성이 이어진다고 본 단순 계산입니다.`;
+  } else {
+    $("rg-range").textContent = "–";
+    $("rg-sub").textContent = `${v.base_date} 앞에 일별 수익률 ${v.past}개가 없어 범위를 셀 수 없습니다.`;
+  }
+  // 데이터가 2년뿐이라 적중률은 판정이 아니라 참고 값입니다(설계서 2절 8번 칸)
+  $("rg-hit").textContent = v.n
+    ? `지난 ${v.n}번의 ${v.ahead}거래일 창에서 이 방법의 범위 안에 든 것은 ${v.hits}번(${num(v.hit_rate_pct, 1)}%)입니다. 데이터가 2년뿐이라 참고로만 보는 값입니다.`
+    : "지난 창이 없어 적중률을 셀 수 없습니다.";
+  // 알림은 어느 쪽으로 벗어났는지 나눠 적습니다. 지난 창이 하나도 없으면 위 문장으로 충분해 표본 문구를 숨깁니다
+  flag.hidden = v.display === "없음" || !v.n;
+  flag.className = "rg-flag " + (v.display === "알림" ? "warn" : "plain");
+  flag.textContent = v.display === "알림"
+    ? (v.side === "넓음"
+      ? "적중률이 90%를 넘어, 이 종목에서는 80% 범위가 지난날의 움직임보다 넓었습니다."
+      : "적중률이 70%에 못 미쳐, 이 종목에서는 80% 범위가 지난날의 움직임보다 좁았습니다.")
+    : v.display === "표본 문구" && v.n ? `표본이 적어(n = ${v.n}) 적중률로 판단하기 어렵습니다.` : "";
+  showRange("ok");
+}
+
 // ---------- 저장(설계서 6절 4번) ----------
 
 function snapshot() {
@@ -552,6 +628,8 @@ function load(sym) {
   renderRows();
   st.res = null;
   showResult("none");
+  showRange("none");
+  fetchRange();
   run().then(() => { if (st.example) setState($("state").textContent + " 예시 매매입니다. 고치면 이 종목의 매매로 저장됩니다."); });
 }
 
@@ -599,12 +677,14 @@ async function boot() {
     if (!asof.value || asof.value < st.calendar[0] || asof.value > st.calendar[1]) {
       st.asofErr = `기준일은 ${st.calendar[0]} ~ ${st.calendar[1]} 안의 날짜로 넣어 주세요`;
       asof.setAttribute("aria-invalid", "true");
+      holdRange();
       run();
       return;
     }
     st.asofErr = null;
     asof.removeAttribute("aria-invalid");
     st.asof = asof.value;
+    fetchRange();
     changed();
   });
   window.addEventListener("pagehide", flush);
