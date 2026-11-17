@@ -146,7 +146,7 @@ def main():
         if (t.get("decided_by") or None) != decided and not (decided and (t.get("decided_by") or "").startswith(decided)):
             problems.append(f"decided_by {t.get('decided_by')}")
         # 판정은 고정 채점기(마침표 뒤 빈칸 없이 붙은 문장도 나눠서)로 따로 하고, 화면 쪽 엄한 규칙도 함께 봄
-        found = score.violations(re.sub(r"([.!?])(?=\S)", r"\1 ", a["text"])) or qa.check_text(a["text"])
+        found = score.violations(re.sub(r"([.!?])(?=[^\s\d])", r"\1 ", a["text"])) or qa.check_text(a["text"])
         if found:
             problems.append(f"금지 표현 {found}")
         tr = score.traced(a, {"text": question}, t, "v3")
@@ -170,7 +170,7 @@ def main():
 BUGS = [
     ("엄한 규칙을 보지 않음", '    return violations(t) + [("strict", s) for s in sentences(t) if STRICT.search(s)]',
      "    return violations(t)"),
-    ("마침표 뒤 빈칸 없는 문장을 나누지 않음", '    t = re.sub(r"([.!?])(?=\\S)", r"\\1 ", text or "")', '    t = text or ""'),
+    ("마침표 뒤 빈칸 없는 문장을 나누지 않음", '    t = re.sub(r"([.!?])(?=[^\\s\\d])", r"\\1 ", text or "")', '    t = text or ""'),
     ("다른 계좌를 거절하지 않음", '    if plan.get("account") or intent == "refuse":', '    if intent == "refuse":'),
     ("되묻는 말을 그대로 보임", '_clean_reason(plan.get("question"), TEXT["clarify"], q["text"])', 'plan.get("question")'),
     ("모름 이유를 그대로 보임", "_clean_reason(plan.get('reason'), '', q['text'])", "plan.get('reason')"),

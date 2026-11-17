@@ -75,8 +75,9 @@ STRICT = re.compile(r"(오르|내리|오를|내릴|상승할|하락할|떨어질
 
 
 def check_text(text):
-    """금지 표현: [(종류, 문장)]. 채점기 규칙(마침표 뒤 빈칸이 없어도 문장을 나눔)과 STRICT."""
-    t = re.sub(r"([.!?])(?=\S)", r"\1 ", text or "")
+    """금지 표현: [(종류, 문장)]. 채점기 규칙(마침표 뒤 빈칸이 없어도 문장을 나눔. 소수점처럼 마침표 뒤가 숫자면
+    나누지 않음, 2026-11-17 E02에서 「8.8」을 둘로 나누던 것을 찾음)과 STRICT."""
+    t = re.sub(r"([.!?])(?=[^\s\d])", r"\1 ", text or "")
     return violations(t) + [("strict", s) for s in sentences(t) if STRICT.search(s)]
 
 
