@@ -34,6 +34,7 @@ import threading
 from bisect import bisect_right
 from datetime import date as Date
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
@@ -136,7 +137,7 @@ def fake_data(path=ROOT / "eval" / "e04_agent" / "world.json"):
                             "summary": n["summary"]})
         return out
 
-    def events(d):
+    def events(d, start=None, close=None):  # 가짜 세계의 일정은 날짜만 있어 날짜로 고름(E04와 같음)
         return [{"id": e["id"], "date": e["date"], "kind": e["kind"], "title": e["title"]}
                 for e in world["events"] if e["date"] == d]
 
@@ -170,10 +171,23 @@ def real_data(path=None):
         return [{"id": i, "time": t.isoformat() + "Z", "symbols": list(tk), "title": ti, "summary": de}
                 for i, t, tk, ti, de in rows]
 
-    def events(d):
+    def events(d, start=None, close=None):
+        """start와 close를 주면 발표 시각(현지 시각과 시간대)이 [start, close)인 일정. 휴장일(성금요일 고용 보고서 등)의
+        일정이 다음 거래일 쪽에 듦. 주지 않으면 그날 날짜의 일정."""
+        if start is None:
+            with lock:
+                rows = con.execute("select id, event_date, kind, title from events where event_date = ? order by id",
+                                   [d]).fetchall()
+            return [{"id": i, "date": e.isoformat(), "kind": k, "title": t} for i, e, k, t in rows]
         with lock:
-            rows = con.execute("select id, event_date, kind, title from events where event_date = ? order by id",
-                               [d]).fetchall()
+            got = con.execute("select id, event_date, kind, title, local_time, tz from events "
+                              "where event_date between ? and ? order by event_date, id",
+                              [start.date(), close.date()]).fetchall()
+        rows = []
+        for i, e, k, t, lt, tz in got:
+            at = datetime.combine(e, datetime.strptime(lt, "%H:%M").time(), ZoneInfo(tz))
+            if start <= at < close:
+                rows.append((i, e, k, t))
         return [{"id": i, "date": e.isoformat(), "kind": k, "title": t} for i, e, k, t in rows]
 
     return Data(world, world["bench"], news, events, "real", status=status, close=con.close)
@@ -365,7 +379,10 @@ class Toolset:
         s = self._symbol(symbol) if symbol else None
         t, start, end = self._window(d)
         news = self.data.news_fn(start, end, s)
-        out = {"date": d, "symbol": s, "news": news[:NEWS_LIMIT], "events": self.data.events_fn(d)}
+        # 일정은 전날 장 마감부터 그날 장 마감 전까지(뉴스 창의 앞쪽). 그날 장이 끝난 뒤 발표는 다음 거래일의 일
+        close = datetime.combine(Date.fromisoformat(t), datetime.min.time(), SW.ET) + timedelta(
+            hours=13 if Date.fromisoformat(t) in SW.HALF_DAYS else 16)
+        out = {"date": d, "symbol": s, "news": news[:NEWS_LIMIT], "events": self.data.events_fn(d, start, close)}
         if len(news) > NEWS_LIMIT:
             out["news_truncated"] = True
         if t != d:

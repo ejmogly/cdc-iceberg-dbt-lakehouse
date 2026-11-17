@@ -11,7 +11,7 @@
 | 원/달러 환율 | 한국은행 ECOS Open API(`731Y001`, `0000001` 원/미국달러 매매기준율, 일별) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 값은 저장소에 두지 않음. 한국 휴일에는 값이 없음 | 각자 인증키를 받아 `loaders/fx_rates.py` | `source.fx_rates`(`infra/postgres/init/20_fx_rates.sql`) |
 | 코스피 일별 지수(예정) | 한국은행 ECOS Open API(`802Y001`, `0001000`) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 지수의 저작권은 통계 작성기관에 있으므로 값은 저장소에 두지 않음 | 각자 인증키를 받아 적재기 실행 | E03 판정(`docs/ai/experiments/E03-regime.md`) |
 | 고객 주문, 체결, 잔고 | 직접 만든 합성 데이터 | 제한 없음 | 생성기 실행(만들 예정) | `source.orders`, `source.executions`, `source.holdings` |
-| 일정(금리 결정, 물가와 고용 지표 발표일) | 정할 것. 후보는 FRED API(CPI, 고용), 연준 FOMC 일정 페이지, BLS 일정, 한국은행 결정회의 페이지, 국가데이터처 보도계획 | 후보마다 다름([`docs/ai/data-prep.md`](../docs/ai/data-prep.md) 6절) | 정한 뒤 만듦 | AI 트랙 C, 상관 점검의 「공통 원인」 |
+| 미국 일정(FOMC 금리 결정, CPI와 고용 보고서 발표일) | [연준 FOMC 일정 페이지](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm), FRED API(`fred/release/dates`, release 10과 50) | FOMC 페이지는 미국 정부 저작물(공공 영역), 출처 표시. FRED는 무료 키, 「This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.」 표시, FRED를 대신하는 서비스 금지. 국내 일정(한국은행, 국가데이터처)은 E02 1판에서 받지 않음([`docs/ai/data-prep.md`](../docs/ai/data-prep.md) 6절) | `loaders/schedule_events.py`(FRED는 각자 키를 받아 `FRED_API_KEY`) → `data/raw/schedule/` | 화면 파일의 `events`(E02 근거, 원천 DB에 넣지 않음) |
 
 - 받은 시세는 재배포할 수 없으므로 저장소에는 **받는 코드만** 둡니다(`loaders/`). 화면이나 글에 시세에서 나온 값을 보일 때는 출처를 적습니다.
 - 적재기는 받은 원본을 `data/raw/`에 두고, 값이 바뀐 행만 고칩니다(같은 값으로 다시 넣어도 CDC 이벤트가 생기지 않음). 쓰는 법은 [`loaders/README.md`](../loaders/README.md), 2026-11-11에 실제로 받아 본 결과는 [`docs/ai/data-prep.md`](../docs/ai/data-prep.md).

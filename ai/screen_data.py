@@ -51,7 +51,8 @@ create table fx (rate_date date primary key, rate decimal(12, 4));
 create table calendar (cal_date date primary key);
 create table news (id varchar primary key, published_utc timestamp, title varchar, description varchar,
                    publisher varchar, tickers varchar[], url varchar);
-create table events (id varchar primary key, event_date date, kind varchar, title varchar, source varchar);
+create table events (id varchar primary key, event_date date, kind varchar, title varchar, source varchar,
+                     local_time varchar, tz varchar);
 create table checks (seq integer, name varchar, ok boolean, value varchar, detail varchar);
 """
 CONTENT = [("instruments", "symbol"), ("prices", "symbol, trade_date"), ("fx", "rate_date"),
@@ -127,6 +128,16 @@ def read_news():
                             "publisher": (n.get("publisher") or {}).get("name"), "tickers": n.get("tickers") or [],
                             "url": n.get("article_url")}
     return list(out.values())
+
+
+def read_events():
+    """data/raw/schedule/의 일정 정리본(loaders/schedule_events.py가 만듦). 원천 DB에 넣지 않습니다(기사와 같은 길).
+    (일정 목록, FRED 일정을 받았는지). 정리본이 없으면 멈춥니다(일정 없이 7번 칸이 조용히 비지 않게)."""
+    path = RAW / "schedule" / "events_20241113_20261231.json"
+    if not path.exists():
+        sys.exit(f"{path.relative_to(ROOT)}가 없습니다. 먼저 python loaders/schedule_events.py")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload["events"], payload["fred"]
 
 
 # ---------- 검사 ----------
@@ -284,17 +295,23 @@ def _finish(con, tmp, path, meta, checks):
     tmp.replace(path)
 
 
-def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks):
+def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((), False)):
     con, tmp = _create(path)
+    events, fred = events
     try:
         _fill_real(con, insts, src_prices, src_fx, raw_adj, news)
+        if events:  # 자체 시험과 파이프라인 시험은 일정 없이 만듦(DuckDB executemany는 빈 목록을 받지 않음)
+            con.executemany("insert into events values (?, ?, ?, ?, ?, ?, ?)",
+                            [[e["id"], e["date"], e["kind"], e["title"], e["source"], e["local_time"], e["tz"]]
+                             for e in events])
     except BaseException:
         con.close()
         tmp.unlink(missing_ok=True)
         raise
     meta = {"kind": "real", "bench": REAL_BENCH, "window_start": START, "window_end": END,
             "source": "원천 PostgreSQL source.daily_prices, source.fx_rates(USDKRW). 수정 종가와 기사는 data/raw/",
-            "rows_prices": len(src_prices), "rows_fx": len(src_fx), "rows_news": len(news)}
+            "rows_prices": len(src_prices), "rows_fx": len(src_fx), "rows_news": len(news),
+            "rows_events": len(events), "events_fred": fred}
     _finish(con, tmp, path, meta, checks)
 
 
@@ -316,7 +333,7 @@ def export(path=OUT):
     src_prices, src_fx, outside = read_source()
     raw_prices, raw_adj, raw_fx = read_raw(insts)
     checks = check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx)
-    write_real(path, insts, src_prices, src_fx, raw_adj, read_news(), checks)
+    write_real(path, insts, src_prices, src_fx, raw_adj, read_news(), checks, read_events())
     return path
 
 
