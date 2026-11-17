@@ -153,10 +153,27 @@
     </section>
   </div>
 
+  <!-- 9번 칸: 묻고 답하기. 화면에 넣은 매매가 「내 계좌」, 기준일이 「오늘」 -->
+  <section id="qa-box" class="panel qa-box" aria-labelledby="qa-h">
+    <h2 id="qa-h">묻고 답하기 <span class="note">넣은 매매와 기준일로 답함</span> <span class="pill plain">확인 전</span></h2>
+    <form id="qa-form" class="qa-form" novalidate>
+      <label for="qa-q" class="sr">질문</label>
+      <input id="qa-q" type="text" maxlength="300" autocomplete="off" placeholder="예: NVDA 원화 손익 가운데 환율 효과는 얼마야?" aria-describedby="qa-help">
+      <button id="qa-go" class="btn go" type="submit">묻기</button>
+    </form>
+    <div class="qa-examples" role="group" aria-label="예시 질문">
+      <button type="button" class="chip" data-q="이 종목 원화 총손익은 얼마야?">원화 총손익</button>
+      <button type="button" class="chip" data-q="이 종목 앞으로 20거래일 범위 알려 줘">앞으로 20거래일 범위</button>
+      <button type="button" class="chip" data-q="지난달 말 원/달러 환율은 얼마였어?">지난달 말 환율</button>
+    </div>
+    <p id="qa-state" class="state" role="status" aria-live="polite"></p>
+    <ol id="qa-log" class="qa-log" role="log" aria-live="polite" aria-label="답"></ol>
+    <p id="qa-help" class="note">숫자는 손익, 시세, 환율, 기간 통계, 범위 도구의 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다. 그날 있었던 일(기사와 일정)을 찾는 기능은 다음 단계에서 붙입니다. 질문마다 모델을 두세 번 불러 답에 몇 초가 걸리고, 약 0.01달러가 듭니다. 평가셋의 확인용 판정은 다음 단계 뒤에 한 번 하므로 아직 확인 전입니다.</p>
+  </section>
+
   <section class="panel later" aria-labelledby="later-h">
     <h3 id="later-h">다음 단계에서 붙일 칸</h3>
     <ul>
-      <li><b>묻고 답하기</b> 손익, 시세, 환율, 범위 도구를 불러 숫자를 도구 결과에서만 옮기는 답</li>
       <li><b>그때 무슨 일이</b> 보유 기간의 큰 움직임 날에 같은 날 나온 기사와 일정(인용과 함께)</li>
     </ul>
   </section>

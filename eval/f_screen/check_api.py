@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import duckdb  # noqa: E402
 import real_world  # noqa: E402  독립 정답과 같은 원본 읽기(정답 쪽 코드). 문구의 날짜를 따로 셀 때만 씀
 
-from ai import screen_data  # noqa: E402
+from ai import llm, screen_data, screen_server  # noqa: E402
 from ai.screen_server import SAFE, serve, stop  # noqa: E402
 
 E01 = ROOT / "eval" / "e01_pnl"
@@ -49,8 +49,8 @@ NEAR = ["irr_pct", "bench_irr_pct"]
 DROPPED_BY_SQL = {"OVERSOLD", "AFTER_ASOF", "BAD_QTY"}
 
 
-def http(base, path, body=None, host=None):
-    headers = {"Content-Type": "application/json"}
+def http(base, path, body=None, host=None, headers=None):
+    headers = {"Content-Type": "application/json", **(headers or {})}
     if host:
         headers["Host"] = host
     req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
@@ -377,6 +377,49 @@ def check_edges():
     c2, r2 = pnl([buy("2025-03-04")])
     tests.append(("연 환산이 없는 까닭(30일 미만)", c == 200 and r["summary"]["irr_pct"] is None and r["irr_short"] is True
                   and c2 == 200 and r2["irr_short"] is False, f"{c} irr_short={r.get('irr_short')}, 대조 {r2.get('irr_short')}"))
+
+    # 9번 칸(묻고 답하기): 모델을 부르지 않는 가짜 답하는 함수로 입력 경계와, 넣은 매매와 기준일이 도구 층에 가는지 봄
+    seen = {}
+
+    def fake(ts, q):
+        seen.update(today=ts.today, trades=ts.account["trades"], text=q["text"], today_q=q["today"])
+        return ({"status": "answered", "text": "가짜 답", "numbers": [], "dates_used": [], "warnings": []},
+                {"tool_calls": [{"name": "price"}], "llm": [{"cost_usd": 0.001}], "decided_by": None})
+
+    def broke(ts, q):
+        raise llm.BudgetExceeded("상한")
+
+    httpd.app.ask_fn = fake
+    ask = lambda body: http(base, "/api/ask", body)
+    good = {"question": " SPY 종가? ", "asof": "2026-11-11",
+            "account": {"SPY": [buy("2025-03-04", "10"), {"date": "2025-06-02", "side": "SELL", "qty": "4"}], "QQQ": []}}
+    expect("묻기: 질문 없음", ask({**good, "question": "  "}), 400, "NO_QUESTION")
+    expect("묻기: 질문 301자", ask({**good, "question": "가" * 301}), 400, "TOO_LONG")
+    expect("묻기: 기준일 틀림", ask({**good, "asof": "2026-13-01"}), 400, "BAD_DATE")
+    expect("묻기: 기준일 기간 밖", ask({**good, "asof": "2030-01-02"}), 400, "OUT_OF_DATA_RANGE")
+    expect("묻기: 넣은 매매에 없는 종목", ask({**good, "account": {"NOPE": [buy("2025-03-04")]}}), 400, "UNKNOWN_SYMBOL")
+    expect("묻기: 넣은 매매의 틀린 줄", ask({**good, "account": {"SPY": [buy("20250304")]}}), 400, "BAD_DATE")
+    c, r = ask(good)
+    got_trades = seen.get("trades", {})
+    tests.append(("묻기: 기준일이 오늘, 넣은 매매가 계좌", c == 200 and r.get("text") == "가짜 답" and r.get("tools") == ["price"]
+                  and seen.get("today") == seen.get("today_q") == "2026-11-11" and seen.get("text") == "SPY 종가?"
+                  and list(got_trades) == ["SPY"] and [t["q"] for t in got_trades.get("SPY", [])] == [10, 4],
+                  f"{c} today={seen.get('today')} 종목={list(got_trades)}"))
+    httpd.app.ask_lock.acquire()
+    expect("묻기: 앞 질문의 답을 만드는 중", ask(good), 429, "BUSY")
+    httpd.app.ask_lock.release()
+    # 다른 사이트의 페이지가 보내는 질문(모델 호출에 돈이 듦), 폼 모양 본문, 계좌 모양(6단계 검토 2026-11-17)
+    expect("묻기: 다른 사이트에서 보냄", http(base, "/api/ask", good, headers={"Origin": "http://evil.example"}), 403, "BAD_ORIGIN")
+    expect("묻기: 같은 화면에서 보냄", http(base, "/api/ask", good, headers={"Origin": f"http://127.0.0.1:{port}"}), 200)
+    expect("묻기: 폼 모양 본문", http(base, "/api/ask", good, headers={"Content-Type": "text/plain"}), 415, "BAD_CONTENT_TYPE")
+    expect("묻기: 계좌가 목록", ask({**good, "account": [buy("2025-03-04")]}), 400, "BAD_ACCOUNT")
+    expect("묻기: 종목 매매가 글", ask({**good, "account": {"SPY": "BUY 10"}}), 400, "BAD_ACCOUNT")
+    asked = httpd.app.asks
+    httpd.app.asks = screen_server.MAX_ASKS
+    expect("묻기: 한 번 띄운 동안 물을 수 있는 수를 넘음", ask(good), 429, "BUSY")
+    httpd.app.asks = asked
+    httpd.app.ask_fn = broke
+    expect("묻기: 모델 호출 상한", ask(good), 503, "BUDGET")
     stop(httpd)
 
     # 깨진 저장 파일: 읽기와 저장 모두 500으로 알리고 파일을 덮어쓰지 않음

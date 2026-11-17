@@ -11,6 +11,10 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
                      금액이 손익 SQL의 decimal 범위를 넘으면(약 100억 원) 400 AMOUNT_TOO_LARGE와 금액이 가장 큰 줄
   GET  /api/range?symbol=&asof=  8번 칸(앞으로의 범위). 기준일 이전 마지막 거래일까지의 종가로 낸 20거래일 80% 범위와
                      지난날 적중률(n, 맞은 수, 창마다의 범위와 실제 값). 계산은 ai/screen_range.py
+  POST /api/ask      9번 칸(묻고 답하기). {"question", "asof", "account": {종목: [매매 줄]}}. 화면에 넣은 매매가 「내 계좌」,
+                     기준일이 「오늘」입니다. 답은 ai/qa.py(새 판 f1)이고 모델을 부릅니다(질문당 약 $0.01, 한 번에 하나).
+                     돌려주는 것: status, text, numbers, dates_used, warnings, 쓴 도구, 코드가 정한 답인지, 시간, 비용.
+                     이미 답을 만드는 중이면 429, 모델 호출 상한에 닿으면 503 BUDGET
   GET  /api/trades   화면에 넣어 둔 매매(종목마다). 저장 파일을 주지 않고 띄우면 {"enabled": false}
   PUT  /api/trades   {"symbol", "asof", "trades"} 한 종목의 매매를 저장(설계서 6절 4번: data/generated/ 아래 파일)
 
@@ -27,6 +31,7 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import threading
@@ -41,7 +46,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 
-from ai import screen_data, screen_range
+from ai import llm, screen_data, screen_range
 from ai.pnl import compute, iso_date, number
 from ai.tools import real_data
 
@@ -52,6 +57,8 @@ WARNINGS = json.loads((ROOT / "eval" / "f_screen" / "warnings.json").read_text(e
 STATIC = (ROOT / "screen").resolve()
 TRADES = SAFE / "f_screen" / "screen_trades.json"
 MAX_TRADES = 200
+MAX_QUESTION = 300
+MAX_ASKS = 200  # 서버를 한 번 띄운 동안 9번 칸이 물을 수 있는 수(모델 호출 상한과 따로 두는 화면 쪽 상한)
 TRADE_KEYS = ("date", "side", "qty", "price", "fx_rate")
 SIX = Decimal("0.000001")
 
@@ -66,6 +73,10 @@ class BadRequest(Exception):
         if self.index is not None:
             out["trade_index"] = self.index
         return out
+
+
+class Busy(Exception):
+    """9번 칸: 이미 답을 만드는 중(모델 호출은 한 번에 하나)."""
 
 
 class SavedFileError(Exception):
@@ -120,6 +131,9 @@ class App:
             raise ValueError(f"매매 저장 파일은 {SAFE} 아래여야 합니다: {self.trades_path}")
         self.trades_lock = threading.Lock()
         self.px = {}  # 8번 칸용 종목별 가격 목록(수정한 종가, 없으면 종가)
+        self.ask_fn = None  # 9번 칸의 답하는 함수. 비우면 ai/qa.py ask(시험은 모델을 부르지 않는 함수로 바꿔 끼움)
+        self.ask_lock = threading.Lock()
+        self.asks = 0
 
     def close(self):
         if self.data:
@@ -278,6 +292,59 @@ class App:
         v = screen_range.view(days, self.px[symbol], t)
         return {"symbol": symbol, "name": d.symbols[symbol]["name"], "currency": d.symbols[symbol]["currency"],
                 "asof": asof, **v, "ms": round((time.perf_counter() - t0) * 1000)}
+
+    def api_ask(self, body):
+        """9번 칸. 화면에 넣은 매매(account)를 계좌로, 기준일(asof)을 오늘로 묻고 답하기 새 판을 부릅니다."""
+        d = self.data
+        q = body.get("question")
+        if not isinstance(q, str) or not q.strip():
+            raise BadRequest("NO_QUESTION", "질문을 적어 주세요")
+        q = q.strip()
+        if len(q) > MAX_QUESTION:
+            raise BadRequest("TOO_LONG", f"질문은 {MAX_QUESTION}자까지입니다")
+        asof = body.get("asof")
+        if not iso_date(asof):
+            raise BadRequest("BAD_DATE", "기준일은 YYYY-MM-DD로 주세요")
+        if not d.calendar[0] <= asof <= d.calendar[-1]:
+            raise BadRequest("OUT_OF_DATA_RANGE", f"기준일은 데이터 기간({d.calendar[0]} ~ {d.calendar[-1]}) 안이어야 합니다")
+        acct = body.get("account") or {}
+        if not isinstance(acct, dict):
+            raise BadRequest("BAD_ACCOUNT", "넣은 매매의 모양이 틀렸습니다")
+        trades = {}
+        for sym, rows in acct.items():
+            if sym not in d.symbols:
+                raise BadRequest("UNKNOWN_SYMBOL", f"넣은 매매에 없는 종목이 있습니다: {sym}")
+            if not isinstance(rows, list):
+                raise BadRequest("BAD_ACCOUNT", f"{d.symbols[sym]['name']}({sym}) 매매의 모양이 틀렸습니다")
+            if not rows:
+                continue
+            try:
+                trades[sym] = self._trades({"trades": rows})
+            except BadRequest as e:
+                # 화면은 날짜와 수량이 있는 줄만 보내므로 「n번 줄」이 화면의 줄 번호와 다를 수 있어 번호를 뺌
+                msg = re.sub(r"^\d+번 줄의 ", "", e.message)
+                raise BadRequest(e.code, f"{d.symbols[sym]['name']}({sym}) 매매에 틀린 줄이 있습니다: {msg}") from None
+        if self.asks >= MAX_ASKS:
+            raise Busy(f"이번 서버 실행에서 물을 수 있는 수({MAX_ASKS}번)를 넘었습니다. 서버를 다시 띄우세요")
+        if not self.ask_lock.acquire(blocking=False):
+            raise Busy("앞 질문의 답을 만드는 중입니다. 답이 나온 뒤 다시 물어 주세요")
+        self.asks += 1
+        try:
+            fn = self.ask_fn
+            if fn is None:
+                from ai import qa
+                fn = qa.ask
+            from ai.tools import Toolset
+            t0 = time.perf_counter()
+            ans, trace = fn(Toolset(d, asof, {"id": "screen", "trades": trades}), {"id": "screen", "text": q, "today": asof})
+        finally:
+            self.ask_lock.release()
+        calls = trace.get("llm", [])
+        return {"question": q, "asof": asof, **{k: ans.get(k) for k in ("status", "text", "numbers", "dates_used", "warnings")},
+                "tools": [c["name"] for c in trace.get("tool_calls", [])], "decided_by": trace.get("decided_by"),
+                "rewrite": bool(trace.get("rewrite")), "n_llm": len(calls),
+                "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 4),
+                "seconds": round(time.perf_counter() - t0, 1)}
 
     # ---------- 넣은 매매 저장(설계서 6절 4번) ----------
 
@@ -445,10 +512,12 @@ def make_handler(app, port_holder):
         def do_POST(self):
             if not self._host_ok():
                 return
-            if self.path != "/api/pnl":
+            if self.path not in ("/api/pnl", "/api/ask"):
                 return self._send(404, {"error": "NOT_FOUND"})
             if not self._gate():
                 return
+            if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+                return self._send(415, {"error": "BAD_CONTENT_TYPE", "message": "application/json으로 보내 주세요"})
             try:
                 body = self._body()
             except ValueError:  # 길이 머리, JSON, UTF-8을 읽지 못함
@@ -456,9 +525,13 @@ def make_handler(app, port_holder):
             except BadRequest as e:
                 return self._send(400, e.payload())
             try:
-                return self._send(200, app.api_pnl(body))
+                return self._send(200, (app.api_ask if self.path == "/api/ask" else app.api_pnl)(body))
             except BadRequest as e:
                 return self._send(400, e.payload())
+            except Busy as e:
+                return self._send(429, {"error": "BUSY", "message": str(e)})
+            except llm.BudgetExceeded:
+                return self._send(503, {"error": "BUDGET", "message": "모델 호출 상한에 닿아 답할 수 없습니다"})
             except Exception as e:  # 그 밖의 오류도 연결을 끊지 않고 JSON으로 알립니다
                 traceback.print_exc(file=sys.stderr)
                 return self._send(500, {"error": "INTERNAL", "message": type(e).__name__})

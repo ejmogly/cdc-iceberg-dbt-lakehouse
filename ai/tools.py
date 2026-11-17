@@ -23,6 +23,10 @@ F 화면에서 바꾼 일곱 가지(docs/ai/F-screen.md 2절 「도구 층에서
 6. 기준 종목은 원천이 정합니다(가짜 BENCH, 실제 SPY).
 7. 모델 호출 장부와 실행 기록의 자리는 Data.kind("fake", "real")로 정합니다(ai/llm.py의 ledger_for, runs_dir).
    실제 데이터는 data/generated/(git 제외) 밖에 쓰면 멈춥니다.
+
+6단계(묻고 답하기 새 판)에서 더한 것: range 도구. 화면 8번 칸과 같은 계산(ai/screen_range.py, E03 기준선 「최근 20일
+변동성」)으로 앞으로 20거래일 80% 범위, 지난 창 n과 맞은 수, 적중률, 표시 갈래를 냅니다. 오늘(기준일)까지의 가격만
+넘겨 뒤 값을 읽을 수 없게 합니다. similar_periods(비슷했던 때)는 가짜 세계에만 남습니다(F-screen.md 2절).
 """
 import importlib.util
 import json
@@ -35,6 +39,7 @@ from pathlib import Path
 
 import duckdb
 
+from ai import screen_range
 from ai.pnl import Engine, compute, iso_date, number
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +75,12 @@ def _clean(d):
     if isinstance(d, list):
         return [_clean(v) for v in d]
     return _num(d)
+
+
+def _signed(v):
+    """화면과 같은 % 표기: 0보다 크면 +, 작으면 −(U+2212), 소수 둘째 자리까지 채움(값은 이미 반올림됨)."""
+    sign = "+" if v > 0 else "\u2212" if v < 0 else ""
+    return f"{sign}{abs(v):.2f}"
 
 
 def _r2(x):
@@ -173,7 +184,8 @@ class Toolset:
         self.data, self.today, self.account = data, today, account
         self.first = data.calendar[0]
         self.tools = {f: getattr(self, f) for f in
-                      ("portfolio_pnl", "whatif_pnl", "price", "fx", "period_stats", "search_events", "similar_periods")}
+                      ("portfolio_pnl", "whatif_pnl", "price", "fx", "period_stats", "search_events", "similar_periods",
+                       "range")}
 
     # ---------- 공통 ----------
 
@@ -376,6 +388,40 @@ class Toolset:
         if r["status"] == "too_few":
             r["message"] = "겹치지 않는 비슷했던 때가 5번 미만이라 범위를 내지 않습니다"
         return {"symbol": s, "name": self.data.symbols[s]["name"], "horizon_days": int(h), **r}
+
+    def range(self, symbol, horizon_days=screen_range.AHEAD):
+        """앞으로 20거래일 80% 범위(화면 8번 칸과 같은 계산). 오늘 이하 마지막 거래일까지의 가격만 넘깁니다."""
+        s = self._symbol(symbol)
+        if int(horizon_days) != screen_range.AHEAD:
+            raise ToolError("UNSUPPORTED_HORIZON", f"범위는 앞으로 {screen_range.AHEAD}거래일만 냅니다(하루나 며칠 뒤 가격은 내지 않음)")
+        days = self.data.rows[s]
+        t = bisect_right(days, self.today) - 1
+        if t < 0:
+            raise ToolError("OUT_OF_RANGE", f"{self.today} 앞에 {s}의 거래일이 없습니다")
+        rows = self.data.symbols[s]["rows"]
+        px = [float(rows[x]["adj_close"] if rows[x].get("adj_close") is not None else rows[x]["close"])
+              for x in days[:t + 1]]
+        v = screen_range.view(days[:t + 1], px, t)
+        krw = self.data.symbols[s]["currency"] == "KRW"
+        out = {"symbol": s, "name": self.data.symbols[s]["name"], "horizon_days": screen_range.AHEAD,
+               **{k: v[k] for k in ("base_date", "ok", "lo_pct", "hi_pct", "n", "hits", "hit_rate_pct", "display", "side")},
+               # 답에 그대로 옮길 문장(화면 8번 칸과 같은 뜻). 국내 종목은 원 가격이라 「원화 범위가 아님」을 쓰지 않음
+               "basis_text": "최근 20일 변동성이 이어진다고 본 단순 계산이고, " +
+                             ("원 가격의 수익률입니다." if krw else "현지 통화(달러) 가격의 수익률이라 원화 범위가 아닙니다."),
+               "note_text": "데이터가 2년뿐이라 적중률은 참고로만 보는 값입니다."}
+        # 화면 8번 칸과 같은 글자(답에 그대로 옮기게 함): 범위는 부호와 소수 둘째 자리, 알림과 표본 문구는 같은 문장
+        if v["ok"]:
+            out["range_text"] = f"{_signed(v['lo_pct'])}% ~ {_signed(v['hi_pct'])}%"
+        if v["n"] and v["display"] == "알림":
+            out["alert_text"] = ("적중률이 90%를 넘어, 이 종목에서는 80% 범위가 지난날의 움직임보다 넓었습니다." if v["side"] == "넓음"
+                                 else "적중률이 70%에 못 미쳐, 이 종목에서는 80% 범위가 지난날의 움직임보다 좁았습니다.")
+        elif v["n"] and v["display"] == "표본 문구":
+            out["alert_text"] = f"표본이 적어(n = {v['n']}) 적중률로 판단하기 어렵습니다."
+        if not v["ok"]:
+            out["message"] = f"{v['base_date']} 앞에 일별 수익률 {screen_range.PAST}개가 없어 범위를 셀 수 없습니다"
+        if self.today > days[-1]:
+            out["warnings"] = ["LATEST_NOT_LOADED"]
+        return out
 
     def call(self, name, args):
         """도구 하나를 부르고 JSON으로 옮길 수 있는 값으로 돌려줍니다."""

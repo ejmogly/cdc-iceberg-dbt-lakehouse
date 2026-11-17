@@ -36,12 +36,14 @@ screen:
 
 # 내보내기 검사 자체 시험, E04 기록 재생 회귀, 계산 서버 대조(골든, 실제, 지연, 파이프라인 상태, 입력 경계),
 # 범위 칸 대조(8번 칸: 독립 정답 38행, 미래 바꾸기 시험, 화면 글자 38행), 화면 값 대조(헤드리스 Chrome으로 그린 화면의 글자가 API 값과
-# 같은지, 색 대비), 입력 흐름(빠른 고침, 저장 실패 등)
+# 같은지, 색 대비), 입력 흐름(빠른 고침, 저장 실패 등), 묻고 답하기 갈래(9번 칸: 모델 없이 꾸민 분류와 답)
 check-screen:
 	$(PY) -m ai.screen_data --selftest
 	$(PY) eval/f_screen/replay_e04.py
 	$(PY) eval/f_screen/replay_e04.py --selftest
 	$(PY) eval/f_screen/check_api.py
+	$(PY) eval/f_screen/check_qa.py --selftest
+	$(PY) eval/f_screen/check_qa.py
 	$(PY) eval/f_screen/check_range.py --selftest
 	$(PY) eval/f_screen/check_range.py
 	$(PY) eval/f_screen/check_screen.py --selftest

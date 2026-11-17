@@ -11,7 +11,10 @@
      틀린 동안 범위가 흐려지고, 범위를 불러오지 못하면 앞 숫자 대신 그렇다고 적음(5단계 독립 검토 2026-11-17 낮음 5번)
   6. 저장 실패와 종목 바꾸기: 저장 요청이 서버에 닿지 못해도 종목이 바뀌고, 상태 줄에 「저장하지 못했습니다」가 남고,
      잡히지 않은 오류가 없으며, 매매가 없는 종목은 앞 종목의 결과를 숨기고, 돌아오면 고친 값이 남아 있음
-  7. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
+  7. 묻고 답하기(9번 칸): 빈 질문은 보내지 않고, 보낸 기준일과 넣은 매매가 화면과 같고, 답을 기다리는 동안 묻기 단추가
+     막혀 또 보내지 않고, 받은 답이 상태와 쓴 도구와 함께 목록에 들고, 실패(429)는 안내만 남김. 응답을 붙잡거나 꾸며
+     넣어 모델을 부르지 않음
+  8. 닫을 때 저장: 고친 뒤 0.7초 안에 화면을 떠나도 고친 값이 저장 파일에 들어감
 
 결과 칸은 매매 칸 위(result)와 아래(result-more) 둘이라, 흐림과 숨김은 두 칸을 함께 봅니다(같은 검토 중간 2번).
 
@@ -380,7 +383,72 @@ def run_flows(page, port):
     page.call("Fetch.disable")
     out["저장 실패에도 종목이 바뀌고 고친 값이 남음"] = bad
 
-    # 7. 닫을 때 저장
+    # 7. 묻고 답하기(9번 칸): 모델 없이 응답을 붙잡거나 꾸며 봄
+    bad, held = [], []
+    page.errors.clear()
+    page.on_pause = held.append
+    page.call("Fetch.enable", patterns=[{"urlPattern": "*/api/ask*", "requestStage": "Request"}])
+    page.js("document.getElementById('qa-q').value = '  '; document.getElementById('qa-form').requestSubmit()")
+    page.pump(0.5)
+    if held:
+        bad.append("빈 질문을 보냄")
+    if not page.js("document.getElementById('qa-state').classList.contains('err')"):
+        bad.append("빈 질문에 안내가 없음")
+    page.js("document.getElementById('qa-q').value = 'SPY 종가?'; document.getElementById('qa-form').requestSubmit()")
+    end = time.time() + 5
+    while not held and time.time() < end:
+        page.pump(0.1)
+    if not held:
+        bad.append("질문 요청을 붙잡지 못함")
+    else:
+        sent = json.loads(held[0]["request"].get("postData") or "{}")
+        if sent.get("asof") != page.js("document.getElementById('asof').value") or "QQQ" not in (sent.get("account") or {}):
+            bad.append(f"보낸 기준일이나 넣은 매매가 화면과 다름: {list((sent.get('account') or {}))}")
+        if not page.js("document.getElementById('qa-go').disabled"):
+            bad.append("답을 기다리는 동안 묻기 단추가 막히지 않음")
+        page.js("document.getElementById('qa-q').value = '또 물음'; document.getElementById('qa-form').requestSubmit()")
+        page.pump(0.5)
+        if len(held) > 1:
+            bad.append("답을 기다리는 동안 또 보냄")
+        # 답 글과 질문은 글자로만 넣음(모델이나 사용자가 쓴 태그가 화면 요소가 되지 않게, 6단계 검토 2026-11-17)
+        fake = {"question": "SPY 종가?<img id=\"qa-xss-q\" src=\"x\">", "asof": sent.get("asof"), "status": "answered",
+                "text": "가짜 답입니다.<img id=\"qa-xss\" src=\"x\" onerror=\"window.qaXss=1\">",
+                "numbers": [], "dates_used": [], "warnings": [], "tools": ["price"], "decided_by": None,
+                "rewrite": False, "n_llm": 2, "cost_usd": 0.01, "seconds": 3.2}
+        page.call("Fetch.fulfillRequest", requestId=held[0]["requestId"], responseCode=200,
+                  responseHeaders=[{"name": "Content-Type", "value": "application/json"}],
+                  body=base64.b64encode(json.dumps(fake).encode()).decode())
+        shown = "document.querySelector('#qa-log li .qa-a')?.textContent.startsWith('가짜 답입니다.')"
+        if not page.wait(shown, 3):
+            bad.append("받은 답이 목록에 없음")
+        elif page.js("!!document.querySelector('#qa-xss, #qa-xss-q') || !!window.qaXss"):
+            bad.append("답이나 질문의 태그가 화면 요소가 됨")
+        elif page.js("document.querySelector('#qa-log li .pill').textContent") != "답함" or \
+                "쓴 도구 price" not in page.js("document.querySelector('#qa-log li .qa-meta').textContent"):
+            bad.append("답의 상태나 쓴 도구 표시가 다름")
+        else:
+            acct = sent.get("account") or {}
+            want = f"보낸 매매 {len(acct)}종목 {sum(len(v) for v in acct.values())}줄"
+            if want not in page.js("document.querySelector('#qa-log li .qa-meta').textContent"):
+                bad.append(f"답에 보낸 매매가 적히지 않음(기대 「{want}」)")
+        if page.js("document.getElementById('qa-go').disabled"):
+            bad.append("답을 받은 뒤에도 묻기 단추가 막힘")
+    page.on_pause = lambda p: page.call("Fetch.fulfillRequest", requestId=p["requestId"], responseCode=429,
+                                        responseHeaders=[{"name": "Content-Type", "value": "application/json"}],
+                                        body=base64.b64encode(json.dumps({"error": "BUSY", "message": "앞 질문"}).encode()).decode())
+    page.js("document.getElementById('qa-q').value = 'QQQ 종가?'; document.getElementById('qa-form').requestSubmit()")
+    if not page.wait("document.getElementById('qa-state').classList.contains('err') && "
+                     "document.getElementById('qa-state').textContent.includes('429')", 3):
+        bad.append(f"429에 안내가 없음: {page.js("document.getElementById('qa-state').textContent")!r}")
+    if page.js("document.querySelectorAll('#qa-log li').length") != 1:
+        bad.append("실패한 질문이 답 목록에 들어감")
+    page.on_pause = None
+    page.call("Fetch.disable")
+    if page.errors:
+        bad.append(f"잡히지 않은 오류: {page.errors}")
+    out["묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패"] = bad
+
+    # 8. 닫을 때 저장
     bad = []
     type_in(page, "q0", "11")
     page.call("Page.navigate", url="about:blank")
@@ -422,13 +490,22 @@ BUGS = [
         ("      holdRange();\n", "")]),
     ("범위 칸: 늦게 온 답, 틀린 기준일, 불러오기 실패", "불러오기 실패에 앞 범위를 그대로 둠", [
         ("  if (r.status !== 200) {\n    renderRange(null,", "  if (r.status !== 200 && r.status !== 0) {\n    renderRange(null,")]),
+    ("묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패", "답을 기다리는 동안 단추를 막지 않음", [
+        ('  $("qa-go").disabled = true;\n', "")]),
+    ("묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패", "답 글을 태그로 넣음", [
+        ('  li.querySelector(".qa-a").textContent = a.text;', '  li.querySelector(".qa-a").innerHTML = a.text;')]),
+    ("묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패", "질문 글을 태그로 넣음", [
+        ('  li.querySelector(".qa-q span:last-child").textContent = a.question;',
+         '  li.querySelector(".qa-q span:last-child").innerHTML = a.question;')]),
+    ("묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패", "빈 질문도 보냄", [
+        ('  if (!q) { qaState("질문을 적어 주세요.", true); $("qa-q").focus(); return; }\n', "")]),
     ("떠나기 직전 고친 값도 저장", "떠날 때 보내지 않음", [
         ("  window.addEventListener(\"pagehide\", flush);\n", "")]),
 ]
 
 
 def one_run(static=None):
-    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 일곱을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
+    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 여덟을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
     TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START}}, "last": "QQQ"}),
                    encoding="utf-8")
     old = screen_server.STATIC

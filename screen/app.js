@@ -16,7 +16,7 @@ const PRICE = /^\d+(\.\d{1,4})?$/;
 const st = {
   symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
   saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
-  saveErr: null, notes: null, rseq: 0, rctl: null,
+  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false,
 };
 
 // ---------- 서버 ----------
@@ -563,6 +563,68 @@ function renderRange(v, err) {
   showRange("ok");
 }
 
+// ---------- 9번 칸: 묻고 답하기 ----------
+
+// 화면에 넣은 매매 전체(종목마다, 지금 고치는 종목은 화면의 줄)를 계좌로 보냅니다. 날짜와 수량이 있는 줄만
+function account() {
+  const all = { ...st.saved.symbols, [st.sym]: snapshot() };
+  const out = {};
+  for (const [sym, v] of Object.entries(all)) {
+    const rows = (v?.trades || []).filter((t) => t.date && t.qty)
+      .map((t) => ({ date: t.date, side: t.side || "BUY", qty: clean(t.qty),
+        ...(clean(t.price) ? { price: clean(t.price) } : {}), ...(clean(t.fx_rate) ? { fx_rate: clean(t.fx_rate) } : {}) }));
+    if (rows.length) out[sym] = rows;
+  }
+  return out;
+}
+
+const STATUS = { answered: ["답함", "ok"], unknown: ["모름", "plain"], refused: ["답하지 않음", "plain"], clarify: ["되물음", "warn"] };
+
+function qaState(text, err = false) {
+  const s = $("qa-state");
+  s.textContent = text;
+  s.classList.toggle("err", err);
+}
+
+async function ask(question) {
+  if (st.asking) return;
+  const q = question.trim();
+  if (!q) { qaState("질문을 적어 주세요.", true); $("qa-q").focus(); return; }
+  if (st.asofErr) { qaState("기준일을 고친 뒤 물어 주세요.", true); return; }
+  st.asking = true;
+  $("qa-go").disabled = true;
+  qaState("답을 만드는 중입니다(보통 몇 초).");
+  // 보낸 그대로를 답에 적어 둠(기다리는 동안 매매를 고쳐도 그 답이 무엇으로 셈했는지 남게)
+  const acct = account(), nSym = Object.keys(acct).length, nRow = Object.values(acct).reduce((n, v) => n + v.length, 0);
+  let r;
+  try {
+    r = await api("/api/ask", { method: "POST", body: JSON.stringify({ question: q, asof: st.asof, account: acct }) });
+  } catch {
+    r = { status: 0, body: null };
+  }
+  st.asking = false;
+  $("qa-go").disabled = false;
+  $("qa-q").focus();  // 단추가 막히며 잃은 초점을 질문 칸으로 돌려줌
+  if (r.status === 503 && r.body?.error === "PIPELINE_CHECK_FAILED") { await pipelineFailed(); return; }
+  if (r.status !== 200 || !r.body) {
+    qaState(`답을 받지 못했습니다(${r.status || "서버에 닿지 못함"}${r.body?.message ? ", " + r.body.message : ""}).`, true);
+    return;
+  }
+  const a = r.body, [label, cls] = STATUS[a.status] || [a.status, "plain"];
+  const li = document.createElement("li");
+  li.innerHTML = `<p class="qa-q"><span class="pill"></span><span></span></p><p class="qa-a"></p><p class="qa-meta"></p>`;
+  li.querySelector(".pill").className = "pill " + cls;
+  li.querySelector(".pill").textContent = label;
+  li.querySelector(".qa-q span:last-child").textContent = a.question;
+  li.querySelector(".qa-a").textContent = a.text;
+  const how = a.decided_by ? "코드가 정한 답" : a.tools.length ? `쓴 도구 ${[...new Set(a.tools)].join(", ")}` : "도구 없음";
+  li.querySelector(".qa-meta").textContent =
+    `기준일 ${a.asof}, 보낸 매매 ${nSym}종목 ${nRow}줄, ${how}, 모델 호출 ${a.n_llm}번, ${a.seconds}초, 약 ${a.cost_usd}달러`;
+  $("qa-log").prepend(li);
+  qaState("답이 나왔습니다.");
+  $("qa-q").value = "";
+}
+
 // ---------- 저장(설계서 6절 4번) ----------
 
 function snapshot() {
@@ -688,6 +750,10 @@ async function boot() {
     changed();
   });
   window.addEventListener("pagehide", flush);
+  $("qa-form").addEventListener("submit", (e) => { e.preventDefault(); ask($("qa-q").value); });
+  for (const b of document.querySelectorAll(".qa-examples .chip")) {
+    b.addEventListener("click", () => { $("qa-q").value = b.dataset.q.replace("이 종목", st.symbols.get(st.sym)?.name || st.sym); $("qa-q").focus(); });
+  }
   $("add").addEventListener("click", addRow);
   let rz = null, lastW = window.innerWidth;
   window.addEventListener("resize", () => {
