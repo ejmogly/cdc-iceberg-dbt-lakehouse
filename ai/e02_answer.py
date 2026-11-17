@@ -40,6 +40,7 @@ NAMES = {"SPY": ("SPDR S&P 500 ETF", "미국 증시 전체"), "QQQ": ("Invesco Q
 SCHEMA = {"type": "object", "required": ["found", "text", "citations"], "properties": {
     "found": {"type": "boolean"}, "text": {"type": "string"}, "citations": {"type": "array", "items": {"type": "integer"}}}}
 TEXT = {"not_found": "그날의 검색 창에서 이 종목이나 시장의 일을 전한 기사를 찾지 못했습니다.",
+        "domestic": "국내 종목은 기사 근거가 없습니다(다음 판).",
         "not_verified": "기사 내용을 규칙에 맞게 정리하지 못해 보이지 않습니다.",
         "llm_failed": "기사 내용을 정리하지 못했습니다(모델 호출 실패).",
         "first_days": "데이터 첫 61거래일이라 큰 움직임인지 판정하지 않습니다."}
@@ -73,8 +74,9 @@ def day_move(rows, d):
             "judged": True}
 
 
-def move_line(sym, d, mv):
-    name = NAMES[sym][0]
+def move_line(sym, d, mv, name=None):
+    """움직임 문장. name을 주지 않으면 E02 1판 종목의 이름(국내 종목은 화면이 이름을 넘김)."""
+    name = name or NAMES[sym][0]
     if not mv["judged"]:
         return f"{d} {name}({sym})의 하루 등락률은 {_signed(mv['pct'])}%입니다. {TEXT['first_days']}"
     tail = "큰 움직임 날입니다" if mv["big"] else "크게 움직인 날은 아닙니다"
@@ -128,7 +130,7 @@ def answer(con, days, rows, sym, d, version="h1", drop_evidence=False, tag=""):
 
     def done(status, body, cites=(), found=False):
         trace["seconds"] = time.perf_counter() - t0
-        return {"status": status, "text": f"{head} {body}".strip(), "move": mv, "found": found,
+        return {"status": status, "text": f"{head} {body}".strip(), "head": head, "body": body, "move": mv, "found": found,
                 "citations": [{"n": n, "id": arts[n - 1]["id"], "title": arts[n - 1]["title"],
                                "publisher": arts[n - 1]["publisher"], "time": arts[n - 1]["time"]} for n in cites]}, trace
 

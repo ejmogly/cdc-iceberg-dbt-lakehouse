@@ -7,6 +7,8 @@
   드러나지 않게 합니다. 판정 모델의 표시는 보이지 않습니다(사람이 먼저 보고 나중에 맞춰 봄).
 - 누른 값은 진행판의 db 컬렉션 e02_labels에 문서 「날짜번호_풀순번」으로 저장됩니다({article, item, label, at}).
   Claude가 ArtifactData로 읽어 eval/e02_rag/kappa.py로 판정 모델과 맞춰 봅니다.
+- 근거 충실도 표본(2026-11-17 담당자 결정, 20문장)이 있으면(data/generated/e02/faith_sample_{split}.json,
+  judge_answers.py --sample) 같은 탭 아래에 더합니다. 누른 값은 컬렉션 e02_faith에 문서 「S01」 ~ 「S20」({answer, s, label, at}).
 - 기사 제목과 요약이 비공개 진행판에 들어갑니다(2026-11-17 담당자 결정). 저장소에는 이 코드만 둡니다.
 - 진행판 안의 <!-- e02-labels:start --> ~ <!-- e02-labels:end --> 블록 셋(스타일, 탭 단추, 탭 내용과 스크립트)만 바꿉니다.
 """
@@ -53,7 +55,7 @@ TAB = ('<button class="tab" role="tab" id="tab-labels" aria-controls="labels" ar
 
 PANEL = """<section class="panel x" id="labels" role="tabpanel" aria-labelledby="tab-labels" hidden>
   <section class="x-card" aria-labelledby="s-labels">
-    <h2 class="x-display">기사 __N__건에 예, 아니오를 눌러요 <em class="warn">11/23(월) 30분 안</em></h2>
+    <h2 class="x-display">__HEAD__ <em class="warn">11/23(월) __MIN__분 안</em></h2>
     <div class="x-sec-h"><h3 id="s-labels">E02 관련 표시 사람 표본</h3><span id="lb-progress">불러오는 중</span></div>
     <p class="x-note">큰 움직임이 있던 날마다 검색 판(기준선과 H1)이 고른 기사입니다. 어느 판이 골랐는지와 판정 모델의 표시는 보이지 않습니다. 누르면 이 페이지에 바로 저장되고, 다시 누르면 바뀝니다. 판정 모델과 일치도(카파)가 0.7 이상이어야 판정 모델 점수를 씁니다(E02 3절).</p>
     <div class="lb-rule">
@@ -66,13 +68,23 @@ PANEL = """<section class="panel x" id="labels" role="tabpanel" aria-labelledby=
     <p class="x-callout" id="lb-msg" hidden></p>
   </section>
   <div class="x" id="lb-days"></div>
+  <section class="x-card" id="lb-faith-head" hidden>
+    <div class="x-sec-h"><h3>근거 충실도: 답 문장 20개</h3><span>판정 모델의 표시는 숨김</span></div>
+    <p class="x-note">E02 답 쓰기 판 1이 개발 날짜에 쓴 문장과, 그 문장이 인용한 기사입니다. 문장 하나에 예, 아니오 하나를 누릅니다.</p>
+    <div class="lb-rule">
+      <p><b>예(뒷받침됨):</b> 문장이 말한 것이 모두 인용한 기사의 제목이나 요약에 있음. 한국어로 옮긴 것은 괜찮습니다.</p>
+      <p><b>아니오:</b> 기사에 없는 사실, 숫자, 날짜, 이름을 더했거나, 다른 기사의 내용을 이 기사에 붙였거나, 기사의 의견을 사실처럼 씀.</p>
+    </div>
+  </section>
+  <div class="x" id="lb-faith"></div>
 </section>"""
 
 SCRIPT = r"""<script type="application/json" id="lb-data">__DATA__</script>
 <script>
 (function () {
-  var DATA = JSON.parse(document.getElementById("lb-data").textContent);
-  var ALL = []; DATA.forEach(function (d) { d.items.forEach(function (a) { ALL.push(a.key); }); });
+  var RAW = JSON.parse(document.getElementById("lb-data").textContent), DATA = RAW.days, FAITH = RAW.faith || [];
+  var ALL = []; DATA.forEach(function (d) { d.items.forEach(function (a) { ALL.push("e02_labels/" + a.key); }); });
+  FAITH.forEach(function (f) { ALL.push("e02_faith/" + f.key); });
   var LB = {}, busy = {}, db = null, canWrite = true, state = "loading";
   var $ = function (id) { return document.getElementById(id); };
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -92,15 +104,34 @@ SCRIPT = r"""<script type="application/json" id="lb-data">__DATA__</script>
         if (a.summary) body.appendChild(el("p", "lb-sum", a.summary));
         var btns = el("div", "lb-btns");
         btns.setAttribute("role", "group"); btns.setAttribute("aria-label", "관련 여부: " + a.title.slice(0, 40));
-        [["yes", "예", true], ["no", "아니오", false]].forEach(function (b) {
-          var btn = el("button", "lb-btn " + b[0], b[1]); btn.type = "button";
-          btn.dataset.key = a.key; btn.dataset.val = b[2] ? "1" : "0"; btn.dataset.article = a.id; btn.dataset.item = d.id;
-          btn.setAttribute("aria-pressed", "false");
-          btns.appendChild(btn);
-        });
+        addButtons(btns, "e02_labels", a.key, { article: a.id, item: d.id });
         row.appendChild(body); row.appendChild(btns); list.appendChild(row);
       });
       card.appendChild(list); root.appendChild(card);
+    });
+    if (!FAITH.length) return;
+    $("lb-faith-head").hidden = false;
+    var froot = $("lb-faith"), card = el("section", "x-card lb-day"), list = el("div");
+    FAITH.forEach(function (f) {
+      var row = el("div", "lb-item"), body = el("div");
+      body.appendChild(el("p", "lb-meta", f.key + "  " + f.date + "  " + f.symbol));
+      body.appendChild(el("p", "lb-title", f.text));
+      f.articles.forEach(function (a) {
+        body.appendChild(el("p", "lb-sum", "[" + a.n + "] " + a.publisher + " | " + a.title + (a.summary ? " | " + a.summary : "")));
+      });
+      var btns = el("div", "lb-btns");
+      btns.setAttribute("role", "group"); btns.setAttribute("aria-label", "뒷받침 여부: " + f.key);
+      addButtons(btns, "e02_faith", f.key, { answer: f.answer, s: f.s });
+      row.appendChild(body); row.appendChild(btns); list.appendChild(row);
+    });
+    card.appendChild(list); froot.appendChild(card);
+  }
+  function addButtons(btns, coll, key, extra) {
+    [["yes", "예", true], ["no", "아니오", false]].forEach(function (b) {
+      var btn = el("button", "lb-btn " + b[0], b[1]); btn.type = "button";
+      btn.dataset.key = coll + "/" + key; btn.dataset.val = b[2] ? "1" : "0"; btn.dataset.extra = JSON.stringify(extra);
+      btn.setAttribute("aria-pressed", "false");
+      btns.appendChild(btn);
     });
   }
   function render() {
@@ -121,9 +152,9 @@ SCRIPT = r"""<script type="application/json" id="lb-data">__DATA__</script>
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest(".lb-btn"); if (!b || b.disabled || !db) return;
-    var key = b.dataset.key, body = { article: b.dataset.article, item: b.dataset.item, label: b.dataset.val === "1", at: new Date().toISOString() };
+    var key = b.dataset.key, body = Object.assign(JSON.parse(b.dataset.extra), { label: b.dataset.val === "1", at: new Date().toISOString() });
     busy[key] = true; LB[key] = body; render();
-    db.doc("e02_labels/" + key).set(body).then(function () { busy[key] = false; render(); }, function (err) {
+    db.doc(key).set(body).then(function () { busy[key] = false; render(); }, function (err) {
       busy[key] = false;
       if (err && (err.code === "invalid_argument" || err.code === "not_granted")) canWrite = false; else console.warn(err);
       render();
@@ -136,12 +167,16 @@ SCRIPT = r"""<script type="application/json" id="lb-data">__DATA__</script>
     if (!db) { clearTimeout(timer); state = "none"; render(); return; }
     var user = await window.claude.use("user");
     if (user) { try { var w = await user.can("data.write"); if (w === false) canWrite = false; } catch (e) {} }
-    db.collection("e02_labels").onSnapshot(function (s) {
-      clearTimeout(timer);
-      var next = {}; s.docs.forEach(function (d) { next[d.id] = d.data(); });
-      Object.keys(busy).forEach(function (k) { if (busy[k] && LB[k]) next[k] = LB[k]; });
-      LB = next; state = "ok"; render();
-    }, function () { clearTimeout(timer); state = "error"; render(); });
+    var got = {};
+    ["e02_labels", "e02_faith"].forEach(function (coll) {
+      db.collection(coll).onSnapshot(function (s) {
+        clearTimeout(timer);
+        got[coll] = {}; s.docs.forEach(function (d) { got[coll][coll + "/" + d.id] = d.data(); });
+        var next = {}; Object.keys(got).forEach(function (c) { Object.assign(next, got[c]); });
+        Object.keys(busy).forEach(function (k) { if (busy[k] && LB[k]) next[k] = LB[k]; });
+        LB = next; state = "ok"; render();
+      }, function () { clearTimeout(timer); state = "error"; render(); });
+    });
   })();
 })();
 </script>"""
@@ -181,11 +216,20 @@ def main():
         days.append({"id": it["id"], "date": it["date"], "symbol": it["symbol"], "name": NAMES[it["symbol"]],
                      "market": MARKET.get(it["symbol"], ""), "window_articles": it["window_articles"],
                      "window": f"{w[0]} ~ {w[1]}(미국 동부)", "items": items})
-    data = json.dumps(days, ensure_ascii=False).replace("</", "<\\/")
+    fpath = ROOT / "data" / "generated" / "e02" / f"faith_sample_{split}.json"
+    faith = []
+    if fpath.exists():
+        for f in json.loads(fpath.read_text(encoding="utf-8"))["items"]:
+            faith.append({"key": f["key"], "answer": f["answer"], "s": f["s"], "date": f["date"], "symbol": f["symbol"],
+                          "text": f["text"], "articles": [{"n": n, "publisher": a["publisher"] or "", "title": a["title"] or "",
+                                                           "summary": a["summary"] or ""} for n, a in zip(f["cites"], f["articles"])]})
+    data = json.dumps({"days": days, "faith": faith}, ensure_ascii=False).replace("</", "<\\/")
+    head = f"기사 {n}건" + (f"과 답 문장 {len(faith)}개" if faith else "") + "에 예, 아니오를 눌러요"
+    minutes = 30 + (10 if faith else 0)
     html = BOARD.read_text(encoding="utf-8")
     html = put(html, "style", STYLE, "</head>") if "</head>" in html else put(html, "style", STYLE, "<header")
     html = put(html, "tab", TAB, '<button class="tab" role="tab" id="tab-decisions"')
-    html = put(html, "panel", PANEL.replace("__N__", str(n)) + "\n" + SCRIPT.replace("__DATA__", data),
+    html = put(html, "panel", PANEL.replace("__HEAD__", head).replace("__MIN__", str(minutes)) + "\n" + SCRIPT.replace("__DATA__", data),
                "<!-- 결정과 할 일 -->")
     old = 'var TABS = ["summary", "plan", "checks", "decisions", "log"];'
     if old in html:
@@ -193,7 +237,7 @@ def main():
         html = html.replace("/* 탭: #summary, #plan, #checks, #decisions, #log */",
                             "/* 탭: #summary, #plan, #checks, #labels, #decisions, #log */")
     BOARD.write_text(html, encoding="utf-8")
-    print(f"진행판에 표본 탭: {len(days)}일, {n}건")
+    print(f"진행판에 표본 탭: {len(days)}일, {n}건" + (f", 충실도 문장 {len(faith)}개" if faith else ""))
 
 
 if __name__ == "__main__":

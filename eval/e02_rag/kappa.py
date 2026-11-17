@@ -6,6 +6,7 @@
   .venv/bin/python eval/e02_rag/kappa.py --db 받은폴더   진행판 db(e02_labels)를 받아 labels_dev.json의 human에 옮기고 셈
   .venv/bin/python eval/e02_rag/kappa.py                      이미 옮긴 human으로 셈
   .venv/bin/python eval/e02_rag/kappa.py --selftest
+  .venv/bin/python eval/e02_rag/kappa.py --faith --db 받은폴더   근거 충실도 표본(e02_faith, 20문장)과 판정 모델
 
 - db 폴더는 Claude가 ArtifactData list(collection e02_labels, out_dir)로 받은 것. 파일 하나가 문서 하나이고
   내용은 {article, item, label, at}입니다(2026-11-17 checks 컬렉션으로 모양 확인).
@@ -61,9 +62,35 @@ def selftest():
     return 0 if all(ok) else 1
 
 
+def faith(split, db):
+    """근거 충실도 표본: 사람(e02_faith)과 판정 모델(answer_judge_{split}.json의 supported). 표본은 판정 「아니오」를 모두 넣고
+    「예」로 채운 것이라(judge_answers.py), 판정이 모두 「예」면 카파를 셀 수 없어 일치율(사람도 「예」라 한 비율)을 봅니다."""
+    judge = json.loads((HERE / f"answer_judge_{split}.json").read_text(encoding="utf-8"))["items"]
+    pairs, rows = [], []
+    for f in sorted(Path(db).rglob("*.json")):
+        body = json.loads(f.read_text(encoding="utf-8"))
+        j = next(r["supported"] for r in judge[body["answer"]] if r["s"] == body["s"])
+        pairs.append((j, bool(body["label"])))
+        rows.append({"key": f.stem, "answer": body["answer"], "s": body["s"], "judge": j, "human": bool(body["label"])})
+    k, po, t = kappa(pairs)
+    if len({j for j, _ in pairs}) < 2 or len({h for _, h in pairs}) < 2:
+        k = None  # 한쪽이 모두 같은 값이면 카파는 0이나 1로 떨어져 뜻이 없음(일치율로 봄)
+    human_yes = sum(h for _, h in pairs)
+    out = {"split": split, "pairs": len(pairs), "kappa": None if k is None else round(k, 4),
+           "agreement": None if po is None else round(po, 4), "human_supported": human_yes,
+           "judge_supported": sum(j for j, _ in pairs), "rows": rows}
+    (HERE / f"faith_human_{split}.json").write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    print(f"충실도 표본 {len(pairs)}문장: 사람 「예」 {human_yes}, 판정 「예」 {out['judge_supported']}, 일치 {out['agreement']}, "
+          f"카파 {out['kappa'] if k is not None else '뜻이 없음(한쪽이 모두 같은 값이라 일치율로 봄)'}")
+    return 0
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest()
+    if "--faith" in sys.argv:
+        return faith(sys.argv[sys.argv.index("--split") + 1] if "--split" in sys.argv else "dev",
+                     sys.argv[sys.argv.index("--db") + 1])
     split = sys.argv[sys.argv.index("--split") + 1] if "--split" in sys.argv else "dev"
     path = HERE / f"labels_{split}.json"
     labels = json.loads(path.read_text(encoding="utf-8"))

@@ -1,0 +1,318 @@
+{
+ "note": "E02 답 문장의 판정(근거 충실도, 인과 표현). 문장 글은 git 제외 파일.",
+ "run": "data/generated/e02/runs/e02w2_dev_20261117-141908.jsonl",
+ "judge_prompt": "e02_judge_ans_v1.txt",
+ "judge_model": "claude-sonnet-5-5",
+ "items": {
+  "E02-06:baseline": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-07:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-09:h1": [
+   {
+    "s": 1,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-11:h1": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-13:h1": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-14:h1": [
+   {
+    "s": 1,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-15:h1": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-16:baseline": [
+   {
+    "s": 1,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-16:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 4,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-19:h1": [
+   {
+    "s": 1,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-22:h1": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-23:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-25:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-27:h1": [
+   {
+    "s": 1,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-29:h1": [
+   {
+    "s": 1,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ]
+ }
+}

@@ -141,6 +141,25 @@
       </section>
     </div>
 
+    <!-- 7번 칸: 그때 무슨 일이(E02). 보유 기간의 큰 움직임 날을 고르면 그날의 기사 요약과 인용, 같은 날 일정 -->
+    <section id="ev-box" class="panel ev-box" aria-labelledby="ev-h">
+      <h3 id="ev-h">그때 무슨 일이 <span class="note">보유 기간의 큰 움직임 날</span> <span class="pill plain">확인 전</span></h3>
+      <p id="ev-sum" class="note"></p>
+      <div id="ev-days" class="ev-days" role="group" aria-label="큰 움직임 날 고르기"></div>
+      <p id="ev-state" class="state" role="status" aria-live="polite"></p>
+      <article id="ev-card" class="ev-card" hidden>
+        <p id="ev-head" class="ev-head"></p>
+        <p id="ev-body" class="ev-body"></p>
+        <ol id="ev-cites" class="ev-cites" aria-label="인용한 기사"></ol>
+        <div id="ev-sched-box">
+          <h4 class="ev-h4">같은 날 일정 <span class="note">전날 장 마감부터 그날 장 마감 전까지 발표</span></h4>
+          <ul id="ev-sched" class="ev-sched"></ul>
+        </div>
+        <p id="ev-meta" class="note"></p>
+      </article>
+      <p class="note">기사 요약은 모델이 쓰고, 인용 번호와 숫자와 인과 표현은 코드가 검사합니다. 같은 날 나타난 일을 모은 것이고, 움직임의 원인이라는 뜻은 아닙니다. 기사는 Massive 뉴스라 이 화면에서만 보입니다. 날짜마다 처음 한 번만 모델을 불러 몇 초와 약 0.01달러가 들고, 그 뒤는 저장해 둔 답을 보입니다. 평가셋의 확인용 판정은 아직 하지 않아 확인 전입니다.</p>
+    </section>
+
     <!-- 6번 칸: 매도별 손익 -->
     <section class="panel" aria-labelledby="sl-h">
       <h3 id="sl-h">매도별 손익</h3>
@@ -168,19 +187,13 @@
     </div>
     <p id="qa-state" class="state" role="status" aria-live="polite"></p>
     <ol id="qa-log" class="qa-log" role="log" aria-live="polite" aria-label="답"></ol>
-    <p id="qa-help" class="note">숫자는 손익, 시세, 환율, 기간 통계, 범위 도구의 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다. 그날 있었던 일(기사와 일정)을 찾는 기능은 다음 단계에서 붙입니다. 질문마다 모델을 두세 번 불러 답에 몇 초가 걸리고, 약 0.01달러가 듭니다. 평가셋의 확인용 판정은 다음 단계 뒤에 한 번 하므로 아직 확인 전입니다.</p>
+    <p id="qa-help" class="note">숫자는 손익, 시세, 환율, 기간 통계, 범위 도구의 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다. 그날 있었던 일(기사와 일정)은 위 「그때 무슨 일이」 칸에서 보고, 여기서 묻는 기능은 다음 단계에서 붙입니다. 질문마다 모델을 두세 번 불러 답에 몇 초가 걸리고, 약 0.01달러가 듭니다. 평가셋의 확인용 판정은 다음 단계 뒤에 한 번 하므로 아직 확인 전입니다.</p>
   </section>
 
-  <section class="panel later" aria-labelledby="later-h">
-    <h3 id="later-h">다음 단계에서 붙일 칸</h3>
-    <ul>
-      <li><b>그때 무슨 일이</b> 보유 기간의 큰 움직임 날에 같은 날 나온 기사와 일정(인용과 함께)</li>
-    </ul>
-  </section>
 </main>
 
 <footer class="foot">
-  <p><b>출처</b> 국내 시세: 금융위원회_주식시세정보(공공데이터포털, 공공누리 제4유형: 출처표시, 상업적 이용금지, 변경금지). 미국 시세: Massive(옛 Polygon.io) 무료 요금제, 개인 비상업 용도. 환율: 한국은행 ECOS 원/미국달러 매매기준율(ECOS에서 제공된 정보).</p>
+  <p><b>출처</b> 국내 시세: 금융위원회_주식시세정보(공공데이터포털, 공공누리 제4유형: 출처표시, 상업적 이용금지, 변경금지). 미국 시세: Massive(옛 Polygon.io) 무료 요금제, 개인 비상업 용도. 환율: 한국은행 ECOS 원/미국달러 매매기준율(ECOS에서 제공된 정보). 기사: Massive 뉴스(제목과 요약, 재배포 금지). 일정: 연준 FOMC 일정 페이지, FRED(CPI, 고용 보고서 발표일). This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</p>
   <p>시세와 환율은 내 컴퓨터에서만 보고 다시 배포하지 않습니다. 이 화면은 지난 매매를 돌아보는 도구이고, 매수나 매도를 권하지 않습니다. 빨강은 이익과 상승, 파랑은 손실과 하락입니다(한국 증권 앱 관례).</p>
 </footer>
 

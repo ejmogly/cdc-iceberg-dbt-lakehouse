@@ -232,7 +232,17 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 .empty td { color: var(--muted); }
 .sells-empty { font-size: 13.5px; color: var(--ink-2); }
 
-.later ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
-.later b { color: var(--ink); margin-right: 6px; }
+/* 7번 칸: 그때 무슨 일이 */
+.ev-box { display: flex; flex-direction: column; gap: 10px; }
+.ev-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-days .chip { font-family: var(--mono); font-size: 12.5px; }
+.ev-days .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ev-days .chip:disabled { opacity: 0.6; cursor: default; }
+.ev-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.ev-head { font-weight: 600; color: var(--ink); }
+.ev-body { white-space: pre-line; color: var(--ink); }
+.ev-cites, .ev-sched { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink-2); }
+.ev-cites .src { color: var(--muted); font-size: 12.5px; }
+.ev-h4 { font-size: 13.5px; font-weight: 600; margin: 4px 0 2px; }
 .foot { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--muted); }
 .foot b { color: var(--ink-2); margin-right: 6px; }

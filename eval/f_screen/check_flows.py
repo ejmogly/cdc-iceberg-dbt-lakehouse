@@ -448,6 +448,86 @@ def run_flows(page, port):
         bad.append(f"잡히지 않은 오류: {page.errors}")
     out["묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패"] = bad
 
+    # 7-2. 그때 무슨 일이(7번 칸): 날짜 단추, 받은 답(태그는 글자로), 늦게 온 답, 실패(2026-11-17)
+    bad, held = [], []
+    page.errors.clear()
+    page.on_pause = held.append
+    page.call("Fetch.enable", patterns=[{"urlPattern": "*/api/events*", "requestStage": "Request"}])
+    chips = "document.querySelectorAll('#ev-days .chip')"
+    fake_ev = lambda d, head: {"symbol": "QQQ", "name": "Q", "date": d, "status": "answered", "head": head,
+                               "body": '본문입니다<img id="ev-xss" src="x" onerror="window.evXss=1"> [1]',
+                               "move": {"pct": 1.0, "ratio": 2.1, "big": True, "judged": True},
+                               "citations": [{"n": 1, "id": "a", "title": '제목<img id="ev-xss2" src="x">', "publisher": "P",
+                                              "time": "2026-01-01T10:00:00Z"}],
+                               "schedule": [{"id": "fomc-x", "date": d, "kind": "fomc", "title": "FOMC 금리 결정 발표"}],
+                               "decided_by": None, "n_llm": 1, "seconds": 3.2, "cost_usd": 0.01, "cached": False,
+                               "window_articles": 300}
+    fulfill = lambda p, code, body: page.call("Fetch.fulfillRequest", requestId=p["requestId"], responseCode=code,
+                                              responseHeaders=[{"name": "Content-Type", "value": "application/json"}],
+                                              body=base64.b64encode(json.dumps(body).encode()).decode())
+    if not page.wait(f"{chips}.length > 1", 5):
+        bad.append("큰 움직임 날 단추가 없음")
+    else:
+        d0, d1 = page.js(f"{chips}[0].dataset.d"), page.js(f"{chips}[1].dataset.d")
+        page.js(f"{chips}[0].click()")
+        end = time.time() + 5
+        while not held and time.time() < end:
+            page.pump(0.1)
+        if not held:
+            bad.append("그날 일 요청을 붙잡지 못함")
+        else:
+            sent = json.loads(held[0]["request"].get("postData") or "{}")
+            if sent != {"symbol": "QQQ", "date": d0}:
+                bad.append(f"보낸 종목과 날짜가 다름: {sent}")
+            if not page.js(f"[...{chips}].every(b => b.disabled)"):
+                bad.append("답을 기다리는 동안 날짜 단추가 막히지 않음")
+            fulfill(held[0], 200, fake_ev(d0, "머리 문장"))
+            if not page.wait("!document.getElementById('ev-card').hidden && document.getElementById('ev-head').textContent === '머리 문장'", 3):
+                bad.append("받은 답이 칸에 없음")
+            elif page.js("!!document.querySelector('#ev-xss, #ev-xss2') || !!window.evXss"):
+                bad.append("답이나 기사 제목의 태그가 화면 요소가 됨")
+            elif page.js("document.querySelectorAll('#ev-cites li').length") != 1 or \
+                    "FOMC" not in page.js("document.getElementById('ev-sched').textContent"):
+                bad.append("인용 기사나 일정이 다르게 보임")
+            if page.js(f"{chips}[0].getAttribute('aria-pressed')") != "true" or page.js(f"{chips}[0].disabled"):
+                bad.append("고른 날 표시가 없거나 단추가 막힌 채")
+            # 늦게 온 답: 다른 날을 누르고 답이 오기 전에 매매가 있는 다른 종목(GLD)으로 바꾸면 그 답을 버림
+            held.clear()
+            page.js(f"{chips}[1].click()")
+            end = time.time() + 5
+            while not held and time.time() < end:
+                page.pump(0.1)
+            if held:
+                if not page.js("document.getElementById('ev-card').hidden"):
+                    bad.append("새 날을 누른 뒤에도 앞 날의 답이 보임")
+                type_in(page, "sym", "GLD", "change")
+                if not page.wait(CALC_DONE):
+                    bad.append("GLD를 계산하지 못함")
+                fulfill(held[0], 200, fake_ev(d1, "늦은 답"))
+                page.pump(0.5)
+                if page.js("document.getElementById('ev-head').textContent") == "늦은 답" and \
+                        not page.js("document.getElementById('ev-card').hidden"):
+                    bad.append("종목을 바꾼 뒤 앞 종목의 늦게 온 답을 보임")
+                type_in(page, "sym", "QQQ", "change")
+                page.wait(CALC_DONE)
+                if not page.js("document.getElementById('ev-card').hidden"):
+                    bad.append("종목을 바꿨다 돌아오니 앞 답이 남음")
+            else:
+                bad.append("둘째 요청을 붙잡지 못함")
+            # 실패(429): 안내만 하고 칸은 비운 채
+            held.clear()
+            page.on_pause = lambda p: fulfill(p, 429, {"error": "BUSY", "message": "앞 날짜를 정리하는 중"})
+            page.wait(f"{chips}.length > 1", 5)
+            page.js(f"{chips}[0].click()")
+            if not page.wait("document.getElementById('ev-state').classList.contains('err') && "
+                             "document.getElementById('ev-state').textContent.includes('429')", 3):
+                bad.append("429에 안내가 없음: " + repr(page.js("document.getElementById('ev-state').textContent")))
+    page.on_pause = None
+    page.call("Fetch.disable")
+    if page.errors:
+        bad.append(f"잡히지 않은 오류: {page.errors}")
+    out["그때 무슨 일이: 날짜 단추, 받은 답, 늦은 답, 실패"] = bad
+
     # 8. 닫을 때 저장
     bad = []
     type_in(page, "q0", "11")
@@ -499,14 +579,22 @@ BUGS = [
          '  li.querySelector(".qa-q span:last-child").innerHTML = a.question;')]),
     ("묻고 답하기: 빈 질문, 기다리는 동안, 받은 답, 실패", "빈 질문도 보냄", [
         ('  if (!q) { qaState("질문을 적어 주세요.", true); $("qa-q").focus(); return; }\n', "")]),
+    ("그때 무슨 일이: 날짜 단추, 받은 답, 늦은 답, 실패", "7번 칸 답 글을 태그로 넣음", [
+        ('  $("ev-body").textContent = a.body || "";', '  $("ev-body").innerHTML = a.body || "";')]),
+    ("그때 무슨 일이: 날짜 단추, 받은 답, 늦은 답, 실패", "종목을 바꿔도 오는 중인 답을 버리지 않음", [
+        ("    resetEvents();\n    load(sel.value);", "    load(sel.value);"),
+        ("  if (my !== st.eseq || !st.res || st.res.symbol !== symbol) return;", "  if (!st.res) return;")]),
     ("떠나기 직전 고친 값도 저장", "떠날 때 보내지 않음", [
         ("  window.addEventListener(\"pagehide\", flush);\n", "")]),
 ]
 
 
 def one_run(static=None):
-    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 여덟을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
-    TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START}}, "last": "QQQ"}),
+    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 아홉을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
+    # GLD 한 줄은 7번 칸 흐름이 「매매가 있는 다른 종목」으로 바꿀 때 씀(SPY는 매매가 없는 종목으로 둠)
+    TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START},
+                                           "GLD": {"asof": "2026-11-11", "trades": [{"date": "2025-03-03", "side": "BUY",
+                                                                                   "qty": "3"}]}}, "last": "QQQ"}),
                    encoding="utf-8")
     old = screen_server.STATIC
     if static:

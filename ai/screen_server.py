@@ -15,6 +15,9 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
                      기준일이 「오늘」입니다. 답은 ai/qa.py(새 판 f1)이고 모델을 부릅니다(질문당 약 $0.01, 한 번에 하나).
                      돌려주는 것: status, text, numbers, dates_used, warnings, 쓴 도구, 코드가 정한 답인지, 시간, 비용.
                      이미 답을 만드는 중이면 429, 모델 호출 상한에 닿으면 503 BUDGET
+  POST /api/events   7번 칸(그때 무슨 일이). {"symbol", "date"}. 그날의 움직임 문장(코드), 검색 판 H1이 고른 기사의 요약과
+                     인용(ai/e02_answer.py, 모델 1 ~ 2번), 같은 날 일정(전날 장 마감부터 그날 장 마감 전까지 발표). 같은
+                     종목과 날짜는 서버를 띄운 동안 한 번만 부르고 다시 쓰며, 국내 종목은 모델 없이 고정 문구. 한 번에 하나(429)
   GET  /api/trades   화면에 넣어 둔 매매(종목마다). 저장 파일을 주지 않고 띄우면 {"enabled": false}
   PUT  /api/trades   {"symbol", "asof", "trades"} 한 종목의 매매를 저장(설계서 6절 4번: data/generated/ 아래 파일)
 
@@ -38,7 +41,7 @@ import threading
 import time
 import traceback
 from bisect import bisect_right
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -133,9 +136,16 @@ class App:
         self.px = {}  # 8번 칸용 종목별 가격 목록(수정한 종가, 없으면 종가)
         self.ask_fn = None  # 9번 칸의 답하는 함수. 비우면 ai/qa.py ask(시험은 모델을 부르지 않는 함수로 바꿔 끼움)
         self.ask_lock = threading.Lock()
+        self.events_fn = None  # 7번 칸의 답하는 함수. 비우면 ai/e02_answer.answer(시험은 바꿔 끼움)
+        self.events_lock = threading.Lock()
+        self.events_cache = {}  # (종목, 날짜) → 응답. 서버를 띄운 동안만
+        self._news_con = None
         self.asks = 0
 
     def close(self):
+        if self._news_con is not None:
+            self._news_con.close()
+            self._news_con = None
         if self.data:
             self.data.close()
 
@@ -292,6 +302,67 @@ class App:
         v = screen_range.view(days, self.px[symbol], t)
         return {"symbol": symbol, "name": d.symbols[symbol]["name"], "currency": d.symbols[symbol]["currency"],
                 "asof": asof, **v, "ms": round((time.perf_counter() - t0) * 1000)}
+
+    def api_events(self, body):
+        """7번 칸. 그 종목의 거래일 하루에 대해 움직임 문장, 기사 요약과 인용, 같은 날 일정. 국내 종목은 고정 문구."""
+        from ai import e02_answer as A
+        from ai import news_search
+        from ai.tools import SW
+        d = self.data
+        symbol = body.get("symbol")
+        if not isinstance(symbol, str) or symbol not in d.symbols:
+            raise BadRequest("UNKNOWN_SYMBOL", f"없는 종목입니다: {symbol}")
+        day = body.get("date")
+        if not iso_date(day):
+            raise BadRequest("BAD_DATE", "날짜는 YYYY-MM-DD로 주세요")
+        rows = d.symbols[symbol]["rows"]
+        if day not in rows:
+            raise BadRequest("NOT_TRADING_DAY", f"{day}는 {d.symbols[symbol]['name']}({symbol})의 거래일이 아닙니다")
+        name = d.symbols[symbol]["name"]
+        key = (symbol, day)
+        if key in self.events_cache:
+            return {**self.events_cache[key], "cached": True}
+        if symbol not in A.NAMES:  # 국내 2종목: E02 1판 범위 밖(설계서 2절 7번 칸)
+            mv = A.day_move(rows, day)
+            out = {"symbol": symbol, "name": name, "date": day, "status": "unknown", "head": A.move_line(symbol, day, mv, name),
+                   "body": A.TEXT["domestic"], "move": mv, "citations": [], "schedule": [], "decided_by": "code:domestic",
+                   "n_llm": 0, "seconds": 0, "cost_usd": 0, "version": None}
+            self.events_cache[key] = out
+            return {**out, "cached": False}
+        days = [date.fromisoformat(x) for x in d.us_days]
+        t = date.fromisoformat(day)
+        i = days.index(t) if t in days else -1
+        if i <= 0 or i + 1 >= len(days):
+            raise BadRequest("NO_WINDOW", "데이터의 첫 거래일과 마지막 거래일은 검색 창(전날 장 마감부터 다음 날 장 시작 전까지)을 "
+                                          "다 채우지 못해 보이지 않습니다")
+        if self.asks >= MAX_ASKS:
+            raise Busy(f"이번 서버 실행에서 모델을 부를 수 있는 수({MAX_ASKS}번)를 넘었습니다. 서버를 다시 띄우세요")
+        if not self.events_lock.acquire(blocking=False):
+            raise Busy("앞 날짜의 기사를 정리하는 중입니다. 끝난 뒤 다시 눌러 주세요")
+        self.asks += 1
+        try:
+            if self._news_con is None:
+                self._news_con = duckdb.connect(str(self.db), read_only=True)
+            cur = self._news_con.cursor()
+            try:
+                fn = self.events_fn or A.answer
+                ans, trace = fn(cur, days, rows, symbol, day, "h1", tag=f"screen-e02:{symbol}:{day}")
+                start, _ = SW.window(days, t)
+                close = datetime.combine(t, datetime.min.time(), SW.ET) + timedelta(hours=13 if t in SW.HALF_DAYS else 16)
+                schedule = d.events_fn(day, start, close)
+            finally:
+                cur.close()
+        finally:
+            self.events_lock.release()
+        calls = trace.get("llm", [])
+        out = {"symbol": symbol, "name": name, "date": day, "status": ans["status"], "head": ans.get("head"),
+               "body": ans.get("body"), "move": ans["move"], "citations": ans["citations"], "schedule": schedule,
+               "decided_by": trace.get("decided_by"), "n_llm": len(calls), "seconds": round(trace.get("seconds", 0), 1),
+               "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 4), "version": "h1",
+               "window": [x.isoformat() for x in SW.window(days, t)], "window_articles": trace.get("window_articles")}
+        if not any(c.get("error") for c in calls):  # 모델 호출이 실패한 답은 다시 부를 수 있게 기억하지 않음
+            self.events_cache[key] = out
+        return {**out, "cached": False}
 
     def api_ask(self, body):
         """9번 칸. 화면에 넣은 매매(account)를 계좌로, 기준일(asof)을 오늘로 묻고 답하기 새 판을 부릅니다."""
@@ -512,7 +583,7 @@ def make_handler(app, port_holder):
         def do_POST(self):
             if not self._host_ok():
                 return
-            if self.path not in ("/api/pnl", "/api/ask"):
+            if self.path not in ("/api/pnl", "/api/ask", "/api/events"):
                 return self._send(404, {"error": "NOT_FOUND"})
             if not self._gate():
                 return
@@ -525,7 +596,8 @@ def make_handler(app, port_holder):
             except BadRequest as e:
                 return self._send(400, e.payload())
             try:
-                return self._send(200, (app.api_ask if self.path == "/api/ask" else app.api_pnl)(body))
+                fn = {"/api/ask": app.api_ask, "/api/events": app.api_events, "/api/pnl": app.api_pnl}[self.path]
+                return self._send(200, fn(body))
             except BadRequest as e:
                 return self._send(400, e.payload())
             except Busy as e:

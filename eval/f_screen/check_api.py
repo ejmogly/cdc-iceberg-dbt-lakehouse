@@ -420,6 +420,43 @@ def check_edges():
     httpd.app.asks = asked
     httpd.app.ask_fn = broke
     expect("묻기: 모델 호출 상한", ask(good), 503, "BUDGET")
+
+    # 7번 칸(그때 무슨 일이): 모델을 부르지 않는 가짜 함수로 입력 경계, 캐시, 국내 종목, 일정, 잠금(2026-11-17)
+    called = []
+
+    def fake_ev(cur, days, rows, sym, day, version, tag=""):
+        called.append((sym, day))
+        return ({"status": "answered", "head": "머리", "body": "본문 [1]", "text": "머리 본문 [1]",
+                 "move": {"pct": 1.0, "ratio": 2.1, "big": True, "judged": True},
+                 "citations": [{"n": 1, "id": "x", "title": "t", "publisher": "p", "time": "2026-04-02T16:21:00Z"}]},
+                {"llm": [{"cost_usd": 0.01, "error": None}], "seconds": 1.0, "decided_by": None, "window_articles": 9})
+
+    httpd.app.events_fn = fake_ev
+    ev = lambda body: http(base, "/api/events", body)
+    expect("그날 일: 없는 종목", ev({"symbol": "NOPE", "date": "2026-04-02"}), 400, "UNKNOWN_SYMBOL")
+    expect("그날 일: 날짜 모양", ev({"symbol": "TSLA", "date": "20260402"}), 400, "BAD_DATE")
+    expect("그날 일: 쉬는 날", ev({"symbol": "TSLA", "date": "2026-04-03"}), 400, "NOT_TRADING_DAY")
+    expect("그날 일: 다른 사이트에서 보냄", http(base, "/api/events", {"symbol": "TSLA", "date": "2026-04-02"},
+                                         headers={"Origin": "http://evil.example"}), 403, "BAD_ORIGIN")
+    expect("그날 일: 폼 모양 본문", http(base, "/api/events", {"symbol": "TSLA", "date": "2026-04-02"},
+                                    headers={"Content-Type": "text/plain"}), 415, "BAD_CONTENT_TYPE")
+    c1, r1 = ev({"symbol": "TSLA", "date": "2026-04-02"})
+    c2, r2 = ev({"symbol": "TSLA", "date": "2026-04-02"})
+    tests.append(("그날 일: 같은 날 두 번째는 모델을 다시 부르지 않음",
+                  c1 == c2 == 200 and r1.get("cached") is False and r2.get("cached") is True and called == [("TSLA", "2026-04-02")],
+                  f"{c1} {c2} 부른 수 {len(called)}"))
+    c, r = ev({"symbol": "TSLA", "date": "2026-04-06"})
+    tests.append(("그날 일: 휴장일(성금요일) 고용 보고서가 다음 거래일 일정에 듦",
+                  c == 200 and [e["id"] for e in r.get("schedule", [])] == ["jobs-2026-04-03"], f"{c} {r.get('schedule')}"))
+    c, r = ev({"symbol": "005930", "date": "2026-04-02"})
+    tests.append(("그날 일: 국내 종목은 모델 없이 고정 문구",
+                  c == 200 and r.get("decided_by") == "code:domestic" and "국내 종목은 기사 근거가 없습니다" in (r.get("body") or "")
+                  and len(called) == 2, f"{c} {r.get('decided_by')}"))
+    last = httpd.app.data.us_days[-1]
+    expect("그날 일: 마지막 거래일은 창을 다 채우지 못함", ev({"symbol": "SPY", "date": last}), 400, "NO_WINDOW")
+    httpd.app.events_lock.acquire()
+    expect("그날 일: 앞 날짜를 정리하는 중", ev({"symbol": "TSLA", "date": "2026-03-31"}), 429, "BUSY")
+    httpd.app.events_lock.release()
     stop(httpd)
 
     # 깨진 저장 파일: 읽기와 저장 모두 500으로 알리고 파일을 덮어쓰지 않음

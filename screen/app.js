@@ -16,7 +16,7 @@ const PRICE = /^\d+(\.\d{1,4})?$/;
 const st = {
   symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
   saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
-  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false,
+  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false, eseq: 0, evBusy: false, evSel: null,
 };
 
 // ---------- 서버 ----------
@@ -321,6 +321,7 @@ function render(pending) {
   $("lg-sym").textContent = `${res.symbol} 종가`;
   drawCharts();
   renderBigMoves(res);
+  renderEvents(res);
 }
 
 function drawCharts() {
@@ -485,6 +486,107 @@ function renderBigMoves(res) {
   if (bm.not_judged_in_holding) text += `, ${bm.judged_from ?? "데이터 끝"} 전은 판정 전`;
   sum.textContent = text;
   list.replaceChildren(...bm.dates.map((d) => { const li = document.createElement("li"); li.textContent = d; return li; }));
+}
+
+// ---------- 7번 칸: 그때 무슨 일이 ----------
+
+const KIND = { fomc: "FOMC", cpi: "CPI", jobs: "고용 보고서" };
+
+// 보유 기간의 큰 움직임 날을 단추로(최근 날이 앞). 고른 날이 이 결과에 없으면(종목이나 매매가 바뀜) 앞 답을 치웁니다
+function renderEvents(res) {
+  const bm = res.big_moves, box = $("ev-days");
+  const kr = res.currency === "KRW";
+  if (!bm || !bm.dates.length) {
+    $("ev-sum").textContent = !bm ? "장부에 들어간 매수가 없어 보유 기간이 없습니다." : "보유 기간에 큰 움직임 날이 없습니다.";
+  } else {
+    $("ev-sum").textContent = `큰 움직임 ${bm.dates.length}일. 날짜를 누르면 그날의 기사 요약과 일정이 나옵니다.` +
+      (kr ? " 국내 종목은 기사 근거가 없어 움직임만 보입니다(다음 판)." : "");
+  }
+  const dates = bm ? [...bm.dates].reverse() : [];
+  box.replaceChildren(...dates.map((d) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = d; b.dataset.d = d;
+    b.setAttribute("aria-pressed", st.evSel && st.evSel.symbol === res.symbol && st.evSel.date === d ? "true" : "false");
+    b.disabled = st.evBusy;
+    return b;
+  }));
+  if (!(st.evSel && st.evSel.symbol === res.symbol && dates.includes(st.evSel.date))) {
+    st.evSel = null;
+    st.eseq++;
+    $("ev-card").hidden = true;
+    if (!st.evBusy) evState("");
+  }
+}
+
+// 종목을 바꾸면 앞 종목의 답과 고른 날을 치우고, 오는 중인 답은 버립니다(eseq)
+function resetEvents() {
+  st.evSel = null;
+  st.eseq++;
+  $("ev-card").hidden = true;
+  evState("");
+}
+
+function evState(text, err = false) {
+  const s = $("ev-state");
+  s.textContent = text;
+  s.classList.toggle("err", err);
+}
+
+function li(text, cls) {
+  const e = document.createElement("li");
+  if (cls) e.className = cls;
+  e.textContent = text;
+  return e;
+}
+
+async function askEvents(day) {
+  if (st.evBusy || !st.res) return;
+  const symbol = st.res.symbol, my = ++st.eseq;
+  st.evBusy = true;
+  st.evSel = { symbol, date: day };
+  document.querySelectorAll("#ev-days .chip").forEach((b) => {
+    b.disabled = true;
+    b.setAttribute("aria-pressed", b.dataset.d === day ? "true" : "false");
+  });
+  $("ev-card").hidden = true;  // 앞 날짜의 답이 새 날짜의 답처럼 남지 않게
+  evState("그날 기사를 찾고 정리하는 중입니다(처음 한 번은 몇 초).");
+  let r;
+  try {
+    r = await api("/api/events", { method: "POST", body: JSON.stringify({ symbol, date: day }) });
+  } catch {
+    r = { status: 0, body: null };
+  }
+  st.evBusy = false;
+  document.querySelectorAll("#ev-days .chip").forEach((b) => { b.disabled = false; });
+  if (my !== st.eseq || !st.res || st.res.symbol !== symbol) return;  // 그사이 종목이나 고른 날이 바뀜
+  if (r.status === 503 && r.body?.error === "PIPELINE_CHECK_FAILED") { await pipelineFailed(); return; }
+  if (r.status !== 200 || !r.body) {
+    evState(`답을 받지 못했습니다(${r.status || "서버에 닿지 못함"}${r.body?.message ? ", " + r.body.message : ""}).`, true);
+    return;
+  }
+  const a = r.body;
+  $("ev-head").textContent = a.head || "";
+  $("ev-body").textContent = a.body || "";
+  $("ev-cites").replaceChildren(...a.citations.map((c) => {
+    const e = li("", null);
+    const t = document.createElement("span");
+    t.textContent = `[${c.n}] ${c.title}`;
+    const src = document.createElement("span");
+    src.className = "src";
+    src.textContent = ` ${c.publisher}, ${c.time.slice(0, 16).replace("T", " ")} UTC`;
+    e.append(t, src);
+    return e;
+  }));
+  $("ev-cites").hidden = !a.citations.length;
+  $("ev-sched").replaceChildren(...a.schedule.map((e) => li(`${e.date} ${KIND[e.kind] || e.kind}: ${e.title}`)));
+  $("ev-sched-box").hidden = !a.schedule.length && a.decided_by === "code:domestic";
+  if (!a.schedule.length && a.decided_by !== "code:domestic") $("ev-sched").replaceChildren(li("이 창에 FOMC, CPI, 고용 보고서 발표가 없습니다."));
+  const how = a.cached ? "저장해 둔 답(모델을 다시 부르지 않음)"
+    : a.decided_by === "code:domestic" ? "모델 없이 코드가 정한 답"
+    : `검색 판 H1, 창 안 기사 ${a.window_articles ?? "?"}건, 모델 호출 ${a.n_llm}번, ${a.seconds}초, 약 ${a.cost_usd}달러`;
+  $("ev-meta").textContent = how;
+  $("ev-card").hidden = false;
+  evState("");
 }
 
 // ---------- 8번 칸: 앞으로의 범위 ----------
@@ -732,6 +834,7 @@ async function boot() {
   sel.addEventListener("change", () => {
     // 앞 종목 저장은 기다리지 않습니다(실패해도 종목은 바뀌고, 실패는 상태 줄에 남음)
     if (st.saveTimer) save();
+    resetEvents();
     load(sel.value);
   });
   // 기준일이 틀린 동안은 계산하지 않습니다(앞 기준일로 계산한 값이 최신처럼 보이지 않게)
@@ -754,6 +857,7 @@ async function boot() {
   for (const b of document.querySelectorAll(".qa-examples .chip")) {
     b.addEventListener("click", () => { $("qa-q").value = b.dataset.q.replace("이 종목", st.symbols.get(st.sym)?.name || st.sym); $("qa-q").focus(); });
   }
+  $("ev-days").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b && !b.disabled) askEvents(b.dataset.d); });
   $("add").addEventListener("click", addRow);
   let rz = null, lastW = window.innerWidth;
   window.addEventListener("resize", () => {
