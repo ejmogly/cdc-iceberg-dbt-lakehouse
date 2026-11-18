@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import re
 import statistics
 import sys
@@ -144,6 +145,83 @@ class App:
         self.events_cache = {}  # (종목, 날짜) → 응답. 서버를 띄운 동안만
         self._news_con = None
         self.asks = 0
+        # 화면 파일이 바뀌면(Airflow screen_export가 새 파일을 씀) 다음 요청에서 다시 읽습니다(maybe_reload).
+        # DuckDB는 한 프로세스 안에서 같은 경로를 이미 열어 둔 연결이 있으면, 파일이 바뀌어도 새로 연 연결에 예전 내용을
+        # 돌려줍니다(경로로 데이터베이스를 나눠 씀, 11/18에 확인). 그래서 다시 읽을 때는 새 파일을 하드 링크로 걸고
+        # 그 경로로 엽니다. open_path가 지금 데이터를 연 경로입니다(기사 연결도 같은 경로로 엶).
+        self.open_path = self.db
+        self.sig = self._file_sig()
+        self.reload_lock = threading.Lock()
+        self.reloads, self.reloaded_at = 0, None
+        self._retired = []  # (데이터, 기사 연결, 하드 링크). 쓰던 요청이 끝나도록 다음 다시 읽기 때 닫고 링크를 지움
+        self._clean_links()
+
+    def _link_glob(self):
+        return f".{self.db.stem}.reload-*.duckdb"
+
+    def _clean_links(self):
+        """끝난 서버가 남긴 하드 링크를 지웁니다(이름의 프로세스 번호가 살아 있지 않은 것만)."""
+        for p in self.db.parent.glob(self._link_glob()):
+            try:
+                os.kill(int(p.name.split("reload-")[1].split("-")[0]), 0)
+            except (ProcessLookupError, ValueError, IndexError):
+                p.unlink(missing_ok=True)
+            except PermissionError:
+                pass
+
+    def _file_sig(self, path=None):
+        try:
+            st = (path or self.db).stat()
+        except FileNotFoundError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+    def maybe_reload(self):
+        """화면 파일이 바뀌었으면 다시 읽습니다. 요청마다 stat 한 번이라 가볍고, 다른 요청이 다시 읽는 중이면 기다리지 않고
+        지금 데이터로 답합니다. 새 파일의 검사가 실패하면 화면이 숫자 대신 실패 항목을 보이고, 파일을 읽지 못하면
+        「화면 파일을 다시 읽지 못함」을 실패로 둡니다(옛 숫자를 계속 보이지 않음). 파일이 잠깐 없으면 그대로 둡니다.
+        돌려주는 값: 다시 읽었으면 True."""
+        sig = self._file_sig()
+        if sig is None or sig == self.sig or not self.reload_lock.acquire(blocking=False):
+            return False
+        try:
+            if self._file_sig() is None or self._file_sig() == self.sig:
+                return False
+            link = self.db.with_name(f".{self.db.stem}.reload-{os.getpid()}-{self.reloads + 1}.duckdb")
+            link.unlink(missing_ok=True)
+            try:
+                os.link(self.db, link)
+            except OSError:
+                shutil.copy2(self.db, link)  # 하드 링크를 못 거는 파일 시스템이면 복사
+            sig = self._file_sig(link)
+            try:
+                new = real_data(link)
+                status = new.status
+            except Exception as e:  # noqa: BLE001 - 깨진 파일도 서버는 살아 있어야 함
+                new, status = None, {**screen_data.MISSING, "failures": [
+                    {"name": "화면 파일을 다시 읽지 못함", "ok": False, "value": type(e).__name__, "detail": str(e)[:200]}]}
+            self._close_retired()
+            self._retired = [(self.data, self._news_con, self.open_path if self.open_path != self.db else None)]
+            self.data, self.status, self._news_con, self.open_path = new, status, None, link
+            self.px, self.events_cache = {}, {}
+            self.sig, self.reloads = sig, self.reloads + 1
+            self.reloaded_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+            print(f"화면 파일이 바뀌어 다시 읽음({self.reloads}번째): 파이프라인 검사 "
+                  f"{'통과' if status.get('ok') else '실패: ' + ', '.join(f['name'] for f in status['failures'])}", flush=True)
+            if new is not None and status.get("ok"):
+                threading.Thread(target=self.warm, daemon=True).start()  # 첫 계산 준비(2 ~ 3초)를 뒤에서
+            return True
+        finally:
+            self.reload_lock.release()
+
+    def _close_retired(self):
+        for data, con, link in self._retired:
+            for x in (con, data):
+                if x is not None:
+                    x.close()
+            if link is not None:
+                link.unlink(missing_ok=True)
+        self._retired = []
 
     def close(self):
         if self._news_con is not None:
@@ -151,6 +229,9 @@ class App:
             self._news_con = None
         if self.data:
             self.data.close()
+        self._close_retired()
+        if self.open_path != self.db:
+            self.open_path.unlink(missing_ok=True)
 
     def warm(self):
         """서버를 띄운 뒤 첫 계산만 손익 SQL을 처음 준비하느라 2 ~ 3초 걸려(그 뒤는 0.1초 안), 띄울 때 한 번 미리 돌려
@@ -170,7 +251,8 @@ class App:
     # ---------- API ----------
 
     def api_status(self):
-        return {**self.status, "server_started": self.started, "db": self.db.name, "trades_lake": self._trades_lake()}
+        return {**self.status, "server_started": self.started, "db": self.db.name, "trades_lake": self._trades_lake(),
+                "reloads": self.reloads, "reloaded_at": self.reloaded_at}
 
     def _trades_lake(self):
         """화면에 저장한 매매가 원천 → CDC → Gold(fct_execution)에 같은 값으로 닿았는지 마지막으로 본 결과
@@ -361,7 +443,7 @@ class App:
         self.asks += 1
         try:
             if self._news_con is None:
-                self._news_con = duckdb.connect(str(self.db), read_only=True)
+                self._news_con = duckdb.connect(str(self.open_path), read_only=True)
             cur = self._news_con.cursor()
             try:
                 fn = self.events_fn or A.answer
@@ -560,6 +642,7 @@ def make_handler(app, port_holder):
         def do_GET(self):
             if not self._host_ok():
                 return
+            app.maybe_reload()
             path = self.path.split("?")[0]
             try:
                 if path == "/api/status":
@@ -610,6 +693,7 @@ def make_handler(app, port_holder):
         def do_POST(self):
             if not self._host_ok():
                 return
+            app.maybe_reload()
             if self.path not in ("/api/pnl", "/api/ask", "/api/events"):
                 return self._send(404, {"error": "NOT_FOUND"})
             if not self._gate():

@@ -20,6 +20,7 @@
 """
 import json
 import math
+import os
 import shutil
 import sys
 import tempfile
@@ -323,12 +324,56 @@ def check_pipeline():
     p_code, _ = http(base, "/api/pnl", latency_case())
     stop(httpd)
     control = st["ok"] and p_code == 200
+    reload_rows = check_reload()
+    reload_ok = all(r["pass"] for r in reload_rows)
     print(f"파이프라인 상태: 깬 것 {sum(o['pass'] for o in out)}/{len(out)}을 잡고 손익 API가 503과 실패 항목을 돌려줌, "
-          f"깨지 않은 파일은 {'통과와 200' if control else '실패'}")
+          f"깨지 않은 파일은 {'통과와 200' if control else '실패'}, "
+          f"켠 채 파일 바꾸기 {sum(r['pass'] for r in reload_rows)}/{len(reload_rows)}")
     for o in out:
         print(f"  {'통과' if o['pass'] else '실패'}  {o['break']}: 상태 {o['status_ok']}, 손익 API {o['pnl_http']}, "
               f"실패 항목 {o['failures']}")
-    return {"pass": sum(o["pass"] for o in out), "breaks": len(out), "control_ok": control, "rows": out}
+    for r in reload_rows:
+        print(f"  {'통과' if r['pass'] else '실패'}  켠 채 {r['step']}: 상태 {r['status_ok']}, 손익 API {r['pnl_http']}, "
+              f"다시 읽은 횟수 {r['reloads']}, 실패 항목 {r['failures']}")
+    return {"pass": sum(o["pass"] for o in out), "breaks": len(out), "control_ok": control and reload_ok, "rows": out,
+            "reload": reload_rows}
+
+
+def check_reload():
+    """서버를 켠 채 화면 파일을 바꾸면(Airflow screen_export가 새 파일을 씀) 다음 요청에서 다시 읽는지.
+    좋은 파일 → 내보낸 뒤 깬 파일 → 좋은 파일 → 읽을 수 없는 파일 순서로 바꾸고, 바꿀 때마다 상태와 손익 API를 봅니다."""
+    body = latency_case()
+    rows = []
+    with tempfile.TemporaryDirectory() as tmp:
+        db, bad, good, junk = (Path(tmp) / n for n in ("screen.duckdb", "bad.duckdb", "good.duckdb", "junk.duckdb"))
+        for p in (db, bad, good):
+            shutil.copy(screen_data.OUT, p)
+        con = duckdb.connect(str(bad))
+        con.execute("update prices set close = close * 1.01 where symbol = 'SPY' and trade_date = "
+                    "(select max(trade_date) - 20 from prices where symbol = 'SPY')")
+        con.close()
+        junk.write_bytes(b"not a duckdb file")
+        httpd, _ = serve(db, 0)
+        base = f"http://127.0.0.1:{httpd.server_address[1]}"
+        try:
+            for step, src, want_ok, want_reloads, want_failure in (
+                    ("처음", None, True, 0, None),
+                    ("깬 파일로 바꿈", bad, False, 1, "내보낸 뒤 바뀌지 않음(지문)"),
+                    ("좋은 파일로 되돌림", good, True, 2, None),
+                    ("읽을 수 없는 파일로 바꿈", junk, False, 3, "화면 파일을 다시 읽지 못함")):
+                if src is not None:
+                    os.replace(src, db)
+                _, st = http(base, "/api/status")
+                code, p = http(base, "/api/pnl", body)
+                names = [f["name"] for f in st.get("failures", [])]
+                ok = (st["ok"] == want_ok and st.get("reloads") == want_reloads
+                      and code == (200 if want_ok else 503) and ("summary" in p) == want_ok
+                      and (want_failure is None or want_failure in names))
+                rows.append({"step": step, "pass": ok, "status_ok": st["ok"], "pnl_http": code,
+                             "reloads": st.get("reloads"), "failures": names})
+        finally:
+            stop(httpd)
+    return rows
 
 
 def check_edges():
