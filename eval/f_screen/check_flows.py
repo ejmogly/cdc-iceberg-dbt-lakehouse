@@ -522,6 +522,9 @@ def run_flows(page, port):
             # 가격 그림의 큰 움직임 눈금을 누르면 그날을 물음(눈금끼리 2px 안팎으로 붙은 곳도 있어 눈금 바로 위를 누름)
             held.clear()
             page.wait(f"{chips}.length > 1", 5)
+            # 11/18 화면 개편 뒤 그림은 「그림과 그날」 탭에 있어, 탭을 연 뒤(보일 때 그림을 다시 그림) 누름
+            page.js("document.getElementById('tab-chart').click()")
+            page.pump(0.3)
             tick_d = page.js("document.querySelector('#px line.m-big')?.dataset.d")
             page.js("""(() => { const svg = document.getElementById('px'); svg.scrollIntoView({block: 'center'});
                 const r = document.querySelector('#px line.m-big').getBoundingClientRect();

@@ -5,87 +5,103 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>내 투자 돌아보기</title>
 <link rel="stylesheet" href="style.css">
+<script src="ui.js" defer></script>
 <script type="module" src="app.js"></script>
 </head>
 <body>
+<!-- 11/18 화면 개편: 3판 뼈대에 토스증권식 배치(내 손익이 먼저, 숫자 하나를 크게, 목록 행, 밑줄 탭, 해요체). 요소 id는 개편 전과 같음 -->
 <div class="wrap">
 
-<header class="top">
-  <div class="title-row">
-    <h1>내 투자 돌아보기</h1>
-    <span id="pipe-pill" class="pill plain">데이터 확인 중</span>
-  </div>
-  <p class="lead">한 종목의 매매를 넣으면 원화 손익과 그 출처(가격, 환율), 같은 날 같은 돈을 SPY에 넣었을 때와의 차이를 한 화면에 보입니다. 내 컴퓨터에서만 돌고, 시세는 내보낸 화면 데이터 파일에서 읽습니다.</p>
+<header class="appbar">
+  <h1 class="appbar-t">내 투자 돌아보기</h1>
+  <span id="pipe-pill" class="pill plain">데이터 확인 중</span>
 </header>
 
-<!-- 10번 칸: 파이프라인 상태 -->
-<section id="pipe" class="panel pipe" aria-labelledby="pipe-h">
-  <div class="pipe-head">
-    <h2 id="pipe-h">파이프라인 상태</h2>
-    <span id="pipe-line" class="note"></span>
+<!-- 파이프라인 검사가 깨지면 숫자 대신 여기에 실패 항목(탭보다 위) -->
+<div id="pipe-fail" class="fail" hidden></div>
+
+<section class="symhead" aria-label="종목과 기준일">
+  <div class="field sym-field">
+    <!-- 운영체제 기본 목록 대신 종목 고르기 창(아래 #sym-pick)을 씀. select는 값과 change 사건을 그대로 쓰려고 숨겨서 남김 -->
+    <label for="sym" class="sr">종목</label><select id="sym" class="sym-native" tabindex="-1" aria-hidden="true"></select>
+    <button type="button" id="sym-btn" class="sym-btn" aria-haspopup="dialog" aria-controls="sym-pick" aria-expanded="false">
+      <span id="sym-name" class="sym-name">종목을 불러오는 중</span><span id="sym-code" class="sym-code"></span>
+    </button>
   </div>
-  <div id="pipe-fail" class="fail" hidden></div>
-  <details id="pipe-more">
-    <summary>검사 항목 보기</summary>
-    <div class="tablebox"><table class="checks">
-      <thead><tr><th scope="col">검사</th><th scope="col">값</th><th scope="col">결과</th></tr></thead>
-      <tbody id="pipe-rows"></tbody>
-    </table></div>
-  </details>
+  <div class="field asof-field"><label for="asof">기준일 <span class="hint">남은 수량을 평가하는 날</span></label><input id="asof" type="date" required></div>
 </section>
+<p class="x-people">한 종목의 매매를 넣으면 원화 손익과 그 출처(가격, 환율), 같은 날 같은 돈을 SPY에 넣었을 때와의 차이를 한 화면에 보여요. <button type="button" class="x-link" data-sheet="sh-about">이 화면은</button></p>
 
 <main id="main" hidden>
-  <!-- 무엇을 보나: 종목과 기준일 -->
-  <section class="panel pick" aria-label="종목과 기준일">
-    <div class="controls">
-      <div class="field"><label for="sym">종목</label><select id="sym"></select></div>
-      <div class="field"><label for="asof">기준일 <span class="hint">남은 수량을 평가하는 날</span></label><input id="asof" type="date" required></div>
+<nav class="tabbar" aria-label="탭">
+  <div class="tabrow">
+    <div class="tabs" role="tablist" aria-label="화면 탭">
+      <button class="tab" role="tab" id="tab-sum" aria-controls="sum" aria-selected="true" tabindex="0" data-tab="sum">요약</button>
+      <button class="tab" role="tab" id="tab-trade" aria-controls="trade" aria-selected="false" tabindex="-1" data-tab="trade">내 매매</button>
+      <button class="tab" role="tab" id="tab-chart" aria-controls="chart" aria-selected="false" tabindex="-1" data-tab="chart">그림과 그날</button>
+      <button class="tab" role="tab" id="tab-qa" aria-controls="qa" aria-selected="false" tabindex="-1" data-tab="qa">묻고 답하기</button>
+      <button class="tab" role="tab" id="tab-data" aria-controls="data" aria-selected="false" tabindex="-1" data-tab="data">데이터</button>
     </div>
-  </section>
+  </div>
+</nav>
 
-  <!-- 결과 요약: 결론 문장, 2번 칸 요약 카드, 5번 칸 원화 수익 나누기 -->
+<!-- 탭 1: 요약(2번 칸 요약, 5번 칸 원화 수익 나누기, 8번 칸 앞으로의 범위) -->
+<section class="panel x" id="sum" role="tabpanel" aria-labelledby="tab-sum">
   <div id="result" class="result" hidden>
-    <h2 class="sr">결과 요약</h2>
-    <p id="stale-note" class="stale-note" hidden>흐리게 보이는 값은 고치기 전 입력으로 계산한 것입니다. 입력을 고치면 다시 계산합니다.</p>
-    <p id="verdict" class="verdict"></p>
-    <section class="kpis" aria-label="결과 요약">
-      <div class="kpi"><span class="label">원화 손익</span><span id="k-krw" class="value"></span><span id="k-krw-s" class="sub"></span></div>
-      <div class="kpi"><span class="label" id="k-local-l">달러 손익</span><span id="k-local" class="value"></span><span id="k-local-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">SPY와 차이</span><span id="k-bench" class="value"></span><span id="k-bench-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">보유 중 최대 낙폭</span><span id="k-mdd" class="value"></span><span id="k-mdd-s" class="sub"></span></div>
-      <div class="kpi"><span class="label">연 환산 수익률</span><span id="k-irr" class="value"></span><span id="k-irr-s" class="sub"></span></div>
-    </section>
-    <p id="holding-line" class="holding-line"></p>
-
-    <!-- 5번 칸: 원화 수익 나누기(미국 종목만. 국내 종목은 결론 문장 한 줄) -->
-    <section id="fx-box" class="panel fx-box" aria-labelledby="fx-h">
-      <h3 id="fx-h">원화 수익은 어디서 왔나</h3>
-      <div class="fx-wrap">
-        <div id="fx" class="fx-rows"></div>
-        <div class="fx-notes">
-          <p id="fx-note" class="note"></p>
-          <p class="note">가격 효과는 평균 단가에서 가격이 움직인 몫(평균 매수 환율로), 환율 효과는 평균 매수 환율에서 환율이 움직인 몫(평균 단가로), 교차 효과는 둘이 함께 움직인 몫입니다. 셋을 더하면 원화 손익입니다.</p>
-        </div>
+    <section class="x-card hero" aria-label="결과 요약">
+      <h2 class="sr">결과 요약</h2>
+      <p id="stale-note" class="stale-note" hidden>흐리게 보이는 값은 고치기 전 입력으로 계산한 것입니다. 입력을 고치면 다시 계산합니다.</p>
+      <div class="hero-top">
+        <span class="hero-label">원화 손익</span>
+        <span id="k-krw" class="value"></span>
+        <span id="k-krw-s" class="sub"></span>
+      </div>
+      <p id="verdict" class="verdict"></p>
+      <div class="li-list kpis" role="list">
+        <div class="li" role="listitem"><div class="li-l"><b>SPY와 차이</b><span id="k-bench-s" class="sub"></span></div><span id="k-bench" class="value"></span></div>
+        <div class="li" role="listitem"><div class="li-l"><b id="k-local-l">달러 손익</b><span id="k-local-s" class="sub"></span></div><span id="k-local" class="value"></span></div>
+        <div class="li" role="listitem"><div class="li-l"><b>연 환산 수익률</b><span id="k-irr-s" class="sub"></span></div><span id="k-irr" class="value"></span></div>
+        <div class="li" role="listitem"><div class="li-l"><b>보유 중 최대 낙폭</b><span id="k-mdd-s" class="sub"></span></div><span id="k-mdd" class="value"></span></div>
       </div>
     </section>
+
+    <section class="x-card" aria-labelledby="hold-h">
+      <div class="x-sec-h"><h3 id="hold-h">내 보유</h3><div class="x-btn-row"><button type="button" class="x-ghost sm" data-goto="trade">매매 고치기</button></div></div>
+      <p id="holding-line" class="holding-line"></p>
+    </section>
+
+    <!-- 5번 칸: 원화 수익 나누기(미국 종목만. 국내 종목은 결론 문장 한 줄) -->
+    <section id="fx-box" class="x-card fx-box" aria-labelledby="fx-h">
+      <div class="x-sec-h"><h3 id="fx-h">원화 수익은 어디서 왔나</h3><button type="button" class="x-link" data-sheet="sh-fx">계산법</button></div>
+      <div id="fx" class="fx-rows"></div>
+      <p id="fx-note" class="x-note"></p>
+    </section>
   </div>
+  <section class="x-card empty-card" aria-label="결과 없음">
+    <h2 class="x-display">매매를 넣으면 <em>원화 손익</em>이 여기에 나와요</h2>
+    <p class="x-sub">날짜와 수량만 넣어도 돼요. 체결가와 환율을 비우면 그날 종가와 매매기준율로 계산해요.</p>
+    <div class="x-btn-row"><button type="button" class="x-ghost" data-goto="trade">매매 넣으러 가기</button></div>
+  </section>
 
   <!-- 8번 칸: 앞으로의 범위. 종목과 기준일로만 정해져 매매가 없어도 보임 -->
-  <section id="range-box" class="panel range-box" aria-labelledby="rg-h" hidden>
+  <section id="range-box" class="x-card range-box" aria-labelledby="rg-h" hidden>
     <p id="rg-stale" class="stale-note" hidden>흐리게 보이는 범위는 고치기 전 기준일로 계산한 것입니다. 기준일을 고치면 다시 계산합니다.</p>
-    <h2 id="rg-h">앞으로의 범위 <span id="rg-unit" class="note"></span></h2>
+    <div class="x-sec-h"><h3 id="rg-h">앞으로의 범위 <span id="rg-unit" class="note"></span></h3></div>
     <div class="rg-live" role="status" aria-live="polite">
       <p id="rg-range" class="rg-range"></p>
       <p id="rg-sub" class="rg-sub"></p>
       <p id="rg-hit" class="rg-sub"></p>
       <p id="rg-flag" class="rg-flag" hidden></p>
     </div>
-    <p class="note">현지 통화 가격(미국 종목은 수정한 종가)의 일별 로그 수익률로 셉니다. 환율과 분배금은 넣지 않아 원화 범위가 아닙니다. 범위는 로그 수익률로 ±1.2816 × 최근 20일 변동성 × √20이고, 가격 변화 %로 바꾸면 위아래 폭이 조금 다릅니다. 적중률을 세는 지난 창은 기준일에서 20거래일씩 거슬러 간 겹치지 않는 창입니다. 이 방법이 이 종목에서 다른 방법보다 낫다는 것은 재지 않았습니다(E03은 코스피 하나에서 나온 결과).</p>
+    <!-- 설계서 2절 8번 칸이 화면에 밝히라고 한 문구(원화 범위가 아님, 다른 방법보다 낫다는 것은 재지 않음)라 시트로 옮기지 않음 -->
+    <p class="x-note">현지 통화 가격(미국 종목은 수정한 종가)의 일별 로그 수익률로 셉니다. 환율과 분배금은 넣지 않아 원화 범위가 아닙니다. 범위는 로그 수익률로 ±1.2816 × 최근 20일 변동성 × √20이고, 가격 변화 %로 바꾸면 위아래 폭이 조금 다릅니다. 적중률을 세는 지난 창은 기준일에서 20거래일씩 거슬러 간 겹치지 않는 창입니다. 이 방법이 이 종목에서 다른 방법보다 낫다는 것은 재지 않았습니다(E03은 코스피 하나에서 나온 결과).</p>
   </section>
+</section>
 
-  <!-- 1번 칸: 매매 입력 -->
-  <section class="panel input" aria-labelledby="in-h">
-    <h2 id="in-h">매매</h2>
+<!-- 탭 2: 내 매매(1번 칸) -->
+<section class="panel x" id="trade" role="tabpanel" aria-labelledby="tab-trade" hidden>
+  <section class="x-card input" aria-labelledby="in-h">
+    <div class="x-sec-h"><h2 id="in-h">매매</h2><span>줄을 고치면 바로 다시 계산</span></div>
     <div class="ledger" role="table" aria-label="매매 줄" aria-describedby="ledger-note">
       <div class="lrow lhead" role="row">
         <span role="columnheader">날짜</span><span role="columnheader">구분</span><span role="columnheader">수량(주)</span>
@@ -95,21 +111,23 @@
       <div id="rows" role="rowgroup"></div>
     </div>
     <div class="ledger-foot">
-      <button id="add" class="btn" type="button">매매 더하기</button>
-      <p id="ledger-note" class="note">체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 넣은 매매는 이 컴퓨터의 <span class="mono">data/generated/</span>에 저장됩니다.</p>
+      <button id="add" class="btn go" type="button">매매 더하기</button>
+      <p id="state" class="state" role="status" aria-live="polite"></p>
     </div>
-    <p id="state" class="state" role="status" aria-live="polite"></p>
     <ul id="warnings" class="warnings" aria-label="입력 경고"></ul>
+    <p id="ledger-note" class="x-note">체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 넣은 매매는 이 컴퓨터의 <span class="mono">data/generated/</span>에 저장됩니다.</p>
   </section>
+</section>
 
-  <!-- 결과 자세히: 3, 4번 칸 그림과 6번 칸 매도별 손익 -->
+<!-- 탭 3: 그림과 그날(3, 4번 칸 그림, 7번 칸 그때 무슨 일이, 6번 칸 매도별 손익) -->
+<section class="panel x" id="chart" role="tabpanel" aria-labelledby="tab-chart" hidden>
   <div id="result-more" class="result" hidden>
     <h2 class="sr">그림과 매도</h2>
     <p id="stale-note-2" class="stale-note" hidden>흐리게 보이는 그림과 표도 고치기 전 입력으로 계산한 것입니다.</p>
-    <div class="two">
+    <div class="x-grid2 two">
       <!-- 3번 칸: 가격과 내 매매 -->
-      <section class="panel chart-box" aria-labelledby="px-h">
-        <h3 id="px-h">가격과 내 매매 <span id="px-unit" class="note"></span></h3>
+      <section class="x-card chart-box" aria-labelledby="px-h">
+        <div class="x-sec-h"><h3 id="px-h">가격과 내 매매 <span id="px-unit" class="note"></span></h3></div>
         <p id="px-read" class="readout" aria-live="off"></p>
         <svg id="px" viewBox="0 0 560 280" role="img" tabindex="0" aria-describedby="px-desc"></svg>
         <div class="legend">
@@ -119,17 +137,17 @@
           <span><i class="lg tick"></i>큰 움직임(아래 눈금)</span>
           <span><i class="lg band"></i>판정 전</span>
         </div>
-        <p id="px-desc" class="note"></p>
+        <p id="px-desc" class="x-note"></p>
         <details id="bm-more" class="bm">
           <summary id="bm-sum">큰 움직임 날</summary>
-          <p class="note">수정 종가의 하루 등락이 그날을 뺀 앞 60거래일 등락의 표준편차의 2배를 넘은 날입니다(E02 정의). 앞 60일이 모자란 데이터 첫 61거래일은 판정하지 않습니다.</p>
+          <p class="x-note">수정 종가의 하루 등락이 그날을 뺀 앞 60거래일 등락의 표준편차의 2배를 넘은 날입니다(E02 정의). 앞 60일이 모자란 데이터 첫 61거래일은 판정하지 않습니다.</p>
           <ul id="bm-list" class="chips"></ul>
         </details>
       </section>
 
       <!-- 4번 칸: 누적 손익 -->
-      <section class="panel chart-box" aria-labelledby="pl-h">
-        <h3 id="pl-h">누적 손익 <span class="note">실현과 평가, 원화</span></h3>
+      <section class="x-card chart-box" aria-labelledby="pl-h">
+        <div class="x-sec-h"><h3 id="pl-h">누적 손익 <span class="note">실현과 평가, 원화</span></h3></div>
         <p id="pl-read" class="readout" aria-live="off"></p>
         <svg id="pl" viewBox="0 0 560 280" role="img" tabindex="0" aria-describedby="pl-desc"></svg>
         <div class="legend">
@@ -137,15 +155,15 @@
           <span><i class="lg line edge"></i>같은 날 같은 돈을 SPY에</span>
           <span><i class="lg dd"></i>최대 낙폭 구간</span>
         </div>
-        <p id="pl-desc" class="note"></p>
+        <p id="pl-desc" class="x-note"></p>
       </section>
     </div>
 
-    <!-- 7번 칸: 그때 무슨 일이(E02). 보유 기간의 큰 움직임 날을 고르면 그날의 기사 요약과 인용, 같은 날 일정 -->
-    <section id="ev-box" class="panel ev-box" aria-labelledby="ev-h">
-      <h3 id="ev-h">그때 무슨 일이 <span class="note">보유 기간의 큰 움직임 날</span> <span class="pill plain">확인 전</span></h3>
-      <p id="ev-sum" class="note"></p>
-      <p class="note">위 가격 그림의 큰 움직임 눈금 근처를 누르거나, 그림에서 화살표로 그 날에 간 뒤 Enter를 눌러도 열립니다.</p>
+    <!-- 7번 칸: 그때 무슨 일이(E02) -->
+    <section id="ev-box" class="x-card ev-box" aria-labelledby="ev-h">
+      <div class="x-sec-h"><h3 id="ev-h">그때 무슨 일이 <span class="note">보유 기간의 큰 움직임 날</span> <span class="pill plain">확인 전</span></h3><button type="button" class="x-link" data-sheet="sh-ev">이 칸은</button></div>
+      <p id="ev-sum" class="x-note"></p>
+      <p class="x-note">같은 날 나타난 일을 모은 것이고, 움직임의 원인이라는 뜻은 아니에요.</p>
       <div id="ev-days" class="ev-days" role="group" aria-label="큰 움직임 날 고르기"></div>
       <p id="ev-state" class="state" role="status" aria-live="polite"></p>
       <article id="ev-card" class="ev-card" hidden>
@@ -163,24 +181,29 @@
         </div>
         <p id="ev-meta" class="note"></p>
       </article>
-      <p class="note">기사 요약은 모델이 쓰고, 인용 번호와 숫자와 인과 표현은 코드가 검사합니다. 같은 날 나타난 일을 모은 것이고, 움직임의 원인이라는 뜻은 아닙니다. 기사는 Massive 뉴스라 이 화면에서만 보입니다. 날짜마다 처음 한 번만 모델을 불러 몇 초와 약 0.01달러가 들고, 그 뒤는 저장해 둔 답을 보입니다. 평가셋의 확인용 판정은 아직 하지 않아 확인 전입니다.</p>
     </section>
 
     <!-- 6번 칸: 매도별 손익 -->
-    <section class="panel" aria-labelledby="sl-h">
-      <h3 id="sl-h">매도별 손익</h3>
+    <section class="x-card" aria-labelledby="sl-h">
+      <div class="x-sec-h"><h3 id="sl-h">매도별 손익</h3></div>
       <p id="sells-empty" class="sells-empty" hidden></p>
       <div id="sells-box" class="tablebox"><table class="sells">
         <thead><tr><th scope="col">날짜</th><th scope="col">수량</th><th scope="col" id="h-sp">가격</th><th scope="col" id="h-sa">팔기 전 평균 단가</th><th scope="col">원화 손익</th></tr></thead>
         <tbody id="sells"></tbody>
       </table></div>
-      <p id="sells-note" class="note">매도 한 건마다 그때의 평균 단가와 평균 매수 환율로 계산합니다. 나눠 사고팔면 돈이 들어간 때가 달라 단순 수익률이 왜곡되므로, 연 환산 수익률(내부수익률)을 함께 봅니다.</p>
+      <p id="sells-note" class="x-note">매도 한 건마다 그때의 평균 단가와 평균 매수 환율로 계산합니다. 나눠 사고팔면 돈이 들어간 때가 달라 단순 수익률이 왜곡되므로, 연 환산 수익률(내부수익률)을 함께 봅니다.</p>
     </section>
   </div>
+  <section class="x-card empty-card" aria-label="그림 없음">
+    <h2 class="x-display">매매를 넣으면 <em>그림과 그날의 일</em>이 나와요</h2>
+    <div class="x-btn-row"><button type="button" class="x-ghost" data-goto="trade">매매 넣으러 가기</button></div>
+  </section>
+</section>
 
-  <!-- 9번 칸: 묻고 답하기. 화면에 넣은 매매가 「내 계좌」, 기준일이 「오늘」 -->
-  <section id="qa-box" class="panel qa-box" aria-labelledby="qa-h">
-    <h2 id="qa-h">묻고 답하기 <span class="note">넣은 매매와 기준일로 답함</span> <span class="pill plain">확인 전</span></h2>
+<!-- 탭 4: 묻고 답하기(9번 칸). 화면에 넣은 매매가 「내 계좌」, 기준일이 「오늘」 -->
+<section class="panel x" id="qa" role="tabpanel" aria-labelledby="tab-qa" hidden>
+  <section id="qa-box" class="x-card qa-box" aria-labelledby="qa-h">
+    <div class="x-sec-h"><h2 id="qa-h">묻고 답하기 <span class="note">넣은 매매와 기준일로 답함</span> <span class="pill plain">확인 전</span></h2><button type="button" class="x-link" data-sheet="sh-qa">답하는 법</button></div>
     <form id="qa-form" class="qa-form" novalidate>
       <label for="qa-q" class="sr">질문</label>
       <input id="qa-q" type="text" maxlength="300" autocomplete="off" placeholder="예: NVDA 원화 손익 가운데 환율 효과는 얼마야?" aria-describedby="qa-help">
@@ -193,16 +216,58 @@
     </div>
     <p id="qa-state" class="state" role="status" aria-live="polite"></p>
     <ol id="qa-log" class="qa-log" role="log" aria-live="polite" aria-label="답"></ol>
-    <p id="qa-help" class="note">숫자는 손익, 시세, 환율, 기간 통계, 범위 도구의 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다. 그날 있었던 일(기사와 일정)은 위 「그때 무슨 일이」 칸과 같은 검색으로 답하고, 국내 종목은 기사 근거가 없다고 답합니다. 질문마다 모델을 두세 번 불러 답에 몇 초가 걸리고, 약 0.01달러가 듭니다. 평가셋의 확인용 판정은 다음 단계 뒤에 한 번 하므로 아직 확인 전입니다.</p>
+    <p id="qa-help" class="x-note">숫자는 도구 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다.</p>
   </section>
+</section>
 
+<!-- 탭 5: 데이터(10번 칸 파이프라인 상태와 출처) -->
+<section class="panel x" id="data" role="tabpanel" aria-labelledby="tab-data" hidden>
+  <section id="pipe" class="x-card pipe" aria-labelledby="pipe-h">
+    <div class="x-sec-h"><h2 id="pipe-h">파이프라인 상태</h2></div>
+    <p id="pipe-line" class="x-sub"></p>
+    <details id="pipe-more">
+      <summary>검사 항목 보기</summary>
+      <div class="tablebox"><table class="checks">
+        <thead><tr><th scope="col">검사</th><th scope="col">값</th><th scope="col">결과</th></tr></thead>
+        <tbody id="pipe-rows"></tbody>
+      </table></div>
+    </details>
+  </section>
+</section>
 </main>
 
 <footer class="foot">
   <p><b>출처</b> 국내 시세: 금융위원회_주식시세정보(공공데이터포털, 공공누리 제4유형: 출처표시, 상업적 이용금지, 변경금지). 미국 시세: Massive(옛 Polygon.io) 무료 요금제, 개인 비상업 용도. 환율: 한국은행 ECOS 원/미국달러 매매기준율(ECOS에서 제공된 정보). 기사: Massive 뉴스(제목과 요약, 재배포 금지). 일정: 연준 FOMC 일정 페이지, FRED(CPI, 고용 보고서 발표일). This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.</p>
-  <p>시세와 환율은 내 컴퓨터에서만 보고 다시 배포하지 않습니다. 이 화면은 지난 매매를 돌아보는 도구이고, 매수나 매도를 권하지 않습니다. 빨강은 이익과 상승, 파랑은 손실과 하락입니다(한국 증권 앱 관례).</p>
+  <p>시세와 환율은 내 컴퓨터에서만 보고 다시 배포하지 않습니다. 이 화면은 지난 매매를 돌아보는 도구이고, 매수나 매도를 권하지 않습니다. 초록은 이익과 상승, 빨강은 손실과 하락입니다.</p>
 </footer>
 
+</div>
+
+<!-- 시트 원문: 화면에는 한 줄만, 계산법과 설명은 여기(지우지 않음) -->
+<template id="sh-about" data-title="이 화면은" data-sub="내 투자 돌아보기"><p class="lead">한 종목의 매매를 넣으면 원화 손익과 그 출처(가격, 환율), 같은 날 같은 돈을 SPY에 넣었을 때와의 차이를 한 화면에 보입니다.</p><p>내 컴퓨터에서만 돌고, 시세는 내보낸 화면 데이터 파일에서 읽습니다.</p><p>탭은 다섯입니다. 요약(결론과 큰 숫자, 원화 수익 나누기, 앞으로의 범위), 내 매매(매매 줄 넣기와 고치기), 그림과 그날(가격과 누적 손익 그림, 그때 무슨 일이, 매도별 손익), 묻고 답하기, 데이터(파이프라인 상태).</p></template>
+<template id="sh-fx" data-title="원화 수익 나누기" data-sub="5번 칸 계산법"><p class="lead">가격 효과, 환율 효과, 교차 효과 셋을 더하면 원화 손익입니다.</p><p>가격 효과는 평균 단가에서 가격이 움직인 몫(평균 매수 환율로), 환율 효과는 평균 매수 환율에서 환율이 움직인 몫(평균 단가로), 교차 효과는 둘이 함께 움직인 몫입니다. 셋을 더하면 원화 손익입니다.</p></template>
+<template id="sh-ev" data-title="그때 무슨 일이" data-sub="7번 칸이 하는 일"><p class="lead">같은 날 나타난 일을 모은 것이고, 움직임의 원인이라는 뜻은 아닙니다.</p><p>위 가격 그림의 큰 움직임 눈금 근처를 누르거나, 그림에서 화살표로 그 날에 간 뒤 Enter를 눌러도 열립니다.</p><p>기사 요약은 모델이 쓰고, 인용 번호와 숫자와 인과 표현은 코드가 검사합니다. 같은 날 나타난 일을 모은 것이고, 움직임의 원인이라는 뜻은 아닙니다. 기사는 Massive 뉴스라 이 화면에서만 보입니다. 날짜마다 처음 한 번만 모델을 불러 몇 초와 약 0.01달러가 들고, 그 뒤는 저장해 둔 답을 보입니다. 평가셋의 확인용 판정은 아직 하지 않아 확인 전입니다.</p></template>
+<template id="sh-qa" data-title="묻고 답하기" data-sub="9번 칸이 답하는 법"><p class="lead">넣은 매매가 「내 계좌」, 기준일이 「오늘」입니다.</p><p>숫자는 손익, 시세, 환율, 기간 통계, 범위 도구의 결과에서만 옮기고, 데이터로 답할 수 없으면 모른다고 답합니다. 매수나 매도 판단은 답하지 않습니다. 그날 있었던 일(기사와 일정)은 위 「그때 무슨 일이」 칸과 같은 검색으로 답하고, 국내 종목은 기사 근거가 없다고 답합니다. 질문마다 모델을 두세 번 불러 답에 몇 초가 걸리고, 약 0.01달러가 듭니다. 평가셋의 확인용 판정은 다음 단계 뒤에 한 번 하므로 아직 확인 전입니다.</p></template>
+
+<!-- 종목 고르기 창: 찾기 칸, 국내와 미국 묶음, 줄마다 이름과 코드. 화살표로 옮기고 Enter로 고름, Esc로 닫음 -->
+<div class="x-sheet-wrap" id="sym-pick" hidden>
+  <div class="x-scrim" data-pick-close></div>
+  <div class="x-sheet pick-sheet" role="dialog" aria-modal="true" aria-labelledby="pick-t">
+    <div class="x-grab"></div>
+    <div class="x-sheet-head"><div><h3 id="pick-t">종목 고르기</h3><p id="pick-s"></p></div><button type="button" class="x-close" data-pick-close aria-label="닫기">&#x2715;</button></div>
+    <input id="pick-q" class="pick-q" type="search" placeholder="이름이나 코드로 찾기" autocomplete="off" aria-label="종목 찾기" aria-controls="pick-list">
+    <div id="pick-list" class="pick-list" role="listbox" aria-label="종목"></div>
+    <p id="pick-empty" class="pick-empty" hidden>찾는 종목이 없어요.</p>
+  </div>
+</div>
+
+<div class="x-sheet-wrap" id="x-sheet" hidden>
+  <div class="x-scrim" data-close></div>
+  <div class="x-sheet" role="dialog" aria-modal="true" aria-labelledby="x-sheet-t">
+    <div class="x-grab"></div>
+    <div class="x-sheet-head"><div><h3 id="x-sheet-t"></h3><p id="x-sheet-s"></p></div><button type="button" class="x-close" data-close aria-label="닫기">&#x2715;</button></div>
+    <div class="x-sheet-body" id="x-sheet-b"></div>
+  </div>
 </div>
 </body>
 </html>

@@ -3,6 +3,22 @@
 import { drawPnl, drawPrice } from "./charts.js";
 import { krw, local, num, pct, price, tone } from "./format.js";
 
+// 큰 금액 줄이기(3판 뼈대의 숫자 줄이기 규칙, 담당자 「가독성이 중요」). 100만 이상은 만, 1억 이상은 억(100억 이상은 정수),
+// 1조 이상은 조. 반올림은 반올림 절반 올림. 줄인 값은 보이는 글에만 쓰고, 정확한 값(API 값 그대로)은 바로 아래 작은 줄과 title에 둡니다.
+const MINUS = "−";
+function half(x, n) { const f = 10 ** n; return Math.round((x * f) + Number.EPSILON * f) / f; }
+function one(x) { const v = half(x, 1); return Number.isInteger(v) ? String(v) : v.toFixed(1); }
+const grp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+function krwBig(v, signed = false) {
+  if (v === null || v === undefined) return "–";
+  const a = Math.abs(v), sign = v < 0 ? MINUS : signed && v > 0 ? "+" : "";
+  if (a >= 1e12) return sign + one(a / 1e12) + "조원";
+  if (a >= 1e8) { const q = a / 1e8; return sign + (q >= 100 ? grp(Math.round(q)) : one(q)) + "억원"; }
+  if (a >= 1e6) return sign + grp(Math.round(a / 1e4)) + "만원";
+  return krw(v, signed);
+}
+const shortened = (v) => v !== null && v !== undefined && Math.abs(v) >= 1e6;
+
 const $ = (id) => document.getElementById(id);
 const DEFAULT_SYMBOL = "QQQ";
 const EXAMPLE = [
@@ -232,7 +248,7 @@ async function run() {
       showResult("none");
     }
     $("warnings").replaceChildren();
-    st.notes = [pending ? "날짜와 수량을 넣으면 계산합니다" : "매매를 넣으면 계산합니다"];
+    st.notes = [pending ? "날짜와 수량을 넣으면 계산해요" : "매매를 넣으면 계산해요"];
     showNotes();
     return;
   }
@@ -330,9 +346,12 @@ function drawCharts() {
   $("pl-desc").textContent = drawPnl($("pl"), $("pl-read"), st.res);
 }
 
-function setKpi(id, text, cls, sub) {
+function setKpi(id, text, cls, sub, exact) {
   const v = $(id);
   v.textContent = text;
+  // 줄인 금액이면 정확한 값을 title과 작은 줄 맨 앞에 둠
+  if (exact) v.title = exact; else v.removeAttribute("title");
+  if (exact && sub !== undefined) sub = sub ? `${exact}, ${sub}` : exact;
   // 긴 금액은 숫자 중간에서 줄이 나뉘지 않게 글자를 줄입니다(375px 폭의 두 칸 카드)
   const size = text.length > 14 ? " longer" : text.length > 11 ? " long" : "";
   v.className = "value " + (cls || "") + size;
@@ -344,30 +363,36 @@ function renderKpis(res) {
   $("k-local-l").textContent = cur === "KRW" ? "단순 수익률" : "달러 손익";
   if (!s) {
     for (const id of ["k-krw", "k-local", "k-bench", "k-mdd", "k-irr"]) setKpi(id, "–", "na", "");
-    $("k-krw-s").textContent = "계산에 들어간 매매가 없습니다(경고를 보세요)";
+    $("k-krw-s").textContent = "계산에 들어간 매매가 없어요(내 매매 탭의 경고를 봐 주세요)";
     $("holding-line").replaceChildren();
     return;
   }
-  setKpi("k-krw", krw(s.total_krw, true), tone(s.total_krw), `실현 ${krw(s.realized_krw, true)}, 평가 ${krw(s.unrealized_krw, true)}`);
+  // 큰 숫자 아래 작은 줄: 줄인 금액이면 정확한 값, 그리고 단순 수익률(토스증권식 「+2,650,314원 (단순 수익률 +24.08%)」), 실현과 평가
+  const head = [shortened(s.total_krw) ? krw(s.total_krw, true) : "",
+    s.simple_return_pct === null ? "" : `(단순 수익률 ${pct(s.simple_return_pct)})`].filter(Boolean).join(" ");
+  setKpi("k-krw", krwBig(s.total_krw, true), tone(s.total_krw),
+    `${head ? head + ". " : ""}실현 ${krw(s.realized_krw, true)}, 평가 ${krw(s.unrealized_krw, true)}`);
   if (cur === "KRW") {
     setKpi("k-local", pct(s.simple_return_pct), tone(s.simple_return_pct), `원화 손익 / 넣은 돈 ${krw(s.invested_krw)}`);
   } else {
     setKpi("k-local", local(s.total_local, cur, true), tone(s.total_local),
       `실현 ${local(s.realized_local, cur, true)}, 평가 ${local(s.unrealized_local, cur, true)}`);
   }
-  setKpi("k-bench", krw(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
-    `같은 날 같은 돈을 SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`);
-  if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없습니다");
-  else setKpi("k-mdd", krw(s.max_drawdown_krw), "down", "누적 손익이 앞선 고점에서 가장 크게 내려간 폭");
+  setKpi("k-bench", krwBig(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
+    `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`,
+    shortened(s.total_minus_bench_krw) ? krw(s.total_minus_bench_krw, true) : undefined);
+  if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없어요");
+  else setKpi("k-mdd", krwBig(s.max_drawdown_krw), "down", "앞선 고점에서 가장 크게 내려간 폭",
+    shortened(s.max_drawdown_krw) ? krw(s.max_drawdown_krw) : undefined);
   if (s.irr_pct === null) {
     setKpi("k-irr", "계산 못 함", "na", res.irr_short
-      ? "첫 매매일부터 기준일까지 30일이 안 되어 셈하지 않습니다"
-      : "현금 흐름으로 풀리는 값이 없습니다");
+      ? "첫 매매일부터 기준일까지 30일이 안 되어 세지 않아요"
+      : "현금 흐름으로 풀리는 값이 없어요");
   }
   else setKpi("k-irr", pct(s.irr_pct), tone(s.irr_pct), `SPY ${pct(s.bench_irr_pct)}`);
 
   const items = [];
-  if (!res.booked) items.push(["장부에 들어간 매수가 없습니다", null]);
+  if (!res.booked) items.push(["장부에 들어간 매수가 없어요", null]);
   items.push(["남은 수량", `${num(s.qty_left)}주`]);
   if (s.qty_left > 0) items.push(["평균 단가", local(s.avg_cost_local, cur)]);
   if (cur !== "KRW" && s.qty_left > 0) items.push(["평균 매수 환율", `${num(s.avg_buy_fx)}원`]);
@@ -386,43 +411,43 @@ const priceOnly = (res) => res.currency === "KRW" && res.summary.fx_effect_krw =
 
 // 결론 문장: 요약 카드와 나누기 칸의 API 값을 문장으로 옮깁니다(다시 계산하지 않고, 차이는 부호만 뗌)
 function renderVerdict(res) {
+  // 원화 손익은 위의 큰 숫자(k-krw)가 맡고, 이 문장은 손익이 어디서 왔는지와 SPY 비교만(해요체). 금액은 줄여 쓰고
+  // 정확한 값은 마우스를 올리면(title) 보이고, 아래 목록과 나누기 칸에 원 단위로 있음
   const p = $("verdict"), s = res.summary;
   p.replaceChildren();
   p.hidden = !s;
   if (!s) return;
-  const n = (text, v) => {
+  const n = (text, v, exact) => {
     const b = document.createElement("b");
     b.className = "n " + tone(v);
     b.textContent = text;
+    if (exact && exact !== text) b.title = exact;
     p.append(b);
   };
   if (!res.booked) {
-    p.append("장부에 들어간 매수가 없어 손익을 말할 수 없습니다. 매매 칸의 경고를 보세요.");
+    p.append("장부에 들어간 매수가 없어 손익을 말할 수 없어요. 내 매매 탭의 경고를 봐 주세요.");
     return;
   }
-  p.append("원화 손익은 ");
-  n(krw(s.total_krw, true), s.total_krw);
-  p.append("입니다. ");
   if (priceOnly(res)) {
-    p.append("국내 종목이라 환율 효과 없이 모두 가격 효과입니다.");
+    p.append("국내 종목이라 환율 효과 없이 모두 가격 효과예요.");
   } else {
     p.append("가격 효과 ");
-    n(krw(s.price_effect_krw, true), s.price_effect_krw);
+    n(krwBig(s.price_effect_krw, true), s.price_effect_krw, krw(s.price_effect_krw, true));
     p.append(", 환율 효과 ");
-    n(krw(s.fx_effect_krw, true), s.fx_effect_krw);
+    n(krwBig(s.fx_effect_krw, true), s.fx_effect_krw, krw(s.fx_effect_krw, true));
     p.append(", 교차 효과 ");
-    n(krw(s.cross_effect_krw, true), s.cross_effect_krw);
+    n(krwBig(s.cross_effect_krw, true), s.cross_effect_krw, krw(s.cross_effect_krw, true));
     const gap = s.price_effect_krw + s.fx_effect_krw + s.cross_effect_krw - s.total_krw;
-    p.append(gap ? `으로 나뉩니다(원 단위 반올림으로 셋의 합과 ${krw(Math.abs(gap))} 차이).` : "으로 나뉩니다.");
+    p.append(gap ? `으로 나뉘어요(원 단위 반올림으로 셋의 합과 ${krw(Math.abs(gap))} 차이).` : "으로 나뉘어요.");
   }
   if (res.symbol === res.bench) return;
   const d = s.total_minus_bench_krw;
   p.append(" 같은 날 같은 돈을 SPY에 넣었다면 ");
-  n(krw(s.bench_total_krw, true), s.bench_total_krw);
-  if (d === 0) { p.append("으로 이 매매와 같습니다."); return; }
-  p.append("으로, 이 매매가 ");
-  n(krw(Math.abs(d)), d);
-  p.append(d > 0 ? " 많습니다." : " 적습니다.");
+  n(krwBig(s.bench_total_krw, true), s.bench_total_krw, krw(s.bench_total_krw, true));
+  if (d === 0) { p.append("으로 이 매매와 같아요."); return; }
+  p.append("이라, 이 매매가 ");
+  n(krwBig(Math.abs(d)), d, krw(Math.abs(d)));
+  p.append(d > 0 ? " 더 많아요." : " 더 적어요.");
 }
 
 function renderEffects(res) {
@@ -463,7 +488,7 @@ function renderSells(res) {
   const dropped = st.map.some((row, k) => (st.rows[row].side || "BUY") === "SELL"
     && !res.steps.some((x) => x.trade_index === k && !x.excluded));
   $("sells-empty").textContent = !none ? ""
-    : dropped ? "계산에 들어간 매도가 없습니다. 빠진 매도 줄은 매매 칸의 경고를 보세요." : "매도가 없습니다.";
+    : dropped ? "계산에 들어간 매도가 없어요. 빠진 매도 줄은 내 매매 탭의 경고를 봐 주세요." : "아직 판 적이 없어요.";
   if (none) {
     tb.replaceChildren();
     return;
@@ -497,10 +522,10 @@ function renderEvents(res) {
   const bm = res.big_moves, box = $("ev-days");
   const kr = res.currency === "KRW";
   if (!bm || !bm.dates.length) {
-    $("ev-sum").textContent = !bm ? "장부에 들어간 매수가 없어 보유 기간이 없습니다." : "보유 기간에 큰 움직임 날이 없습니다.";
+    $("ev-sum").textContent = !bm ? "장부에 들어간 매수가 없어 보유 기간이 없어요." : "보유 기간에 큰 움직임 날이 없어요.";
   } else {
-    $("ev-sum").textContent = `큰 움직임 ${bm.dates.length}일. 날짜를 누르면 그날의 기사 요약과 일정이 나옵니다.` +
-      (kr ? " 국내 종목은 기사 근거가 없어 움직임만 보입니다(다음 판)." : "");
+    $("ev-sum").textContent = `보유 기간에 크게 움직인 날이 ${bm.dates.length}일이에요. 날짜를 누르면 그날의 기사 요약과 일정이 나와요.` +
+      (kr ? " 국내 종목은 기사 근거가 없어 움직임만 보여요(다음 판)." : "");
   }
   const dates = bm ? [...bm.dates].reverse() : [];
   box.replaceChildren(...dates.map((d) => {
@@ -510,6 +535,19 @@ function renderEvents(res) {
     b.disabled = st.evBusy;
     return b;
   }));
+  // 날짜가 12개를 넘으면 최근 12개만 보이고 나머지는 단추로 펼침(고른 날이 접힌 쪽이면 펼친 채로)
+  const FOLD = 12;
+  const selIdx = st.evSel ? dates.indexOf(st.evSel.date) : -1;
+  box.classList.toggle("fold", dates.length > FOLD && selIdx < FOLD);
+  if (dates.length > FOLD) {
+    const more = document.createElement("button");
+    more.type = "button"; more.className = "ev-more";
+    const label = () => (box.classList.contains("fold") ? `나머지 ${dates.length - FOLD}일 보기` : "최근 12일만 보기");
+    more.textContent = label();
+    more.setAttribute("aria-expanded", String(!box.classList.contains("fold")));
+    more.addEventListener("click", (e) => { e.stopPropagation(); box.classList.toggle("fold"); more.textContent = label(); more.setAttribute("aria-expanded", String(!box.classList.contains("fold"))); });
+    box.append(more);
+  }
   if (!(st.evSel && st.evSel.symbol === res.symbol && dates.includes(st.evSel.date))) {
     st.evSel = null;
     st.eseq++;
@@ -649,7 +687,8 @@ async function fetchRange() {
   renderRange(r.body);
 }
 
-// 서버가 정한 보일 값(범위 %는 소수 둘째 자리, 적중률은 소수 첫째 자리)을 그대로 옮깁니다
+// 서버가 정한 보일 값(범위 %는 소수 둘째 자리, 적중률은 소수 첫째 자리)을 그대로 옮깁니다.
+// 이 칸의 문장은 설계서 2절(8번 칸)과 7절 5단계에서 정한 문장이라, 11/18 화면 개편의 해요체로 바꾸지 않고 그대로 둡니다
 function renderRange(v, err) {
   const box = $("range-box"), flag = $("rg-flag");
   box.dataset.symbol = v ? v.symbol : "";
@@ -809,13 +848,14 @@ function load(sym) {
   }
   if (!st.rows.length) st.rows = [{ date: "", side: "BUY", qty: "", price: "", fx_rate: "" }];
   $("sym").value = sym;
+  document.dispatchEvent(new CustomEvent("symshown", { detail: sym }));  // 종목 고르기 단추의 이름을 맞춤(ui.js)
   $("asof").value = st.asof;
   renderRows();
   st.res = null;
   showResult("none");
   showRange("none");
   fetchRange();
-  run().then(() => { if (st.example) setState($("state").textContent + " 예시 매매입니다. 고치면 이 종목의 매매로 저장됩니다."); });
+  run().then(() => { if (st.example) setState($("state").textContent + " 예시 매매예요. 고치면 이 종목의 매매로 저장돼요."); });
 }
 
 async function boot() {
@@ -874,6 +914,8 @@ async function boot() {
     changed();
   });
   window.addEventListener("pagehide", flush);
+  // 숨은 탭에서 그린 그림은 폭을 몰라 기본 폭으로 그려지므로, 그림 탭이 보일 때 다시 그림
+  document.addEventListener("tabshown", (e) => { if (e.detail === "chart") drawCharts(); });
   $("qa-form").addEventListener("submit", (e) => { e.preventDefault(); ask($("qa-q").value); });
   for (const b of document.querySelectorAll(".qa-examples .chip")) {
     b.addEventListener("click", () => { $("qa-q").value = b.dataset.q.replace("이 종목", st.symbols.get(st.sym)?.name || st.sym); $("qa-q").focus(); });
