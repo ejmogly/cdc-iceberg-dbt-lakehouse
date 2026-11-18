@@ -25,6 +25,9 @@ models:
       +schema: silver
     gold:
       +schema: gold
+    # 손익 모델(sql/pnl/과 같은 규칙, 장부만 Spark 판). 화면 손익과 대조합니다(loaders/screen_trades.py --verify).
+    pnl:
+      +schema: gold
 
 seeds:
   brokerage_lakehouse:

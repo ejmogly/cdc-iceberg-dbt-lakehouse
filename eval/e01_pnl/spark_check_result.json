@@ -1,0 +1,164 @@
+{
+ "at": "2026-11-18T12:25:24",
+ "pass": 30,
+ "cases": 30,
+ "files_differ": [],
+ "build_seconds": 5.9,
+ "results": [
+  {
+   "id": "G01",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G02",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G03",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G04",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G05",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G06",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G07",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G08",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G09",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G10",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G11",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G12",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G13",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G14",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G15",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G16",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G17",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G18",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G19",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G20",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G21",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G22",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G23",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G24",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G25",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G26",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G27",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G28",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G29",
+   "ok": true,
+   "bad": []
+  },
+  {
+   "id": "G30",
+   "ok": true,
+   "bad": []
+  }
+ ],
+ "order_shuffle": {
+  "copies": 150,
+  "seed": 20261111,
+  "fail": []
+ }
+}

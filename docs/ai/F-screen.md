@@ -552,6 +552,26 @@ E02 답 규칙 v3으로 개발 24개를 다시 쟀습니다: 숫자 일치 24/24
 - 화면: 데이터 탭에 화면 숫자가 지나온 길(원천 PostgreSQL → Debezium, Kafka → Flink Bronze → Spark MERGE Silver → dbt Gold 마트 → 화면 파일)과 읽는 곳을 보입니다. 레이크 경로 대조가 실패하면 그 길이 빨간 테두리가 되고, 숫자 대신 실패 항목이 나옵니다.
 - 실행: `make screen-data`는 이제 Spark가 떠 있고 Silver MERGE와 `dbt build`를 먼저 돌린 뒤에 씁니다(VM 필요). Airflow DAG의 `dbt build`가 새 마트도 만듭니다. 내보내기를 DAG에 넣는 것과, 화면에 넣은 내 매매를 원천 주문, 체결 테이블로 넣어 CDC로 Gold 손익 마트까지 잇는 것은 다음 판입니다.
 
+### 내 매매도 CDC로 (2026-11-18, 1안 둘째)
+
+담당자가 고른 다음 1안입니다(11/18). 화면에 저장한 매매가 레이크하우스를 거치지 않던 빈칸을 메웁니다. 손익 SQL을 Spark로 옮기는 일은 따로 적습니다(아래 「Spark 손익 마트」).
+
+- 적재기 `loaders/screen_trades.py`: 화면 저장 파일(`data/generated/f_screen/screen_trades.json`, 읽기만)을 원천의 주문, 체결, 잔고(계좌 `A-SCREEN`)로 옮깁니다. 매매 한 줄이 주문 한 건(시장가, 전량 체결)과 체결 한 건이고, 체결가와 환율은 계산 서버가 손익을 셀 때 쓴 값(비운 칸은 그날 종가와 매매기준율, 휴장일은 직전 거래일)을 그대로 씁니다. 계산에서 빠지는 줄(초과 매도, 기준일 뒤 등)은 넣지 않고, 잔고는 계산 끝의 남은 수량과 평균 단가입니다. 번호는 종목 순번과 줄 번호로 정해, 다시 돌리면 값이 바뀐 줄만 고치고 사라진 줄은 지웁니다(값이 같으면 고치지 않아 CDC 이벤트도 없음).
+- 확인(11/18): 저장 매매(1종목 1줄)를 넣자 주문, 체결, 잔고 토픽이 1건씩 늘었고, 다시 돌리면 바꿀 것 0. 시험용 매매 파일(QQQ 나눠 사고팔기, SK하이닉스 전량 매도 뒤 다시 매수, NVDA 휴장일 매수와 초과 매도, 체결가와 환율을 넣은 줄, 4종목 10줄)로 넣으면 원천에 체결 9건(초과 매도 1줄 뺌)이 들어가고, Silver MERGE와 `dbt build`(70개 통과) 뒤 Gold `fct_execution`의 9건이 모두 같았습니다. Gold 체결만으로(체결가와 환율을 넣어) 다시 센 손익이 화면 손익과 4/4종목 같았고, 잔고 대사(`mart_holding_reconciliation`)도 4종목 모두 차이 0. 저장 파일로 되돌리자 8건이 지워져 Silver에 지움 표시 8건, Gold 체결 1건, 유효 잔고 1건이 됐습니다.
+- `loaders/screen_trades.py --verify`가 결과를 `data/generated/f_screen/trades_lake.json`(git 제외)에 쓰고, 계산 서버가 상태 API로 보냅니다. 데이터 탭의 「내 매매가 지나온 길」이 체결 수, 손익 대조, 확인한 때를 보이고, 확인한 뒤 저장 파일이 바뀌었으면 아직 옮기지 않았다고 밝힙니다. 저장을 끈 예시 서버에서는 보이지 않습니다.
+- 실행: `make trades-to-source`(VM 필요) → Silver MERGE와 `dbt build` → `make trades-verify`(Spark 필요). 자체 시험(`--selftest`, DB 없음 8/8)은 `make check-screen`에 넣었습니다.
+- 한계: 화면은 지금처럼 넣는 즉시 서버가 손익을 셉니다(파이프라인을 기다리지 않음). 레이크 쪽은 저장한 매매를 옮긴 뒤 대조하는 길이라, 옮기기와 확인은 사람이 돌립니다(Airflow에 넣는 것은 다음 판).
+
+### Spark 손익 마트 (2026-11-18, 1안 셋째)
+
+「내 매매도 CDC로」에 이어, 검증한 손익 SQL(`sql/pnl/`, E01 계산 규칙, DuckDB로 골든 30/30)을 레이크의 Gold로 옮겼습니다.
+
+- 막힌 곳: 장부(`pnl_ledger`, 이동평균 단가)가 재귀 CTE인데 파이프라인의 Spark 3.5.6에는 재귀가 없습니다(`sql/pnl/README.md` 엔진 함정 4). 장부만 Spark 판으로 바꿨습니다. 계산 단위마다 매매를 step 순서의 배열로 모아 `aggregate()`로 한 줄씩 접고, 접을 때마다 그 줄 뒤의 상태를 배열에 붙여 펼칩니다. 나머지 모델 열 개는 `sql/pnl/`과 같은 파일입니다(`dbt/models/pnl/`).
+- 골든 대조(`eval/e01_pnl/check_spark.py`, `make check-pnl-spark`): 골든 입력을 Iceberg 이름공간 `lake.e01`에 넣고 모델을 Spark로 만들어 check_sql.py와 같은 기준으로 맞춥니다. 첫 실행 29/30(G28 기준선 손익 1원). Spark는 정밀도 38을 넘는 decimal 나눗셈의 소수 자리를 여섯째까지 줄이고 DuckDB는 decimal 나눗셈이 double이라, 장부의 나눗셈을 DuckDB처럼 double로 나눈 뒤 decimal(38,18)로 바꿔 30/30. 입력 순서를 섞은 사본 150개도 150/150, 장부 밖 열 개는 `sql/pnl/`과 글자째 같음. 결과는 `eval/e01_pnl/spark_check_result.json`.
+- Gold 손익 마트: 입력 여섯 개(`dbt/models/pnl/inputs/`)가 Gold 시세, 환율 마트와 `fct_execution`을 읽고, 계산 단위는 계좌 x 종목, 기준일은 데이터의 마지막 날, 기준 종목은 SPY입니다. `dbt build` 90개 통과. `lake.gold.pnl_position`(요약), `pnl_sells`(매도별), `pnl_daily`(누적 손익과 고점), `pnl_warnings`.
+- 화면 손익과 대조(`loaders/screen_trades.py --verify`): 기준일이 같은 종목마다 E01 정답 칸 16개와 연 환산(0.05%p 안)을 견줍니다. 저장 매매 1/1종목, 시험 매매 4/4종목(휴장일 매수, 초과 매도, 전량 매도 뒤 다시 매수, 체결가와 환율을 넣은 줄) 모두 칸마다 같았습니다. 데이터 탭 「내 매매가 지나온 길」의 마지막 칸이 「dbt → 손익 마트」입니다.
+- 남은 것: 화면은 지금처럼 넣는 즉시 계산 서버(DuckDB)가 손익을 셉니다. Gold 손익 마트는 저장한 매매를 옮긴 뒤 같은 값인지 보는 길입니다. 옮기기, Silver MERGE, `dbt build`, 확인을 Airflow DAG 하나로 잇는 것은 다음 판입니다.
+
 ## 8. 결과와 다음
 
 (평가 기준대로 잰 결과를 적습니다.)

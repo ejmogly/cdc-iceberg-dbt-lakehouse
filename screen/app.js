@@ -73,6 +73,31 @@ function renderPipe(s) {
       return li;
     }));
   }
+  // 내 매매가 지나온 길(저장 켠 서버에서 loaders/screen_trades.py --verify를 돌린 뒤에만)
+  const tl = s.trades_lake;
+  $("trade-lake").hidden = !tl;
+  if (tl) {
+    const gp = tl.gold_pnl_checked !== undefined && tl.gold_pnl_checked !== null;
+    const ok = tl.executions_ok && tl.pnl_same === tl.pnl_checked && (!gp || tl.gold_pnl_same === tl.gold_pnl_checked);
+    const steps = [["화면에 저장한 매매", `계좌 ${tl.account}`], ["원천 주문, 체결, 잔고", "loaders/screen_trades.py"],
+      ["Debezium, Kafka", "변경 이벤트"], ["Flink → Bronze", "Iceberg"], ["Spark MERGE → Silver", "지운 줄은 지움 표시"],
+      ["dbt → fct_execution", `체결 ${tl.executions_gold} / ${tl.executions_want}건 ${tl.executions_ok ? "같음" : "다름"}`],
+      ...(gp ? [["dbt → 손익 마트", `pnl_position ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}종목 같음`]] : [])];
+    $("trade-flow").replaceChildren(...steps.map(([t, sub]) => {
+      const li = document.createElement("li");
+      li.className = ok ? "ok" : "bad";
+      const b = document.createElement("b"); b.textContent = t;
+      const em = document.createElement("em"); em.textContent = sub;
+      li.append(b, em);
+      return li;
+    }));
+    $("trade-lake-at").textContent = `확인한 때 ${(tl.at || "").slice(0, 16).replace("T", " ")}`;
+    $("trade-lake-note").textContent = (gp
+      ? `Gold 손익 마트(pnl_position, 기준일 ${tl.gold_pnl_asof})가 화면 손익과 ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}종목 칸마다 같고, `
+      : "") + `Gold 체결만으로 다시 센 손익도 화면 손익과 ${tl.pnl_same} / ${tl.pnl_checked}종목 같습니다.` +
+      (tl.stale ? " 확인한 뒤 매매를 고쳐, 새로 고친 매매는 아직 원천에 옮기지 않았습니다(make trades-to-source)." : "");
+    $("trade-lake-note").classList.toggle("err", Boolean(tl.stale) || !ok);
+  }
   $("pipe-src").hidden = !s.source;
   $("pipe-src").textContent = s.source ? `읽는 곳: ${s.source}` : "";
   const tb = $("pipe-rows");

@@ -228,6 +228,12 @@
     <!-- 화면 숫자가 지나온 길(레이크 경로 대조가 있는 실제 데이터 파일일 때만) -->
     <ol id="pipe-flow" class="pipe-flow" aria-label="화면 숫자가 지나온 길" hidden></ol>
     <p id="pipe-src" class="x-note" hidden></p>
+    <!-- 내 매매가 지나온 길: 저장한 매매를 원천 주문, 체결, 잔고로 옮겨 Gold까지 같은 값인지 본 마지막 결과(loaders/screen_trades.py) -->
+    <div id="trade-lake" class="trade-lake" hidden>
+      <div class="x-sec-h"><h3>내 매매가 지나온 길</h3><span id="trade-lake-at"></span></div>
+      <ol id="trade-flow" class="pipe-flow" aria-label="내 매매가 지나온 길"></ol>
+      <p id="trade-lake-note" class="x-note"></p>
+    </div>
     <details id="pipe-more">
       <summary>검사 항목 보기</summary>
       <div class="tablebox"><table class="checks">

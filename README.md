@@ -22,6 +22,8 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 | Gold와 데이터 테스트 | `dbt build` 55개 모두 통과(시세, 환율 포함) | 첫 실행 보고서 3, 5절 |
 | 실제 시세를 원천에 넣었을 때 | 시세 4,736행, 환율 245행. Silver가 원천과 종목별 행 수, 기간, 종가 합, 거래량 합까지 같음 | 첫 실행 보고서 5절 |
 | 화면이 레이크하우스의 Gold를 읽나 | 2년치 시세 9,472행과 환율 488일이 원천 → Bronze → Silver → Gold 마트(`mart_symbol_daily`, `mart_fx_daily`)를 거쳐 원천, 받은 원본과 한 행씩 같고, 화면 파일은 이 마트에서 내보냄. `dbt build` 70개 통과(새 마트와 데이터 테스트 포함) | [F 설계서 7절](docs/ai/F-screen.md) 「화면이 Gold 마트를 읽게」 |
+| 화면에 넣은 내 매매도 레이크를 거치나 | 저장 매매를 원천 주문, 체결, 잔고로 옮겨(계좌 `A-SCREEN`) CDC → Bronze → Silver → Gold `fct_execution`까지. 시험 매매 4종목 10줄에서 체결 9건이 모두 같고, Gold 체결로 다시 센 손익이 화면 손익과 4/4종목 같음. 줄을 지우면 Silver에 지움 표시로 반영 | [F 설계서 7절](docs/ai/F-screen.md) 「내 매매도 CDC로」 |
+| 검증한 손익 SQL이 레이크(Spark)에서도 같나 | 장부만 `aggregate` 접기로 바꾼 Spark 판이 골든 30/30, 입력 순서 섞기 150/150. Gold 손익 마트(`pnl_position`)가 화면 손익과 시험 매매 4/4종목 칸마다 같음 | [손익 SQL 설명서](sql/pnl/README.md), [F 설계서 7절](docs/ai/F-screen.md) 「Spark 손익 마트」 |
 | 시세를 다시 받아 넣을 때 가짜 변경 이벤트가 생기나 | PostgreSQL에서 두 번째 적재의 고친 행 0, 토픽 끝 위치 그대로 | [데이터 준비 2절](docs/ai/data-prep.md), [0006](docs/decisions/0006-batch-prices-through-cdc.md) |
 | 바뀐 것만 다시 계산해도 전체 재계산과 같은가 | 일별 종목별 체결 대금에서 여섯 경우 모두 `증분에만 0 / 정답지에만 0`. 날짜를 정정하면 옛 거래일 행이 지워짐. 중간에 멈추고 다시 돌려도 0 / 0 | [증분, 유지보수, Airflow 보고서 1절](docs/reports/2026-11-12_incremental-maintenance-airflow.md) |
 | Iceberg 유지보수가 값을 바꾸지 않나 | 압축, 스냅샷 만료, 고아 파일 정리, manifest 합치기 뒤 행 수와 합계 그대로. 스냅샷 10 → 3, 데이터 파일 10 → 2 | 같은 보고서 2절 |

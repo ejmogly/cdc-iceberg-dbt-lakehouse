@@ -5,7 +5,7 @@ E01([`docs/ai/experiments/E01-pnl.md`](../../docs/ai/experiments/E01-pnl.md))의
 - [`eval/e01_pnl/check_sql.py`](../../eval/e01_pnl/check_sql.py): `ref()`를 뷰 이름으로 바꿔 DuckDB에서 돌립니다(`make check`).
 - [`eval/e01_pnl/run_dbt.py`](../../eval/e01_pnl/run_dbt.py): 같은 파일을 dbt(DuckDB 어댑터)로 빌드합니다(아래 「dbt로 돌리기」).
 
-파이프라인의 Spark 3.5.6에서는 재귀 CTE가 안 돼 아직 돌리지 않습니다(엔진 함정 4).
+파이프라인의 Spark 3.5.6에는 재귀 CTE가 없어(엔진 함정 4), 장부(`pnl_ledger`)만 `aggregate` 접기로 바꾼 Spark 판을 [`dbt/models/pnl/`](../../dbt/models/pnl/)에 둡니다(2026-11-18). 나머지 열 개는 이 폴더와 같은 파일이고, [`eval/e01_pnl/check_spark.py`](../../eval/e01_pnl/check_spark.py)가 같은지 본 뒤 골든 30개와 섞은 사본 150개를 Spark에서 맞춥니다(30/30, 150/150). 레이크의 Gold 손익 마트(`lake.gold.pnl_position`)가 이 모델입니다.
 
 ## 검증 (2026-11-11, DuckDB 2.0.0)
 
@@ -85,7 +85,7 @@ E01([`docs/ai/experiments/E01-pnl.md`](../../docs/ai/experiments/E01-pnl.md))의
 1. **CASE 갈래의 자료형이 섞이면 결과가 바뀝니다.** DuckDB는 `decimal(38,2)`와 `decimal(38,0)` 갈래를 `decimal(38,0)`으로 합쳐 달러 손익의 소수를 버렸습니다(첫 실행에서 6개 실패). 갈래마다 같은 자료형으로 바꿉니다.
 2. **나눗셈과 double.** DuckDB의 decimal 나눗셈은 double이고, double을 `decimal(38,18)`로 바꿀 때도 오차가 붙습니다(700000 → 700000.000000000041943040). 나눗셈 갈래가 섞인 CASE는 매수 갈래까지 double이 되어 정확해야 할 원가에 오차가 붙었고, 반올림 전 맞춤 없이 돌리면 .5 경계 사례(G30)가 1원 어긋났습니다. 그래서 나눗셈은 갈래 안에서 decimal로 바꾸고, 전량 매도는 나누지 않고 원가를 그대로 덜어 냅니다. 마지막 반올림 전에 소수 여섯째 자리로 한 번 맞추는 것은 남은 안전장치입니다(지금 30개는 이것 없이도 통과).
 3. **decimal끼리 곱하면 자리가 넘칩니다.** `decimal(38,18) x decimal(38,18)`은 DuckDB에서 오류입니다. 평균 단가와 평균 환율을 곱하는 효과 나누기와 기준 종목은 double로 셉니다. Spark는 반대로 자리를 줄여(`allowPrecisionLoss`) 소수 여섯째 자리까지만 남길 수 있으니, 옮긴 뒤 같은 30개로 다시 확인합니다.
-4. **재귀 CTE.** DuckDB와 PostgreSQL은 됩니다. Spark SQL은 판에 따라 다르므로(최근 판에서 `WITH RECURSIVE`를 더했다고 알려졌지만 이 저장소의 판으로는 확인하지 않음) 5회차 버전을 정할 때 먼저 봅니다. 안 되면 후보는 `aggregate` 고차 함수(계산 단위마다 매매를 배열로 모아 접기), dbt Python 모델, 증분 상태 테이블입니다.
+4. **재귀 CTE.** DuckDB와 PostgreSQL은 됩니다. Spark SQL은 판에 따라 다르므로(최근 판에서 `WITH RECURSIVE`를 더했다고 알려졌지만 이 저장소의 판으로는 확인하지 않음) 5회차 버전을 정할 때 먼저 봅니다. 안 되면 후보는 `aggregate` 고차 함수(계산 단위마다 매매를 배열로 모아 접기), dbt Python 모델, 증분 상태 테이블입니다. 11/18 확인: Spark 3.5.6에 `WITH RECURSIVE`가 없어 `aggregate` 접기로 옮겼습니다(`dbt/models/pnl/pnl_ledger.sql`). 처음에는 골든 G28의 기준선 손익이 1원 어긋났습니다. Spark는 정밀도 38을 넘는 decimal 나눗셈의 소수 자리를 여섯째까지 줄이기 때문이라, DuckDB처럼 double로 나눈 뒤 decimal(38,18)로 바꿔 30/30이 됐습니다.
 5. **반올림.** R15는 0.5를 0에서 먼 쪽으로 보냅니다. decimal의 `round`는 DuckDB, PostgreSQL, Spark 모두 그렇지만, PostgreSQL의 double `round`와 Spark의 `bround`는 짝수 쪽입니다. 그래서 반올림 전에 decimal로 바꿉니다. `round`의 자릿수는 상수여야 합니다(DuckDB).
 6. **연 환산.** 이분법 반복은 재귀 CTE 안에서 집계를 해야 해서 엔진마다 막힙니다. 대신 x = ln(1 + r)에 101점 격자를 두 번 깔아 좁히고 마지막 칸에서 직선으로 맞춥니다. 부호가 바뀌는 칸이 여럿이면 가장 낮은 쪽을 고르므로, 흐름의 부호가 여러 번 바뀌는 드문 경우에는 이분법과 다른 근을 고를 수 있습니다.
 7. **dbt 문법.** 날짜 차는 `{{ dbt.datediff(...) }}`로 썼습니다. `cast(... as double)`과 `(values ...)` 인라인 테이블은 엔진마다 쓰는 법이 조금 달라, 옮길 때 dbt의 형 변환 매크로나 `dbt_utils.generate_series`로 바꿀 수 있습니다.

@@ -32,6 +32,7 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
   2배를 넘는 날. 앞 수익률 60개가 없는 날(데이터 첫 61거래일)은 판정하지 않고 judged_from부터 판정합니다.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -169,7 +170,23 @@ class App:
     # ---------- API ----------
 
     def api_status(self):
-        return {**self.status, "server_started": self.started, "db": self.db.name}
+        return {**self.status, "server_started": self.started, "db": self.db.name, "trades_lake": self._trades_lake()}
+
+    def _trades_lake(self):
+        """화면에 저장한 매매가 원천 → CDC → Gold(fct_execution)에 같은 값으로 닿았는지 마지막으로 본 결과
+        (loaders/screen_trades.py --verify가 씀). 저장 끈 서버이거나 기록이 없으면 None.
+        stale: 확인한 뒤 저장 파일이 바뀜(새로 고친 매매는 아직 옮기지 않음)."""
+        if not self.trades_path:
+            return None
+        rec = self.trades_path.parent / "trades_lake.json"
+        try:
+            r = json.loads(rec.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        cur = hashlib.sha256(self.trades_path.read_bytes()).hexdigest() if self.trades_path.exists() else None
+        keep = ("at", "account", "executions_want", "executions_gold", "executions_ok", "pnl_same", "pnl_checked",
+                "gold_pnl_asof", "gold_pnl_same", "gold_pnl_checked", "path")
+        return {**{k: r.get(k) for k in keep}, "stale": cur != r.get("trades_sha256")}
 
     def api_symbols(self):
         d = self.data

@@ -1,0 +1,20 @@
+version: 2
+
+# 손익 모델(E01 계산 규칙 R01 ~ R15). 파일은 sql/pnl/(DuckDB로 검증)과 같고 장부(pnl_ledger)만 Spark 판입니다.
+# eval/e01_pnl/check_spark.py가 골든 30개와 섞은 사본 150개를 Spark에서 맞춥니다. 입력은 inputs/(Gold 시세, 환율 마트와 fct_execution).
+models:
+  - name: pnl_position
+    description: >
+      계산 단위(계좌 x 종목)별 원화 손익 요약. 기준일은 데이터의 마지막 날, 기준 종목은 SPY.
+      남은 수량, 평균 단가, 평균 매수 환율, 실현과 평가, 가격, 환율, 교차 효과, 기준선, 최대 낙폭, 연 환산.
+    columns:
+      - name: position_id
+        data_tests: [unique, not_null]
+      - name: total_krw
+        data_tests: [not_null]
+  - name: pnl_sells
+    description: 매도 한 건별 손익(그때의 평균 단가와 평균 매수 환율).
+  - name: pnl_daily
+    description: 계산 단위와 달력 날별 누적 손익과 앞선 고점(최대 낙폭용).
+  - name: pnl_warnings
+    description: 입력 경고(BAD_QTY, AFTER_ASOF, NON_TRADING_DAY, PRICE_OUT_OF_RANGE, OVERSOLD).
