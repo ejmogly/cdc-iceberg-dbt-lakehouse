@@ -129,12 +129,26 @@ def pnl_from_server():
     return lambda symbol, asof, trades: app.api_pnl({"symbol": symbol, "asof": asof, "trades": trades})
 
 
+def changes_of(plan, lsn_from):
+    """원천에 쓴 행의 키 목록(Bronze 기다리기용). 넣음, 고침, 지움 모두 CDC 이벤트가 하나씩 생깁니다."""
+    keys = {t: sorted(a + c + d, key=str) for t, (a, c, d) in plan.items()}
+    return {"lsn_from": lsn_from, "orders": keys["주문"], "executions": keys["체결"], "holdings": keys["잔고"]}
+
+
 def sync(dry_run, trades_path=TRADES):
+    """원천에 씁니다. 마지막 줄에 바꾼 행의 키를 JSON 한 줄로 찍습니다(Airflow가 XCom으로 받아 wait_bronze에 넘김)."""
     from common import connect, load_env
+    if not trades_path.exists():
+        print(f"매매 파일이 없어 옮길 것이 없습니다({trades_path.name})")
+        print(json.dumps(changes_of({"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}, None)))
+        return 0
     saved = json.loads(trades_path.read_text(encoding="utf-8"))
     orders, execs, holds, _ = plan_rows(saved, pnl_from_server(), instruments())
     now = datetime.now(timezone.utc)
     with connect(load_env()) as conn, conn.cursor() as cur:
+        # 이번에 쓰는 행의 CDC 이벤트는 모두 이 위치 뒤의 LSN을 가집니다(Bronze 기다리기의 기준)
+        cur.execute("select (pg_current_wal_insert_lsn() - '0/0'::pg_lsn)::bigint")
+        lsn_from = int(cur.fetchone()[0])
         h_orders, h_execs, h_holds = read_have(cur)
         plan = {"주문": diff(orders, h_orders, ORDER_KEYS), "체결": diff(execs, h_execs, EXEC_KEYS),
                 "잔고": diff(holds, h_holds, HOLD_KEYS)}
@@ -182,6 +196,54 @@ def sync(dry_run, trades_path=TRADES):
                 "updated_at = excluded.updated_at", (h["account_id"], h["symbol"], h["qty"], h["avg_price"], now))
         conn.commit()
     print(f"원천에 씀(계좌 {ACCOUNT}). 매매 파일 {trades_path.name}, sha256 {file_sha(trades_path)[:12]}")
+    print(json.dumps(changes_of(plan, lsn_from)))
+    return 0
+
+
+# Bronze 한 테이블에서 이번에 쓴 키가 lsn_from 뒤의 이벤트로 몇 개 닿았는지. 지움 이벤트는 before에 키가 있습니다
+BRONZE_KEY = {"orders": "get_json_object(r, '$.order_id')", "executions": "get_json_object(r, '$.execution_id')",
+              "holdings": "concat_ws(':', get_json_object(r, '$.account_id'), get_json_object(r, '$.symbol'))"}
+
+
+def bronze_sql(table, keys, lsn_from):
+    want = [f"{ACCOUNT}:{k}" if table == "holdings" else str(int(k)) for k in keys]
+    for w in want:  # 키는 숫자와 종목 코드만(따옴표가 들어갈 수 없음)
+        if not all(ch.isalnum() or ch in ":-." for ch in w):
+            raise ValueError(f"이상한 키: {w!r}")
+    return (f"select count(distinct k) from (select {BRONZE_KEY[table]} as k from ("
+            f"select case when get_json_object(payload, '$.op') = 'd' then get_json_object(payload, '$.before') "
+            f"else get_json_object(payload, '$.after') end as r, "
+            f"cast(get_json_object(payload, '$.source.lsn') as bigint) as lsn from lake.bronze.{table}) "
+            f"where lsn >= {int(lsn_from)}) where k in ({', '.join(repr(w) for w in want)})")
+
+
+def wait_bronze(changes_json):
+    """sync가 찍은 키가 모두 Bronze에 닿았는지 한 번 봅니다. 0 = 모두 닿음(또는 바꾼 것 없음), 99 = 아직(Airflow BashSensor가
+    다시 봄), 그 밖 = 오류. Debezium, Kafka, Flink 중 하나가 멈춰 있으면 계속 99라 센서의 제한 시간에서 실패합니다."""
+    from ai.screen_data import _spark_rows
+    try:
+        ch = json.loads(changes_json)
+        assert isinstance(ch, dict) and "lsn_from" in ch
+    except (TypeError, ValueError, AssertionError):
+        # 앞 태스크가 키 목록을 찍지 못했으면(XCom 없음 → "None") 기다릴 기준이 없으므로 바로 실패
+        print(f"앞 태스크(trades_to_source)의 키 목록을 받지 못했습니다: {str(changes_json)[:80]!r}")
+        return 2
+    todo = {t: ch.get(t) or [] for t in ("orders", "executions", "holdings")}
+    if not any(todo.values()):
+        print("바꾼 행이 없어 기다릴 것이 없습니다")
+        return 0
+    short = []
+    for t, keys in todo.items():
+        if not keys:
+            continue
+        got = int(_spark_rows(bronze_sql(t, keys, ch["lsn_from"]))[0][0])
+        print(f"  Bronze {t}: {got} / {len(keys)}")
+        if got < len(keys):
+            short.append(t)
+    if short:
+        print(f"아직 Bronze에 닿지 않음: {', '.join(short)}(Flink checkpoint는 10초마다)")
+        return 99
+    print("이번에 쓴 행이 모두 Bronze에 닿음")
     return 0
 
 
@@ -241,7 +303,7 @@ def verify(trades_path=TRADES):
             g_diff.append(f"{symbol}: {', '.join(bad_cols)}")
         else:
             g_same += 1
-    out = {"at": datetime.now().astimezone().isoformat(timespec="seconds"), "account": ACCOUNT,
+    out = {"at": datetime.now(CLOSE["KRX"][0]).isoformat(timespec="seconds"), "account": ACCOUNT,  # 서울 시각(Airflow 컨테이너는 UTC)
            "trades_file": trades_path.name, "trades_sha256": file_sha(trades_path), "symbols": len(results), "executions_want": len(execs),
            "executions_gold": len(gold), "executions_ok": not bad, "problems": bad[:10],
            "pnl_same": same, "pnl_checked": same + len(diff_syms), "pnl_diff_symbols": diff_syms,
@@ -291,6 +353,20 @@ def selftest():
     o4, e4, h4, _ = plan_rows(saved, fake, insts)
     a, c, d = diff(h4, h3, HOLD_KEYS)
     checks.append(("종목을 비우면 잔고를 지움", d == ["005930"]))
+    ch = changes_of({"주문": diff(o4, o3, ORDER_KEYS), "체결": diff(e4, e3, EXEC_KEYS), "잔고": (a, c, d)}, 123)
+    checks.append(("바꾼 키 목록에 지운 종목의 주문, 체결, 잔고",
+                   ch["holdings"] == ["005930"] and ch["orders"] == [ORDER_BASE] and ch["executions"] == [ORDER_BASE + EXEC_OFFSET]))
+    sql = bronze_sql("holdings", ["005930"], 123)
+    checks.append(("Bronze 기다리기 SQL: 지움은 before의 키, LSN 기준", "'A-SCREEN:005930'" in sql and "lsn >= 123" in sql
+                   and "'$.before'" in sql))
+    try:
+        bronze_sql("holdings", ["0' or '1"], 1)
+        checks.append(("키에 따옴표가 있으면 막음", False))
+    except ValueError:
+        checks.append(("키에 따옴표가 있으면 막음", True))
+    checks.append(("바꾼 것이 없으면 기다리지 않음", wait_bronze(json.dumps(changes_of(
+        {"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}, None))) == 0))
+    checks.append(("키 목록을 받지 못하면 오류(아직이 아님)", wait_bronze("None") == 2 and wait_bronze("") == 2))
     for name, ok in checks:
         print(f"  {'통과' if ok else '실패'}  {name}")
     good = all(ok for _, ok in checks)
@@ -304,9 +380,16 @@ if __name__ == "__main__":
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--trades", type=Path, default=TRADES, help="매매 파일(기본은 화면 저장 파일). 시험용 파일은 data/generated/ 아래")
+    ap.add_argument("--wait-bronze", metavar="JSON", help="sync가 마지막 줄에 찍은 키 목록. 모두 Bronze에 닿았으면 0, 아직이면 99")
     a = ap.parse_args()
+    if a.trades and not a.trades.is_absolute():
+        a.trades = ROOT / a.trades
+    if not str(a.trades.resolve()).startswith(str((ROOT / "data" / "generated").resolve())):
+        sys.exit("매매 파일은 data/generated/ 아래만 받습니다")
     if a.selftest:
         sys.exit(selftest())
+    if a.wait_bronze is not None:
+        sys.exit(wait_bronze(a.wait_bronze))
     if a.verify:
         sys.exit(verify(a.trades))
     sys.exit(sync(a.dry_run, a.trades))

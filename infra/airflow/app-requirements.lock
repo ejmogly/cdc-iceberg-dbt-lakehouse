@@ -1,0 +1,15 @@
+# Airflow 컨테이너의 두 번째 가상환경(/opt/app-venv): 화면 매매 적재기(loaders/screen_trades.py)와
+# 화면 데이터 내보내기(ai/screen_data.py)를 DAG lakehouse_refresh가 돌릴 때 씁니다(2026-11-18).
+# 앞 셋은 loaders/requirements.txt와 같은 판, Spark 접속 묶음은 infra/dbt/requirements.lock과 같은 판입니다.
+truststore==0.10.5
+psycopg[binary]==3.3.8
+duckdb==2.0.0
+tzdata==2025.2
+PyHive==0.7.0
+thrift==0.16.0
+thrift-sasl==0.4.3
+pure-sasl==0.6.2
+future==1.0.0
+python-dateutil==2.9.0.post0
+six==1.17.0
+sqlparse==0.6.1

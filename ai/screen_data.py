@@ -1,6 +1,8 @@
 """화면 데이터 파일을 만들고 검사합니다(docs/ai/F-screen.md 2절 「구조」, 화면 10번 칸 「파이프라인 상태」).
 
 사용: .venv/bin/python -m ai.screen_data export        Gold 마트(Spark, VM 필요)에서 내보내고 원천과 원본에 대조
+      .venv/bin/python -m ai.screen_data export --if-changed
+                                                       같되, 내용이 같고 검사가 통과하면 지금 파일을 그대로 둠(Airflow)
       .venv/bin/python -m ai.screen_data golden        E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)
       .venv/bin/python -m ai.screen_data status [파일]  저장한 검사 결과와 지문 대조
       .venv/bin/python -m ai.screen_data --selftest    일부러 깬 데이터를 잡는지(행 지우기, 환율 하루 빼기, 종가 바꾸기,
@@ -124,10 +126,36 @@ GOLD_PRICES = "lake.gold.mart_symbol_daily"
 GOLD_FX = "lake.gold.mart_fx_daily"
 
 
+def _tsv(v):
+    """pyhive가 돌려준 값을 beeline tsv2가 찍는 글자와 같게 바꿉니다(두 길의 결과가 같도록)."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, Decimal):
+        return format(v, "f")
+    if isinstance(v, datetime):  # beeline은 소수 초 끝의 0을 지우되 한 자리는 남김(03.500000 → 03.5, 03.000000 → 03.0)
+        s = v.isoformat(sep=" ", timespec="microseconds").rstrip("0")
+        return s + "0" if s.endswith(".") else s
+    return str(v)
+
+
 def _spark_rows(sql):
-    """Spark Thrift server에 SQL을 보내 탭으로 나눈 결과 행(머리 뺌)을 돌려줍니다(infra/spark/sql.sh, beeline tsv2).
-    spark 컨테이너가 떠 있어야 합니다."""
+    """Spark Thrift server에 SQL을 보내 결과 행(머리 뺌, 값은 모두 글자)을 돌려줍니다.
+    - 내 Mac: infra/spark/sql.sh(spark 컨테이너 안의 beeline, tsv2). spark 컨테이너가 떠 있어야 합니다.
+    - Airflow 컨테이너: 환경 변수 SPARK_THRIFT_HOST가 있으면 pyhive로 바로 붙습니다(컨테이너 안에는 docker가 없음).
+      값은 beeline tsv2와 같은 글자로 바꿉니다(_tsv)."""
     import os
+    if os.environ.get("SPARK_THRIFT_HOST"):
+        from pyhive import hive
+        conn = hive.connect(host=os.environ["SPARK_THRIFT_HOST"], port=int(os.environ.get("SPARK_THRIFT_PORT", "10000")),
+                            username="screen_data", auth="NOSASL")
+        try:
+            cur = conn.cursor()
+            cur.execute(sql)
+            return [[_tsv(v) for v in r] for r in cur.fetchall()]
+        finally:
+            conn.close()
     p = subprocess.run([str(ROOT / "infra" / "spark" / "sql.sh"), "-e", sql], cwd=ROOT, capture_output=True, text=True,
                        env={**os.environ, "SQL_FORMAT": "tsv2"})
     if p.returncode != 0:
@@ -336,21 +364,31 @@ def _insert_news(con, news):
                     "publisher: 'varchar', tickers: 'varchar[]', url: 'varchar'})", [str(p)])
 
 
-def fingerprint(con):
+def fingerprint(con, tables=None):
     """내용 테이블, 검사 결과, meta(지문 칸 빼고)의 sha256. 내보낸 뒤 파일이 바뀌었는지(값, 검사 결과, 기준 종목)
-    서버가 열 때 다시 셉니다."""
+    서버가 열 때 다시 셉니다. tables를 주면 그 테이블만 셉니다(content_digest)."""
     h = hashlib.sha256()
-    for table, order in CONTENT + [("checks", "seq"), ("meta where key <> 'fingerprint'", "key")]:
+    for table, order in tables or CONTENT + [("checks", "seq"), ("meta where key <> 'fingerprint'", "key")]:
         h.update(table.encode())
         for row in con.execute(f"select * from {table} order by {order}").fetchall():
             h.update(repr(row).encode("utf-8"))
     return h.hexdigest()
 
 
+def content_digest(path):
+    """내용 테이블(시세, 환율, 달력, 기사, 일정, 종목)만의 sha256. 검사 결과와 내보낸 때는 넣지 않습니다.
+    Airflow가 30분마다 내보낼 때, 내용이 같으면 화면 파일을 바꾸지 않으려고 씁니다."""
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return fingerprint(con, CONTENT)
+    finally:
+        con.close()
+
+
 def _finish(con, tmp, path, meta, checks):
     try:
         con.executemany("insert into checks values (?, ?, ?, ?, ?)", [[i, *c] for i, c in enumerate(checks)])
-        meta = {**meta, "exported_at": datetime.now().astimezone().isoformat(timespec="seconds")}
+        meta = {**meta, "exported_at": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(timespec="seconds")}  # Airflow 컨테이너는 UTC
         con.executemany("insert into meta values (?, ?)", [[k, str(v)] for k, v in meta.items()])
         con.execute("insert into meta values ('fingerprint', ?)", [fingerprint(con)])
     finally:
@@ -389,6 +427,21 @@ def _fill_real(con, insts, src_prices, src_fx, raw_adj, news):
     days = sorted({d for _, d in src_prices} | set(src_fx))
     con.executemany("insert into calendar values (?)", [[d] for d in days])
     _insert_news(con, news)
+
+
+def export_if_changed(path=OUT):
+    """내보내되, 새 파일과 지금 파일의 내용 테이블이 같고 둘 다 검사를 통과했으면 지금 파일을 그대로 둡니다
+    (Airflow DAG lakehouse_refresh의 screen_export). 같은 입력이면 파일이 바뀌지 않아, 켜 둔 화면 서버가 읽는 파일도 그대로입니다.
+    새 파일의 검사가 실패하면 내용이 같아도 바꿉니다(화면이 실패 항목을 보이게). 돌려주는 값: (파일, 바꿨나)."""
+    if not path.exists():
+        return export(path), True
+    new = export(path.with_name(path.stem + ".new.duckdb"))
+    same = content_digest(new) == content_digest(path)
+    if same and status(new)["ok"] and status(path)["ok"]:
+        new.unlink()
+        return path, False
+    new.replace(path)
+    return path, True
 
 
 def export(path=OUT):
@@ -569,10 +622,16 @@ if __name__ == "__main__":
     ap.add_argument("cmd", nargs="?", choices=["export", "golden", "status"])
     ap.add_argument("path", nargs="?")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--if-changed", action="store_true", help="export: 내용이 같고 검사가 통과하면 지금 파일을 그대로 둠")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(selftest())
-    if a.cmd == "export":
+    if a.cmd == "export" and a.if_changed:
+        path, changed = export_if_changed(Path(a.path) if a.path else OUT)
+        st = status(path)
+        print("화면 파일을 새로 씀" if changed else
+              f"내용이 같아 화면 파일을 그대로 둠(내보낸 때 {st.get('exported_at')}). 이번 대조는 모두 통과")
+    elif a.cmd == "export":
         st = status(export(Path(a.path) if a.path else OUT))
     elif a.cmd == "golden":
         st = status(golden(Path(a.path) if a.path else GOLDEN_OUT))

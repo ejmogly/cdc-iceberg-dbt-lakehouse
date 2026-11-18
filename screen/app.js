@@ -95,7 +95,8 @@ function renderPipe(s) {
     $("trade-lake-note").textContent = (gp
       ? `Gold 손익 마트(pnl_position, 기준일 ${tl.gold_pnl_asof})가 화면 손익과 ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}종목 칸마다 같고, `
       : "") + `Gold 체결만으로 다시 센 손익도 화면 손익과 ${tl.pnl_same} / ${tl.pnl_checked}종목 같습니다.` +
-      (tl.stale ? " 확인한 뒤 매매를 고쳐, 새로 고친 매매는 아직 원천에 옮기지 않았습니다(make trades-to-source)." : "");
+      (tl.stale ? " 확인한 뒤 매매를 고쳐, 새로 고친 매매는 아직 레이크에서 확인하지 않았습니다. " +
+        "Airflow DAG lakehouse_refresh가 켜져 있으면 30분 안에 옮기고 확인합니다(직접 하려면 make trades-to-source)." : "");
     $("trade-lake-note").classList.toggle("err", Boolean(tl.stale) || !ok);
   }
   $("pipe-src").hidden = !s.source;

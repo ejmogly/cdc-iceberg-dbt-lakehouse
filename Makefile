@@ -1,7 +1,7 @@
 # 키와 Docker 없이 도는 확인. CI(.github/workflows/check.yml)도 같은 목표를 씁니다.
 PY ?= .venv/bin/python
 
-.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark
+.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh
 
 setup:
 	python3 -m venv .venv
@@ -38,6 +38,11 @@ trades-to-source:
 # Gold(dbt fct_execution)가 저장한 매매와 같은지, Gold 체결로 다시 센 손익이 화면 손익과 같은지(Spark 필요). 화면 데이터 탭에 보임
 trades-verify:
 	$(PY) loaders/screen_trades.py --verify
+
+# 위 일을 Airflow DAG lakehouse_refresh로 지금 한 번(30분 주기를 기다리지 않음). 시험용 매매 파일은 TRADES=data/generated/f_screen/<파일>.json
+# docker compose --profile flink --profile spark --profile airflow up -d 와 Bronze 작업이 떠 있어야 함. DAG 멈춤은 airflow dags unpause로 풂
+lake-refresh:
+	docker compose exec -T airflow airflow dags trigger lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
 
 # E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)
 screen-golden:

@@ -550,7 +550,7 @@ E02 답 규칙 v3으로 개발 24개를 다시 쟀습니다: 숫자 일치 24/24
 - 내보내기(`ai/screen_data.py`): 시세와 환율을 Spark Thrift server로 Gold 마트에서 읽습니다(`infra/spark/sql.sh`, tsv). 검사를 셋 더해 13개입니다. 「레이크 경로 시세(원천 → Bronze → Silver → Gold 한 행씩)」 9,472 / 9,472행 같음, 「레이크 경로 환율(원천 → Gold 하루씩)」 488 / 488일 같음, 「Gold 마트 스냅샷」(두 마트의 마지막 스냅샷과 만든 때). 원본 대조 셋의 이름은 「Gold와 원본」으로 바꿨습니다. 자체 시험은 Gold 쪽을 세 가지로 깨면 레이크 경로 대조와 원본 대조가 함께 실패하고, 원천만 바뀌면 레이크 경로 대조만 실패하는 것을 봅니다(8/8).
 - 내용은 그대로: Gold에서 낸 화면 파일과 원천에서 낸 옛 파일의 내용 테이블(종목 19, 시세 9,472, 환율 488, 달력 516, 기사 136,519, 일정 66)이 한 행도 다르지 않아, 잠긴 정답과 평가셋에는 영향이 없습니다.
 - 화면: 데이터 탭에 화면 숫자가 지나온 길(원천 PostgreSQL → Debezium, Kafka → Flink Bronze → Spark MERGE Silver → dbt Gold 마트 → 화면 파일)과 읽는 곳을 보입니다. 레이크 경로 대조가 실패하면 그 길이 빨간 테두리가 되고, 숫자 대신 실패 항목이 나옵니다.
-- 실행: `make screen-data`는 이제 Spark가 떠 있고 Silver MERGE와 `dbt build`를 먼저 돌린 뒤에 씁니다(VM 필요). Airflow DAG의 `dbt build`가 새 마트도 만듭니다. 내보내기를 DAG에 넣는 것과, 화면에 넣은 내 매매를 원천 주문, 체결 테이블로 넣어 CDC로 Gold 손익 마트까지 잇는 것은 다음 판입니다.
+- 실행: `make screen-data`는 이제 Spark가 떠 있고 Silver MERGE와 `dbt build`를 먼저 돌린 뒤에 씁니다(VM 필요). Airflow DAG의 `dbt build`가 새 마트도 만듭니다. 내보내기를 DAG에 넣는 것과, 화면에 넣은 내 매매를 원천 주문, 체결 테이블로 넣어 CDC로 Gold 손익 마트까지 잇는 것은 다음 판입니다(아래 두 절과 「Airflow로 묶기」에서 함).
 
 ### 내 매매도 CDC로 (2026-11-18, 1안 둘째)
 
@@ -560,7 +560,7 @@ E02 답 규칙 v3으로 개발 24개를 다시 쟀습니다: 숫자 일치 24/24
 - 확인(11/18): 저장 매매(1종목 1줄)를 넣자 주문, 체결, 잔고 토픽이 1건씩 늘었고, 다시 돌리면 바꿀 것 0. 시험용 매매 파일(QQQ 나눠 사고팔기, SK하이닉스 전량 매도 뒤 다시 매수, NVDA 휴장일 매수와 초과 매도, 체결가와 환율을 넣은 줄, 4종목 10줄)로 넣으면 원천에 체결 9건(초과 매도 1줄 뺌)이 들어가고, Silver MERGE와 `dbt build`(70개 통과) 뒤 Gold `fct_execution`의 9건이 모두 같았습니다. Gold 체결만으로(체결가와 환율을 넣어) 다시 센 손익이 화면 손익과 4/4종목 같았고, 잔고 대사(`mart_holding_reconciliation`)도 4종목 모두 차이 0. 저장 파일로 되돌리자 8건이 지워져 Silver에 지움 표시 8건, Gold 체결 1건, 유효 잔고 1건이 됐습니다.
 - `loaders/screen_trades.py --verify`가 결과를 `data/generated/f_screen/trades_lake.json`(git 제외)에 쓰고, 계산 서버가 상태 API로 보냅니다. 데이터 탭의 「내 매매가 지나온 길」이 체결 수, 손익 대조, 확인한 때를 보이고, 확인한 뒤 저장 파일이 바뀌었으면 아직 옮기지 않았다고 밝힙니다. 저장을 끈 예시 서버에서는 보이지 않습니다.
 - 실행: `make trades-to-source`(VM 필요) → Silver MERGE와 `dbt build` → `make trades-verify`(Spark 필요). 자체 시험(`--selftest`, DB 없음 8/8)은 `make check-screen`에 넣었습니다.
-- 한계: 화면은 지금처럼 넣는 즉시 서버가 손익을 셉니다(파이프라인을 기다리지 않음). 레이크 쪽은 저장한 매매를 옮긴 뒤 대조하는 길이라, 옮기기와 확인은 사람이 돌립니다(Airflow에 넣는 것은 다음 판).
+- 한계: 화면은 지금처럼 넣는 즉시 서버가 손익을 셉니다(파이프라인을 기다리지 않음). 레이크 쪽은 저장한 매매를 옮긴 뒤 대조하는 길이라, 옮기기와 확인은 사람이 돌립니다(Airflow에 넣는 것은 다음 판, 아래 「Airflow로 묶기」에서 함).
 
 ### Spark 손익 마트 (2026-11-18, 1안 셋째)
 
@@ -570,7 +570,24 @@ E02 답 규칙 v3으로 개발 24개를 다시 쟀습니다: 숫자 일치 24/24
 - 골든 대조(`eval/e01_pnl/check_spark.py`, `make check-pnl-spark`): 골든 입력을 Iceberg 이름공간 `lake.e01`에 넣고 모델을 Spark로 만들어 check_sql.py와 같은 기준으로 맞춥니다. 첫 실행 29/30(G28 기준선 손익 1원). Spark는 정밀도 38을 넘는 decimal 나눗셈의 소수 자리를 여섯째까지 줄이고 DuckDB는 decimal 나눗셈이 double이라, 장부의 나눗셈을 DuckDB처럼 double로 나눈 뒤 decimal(38,18)로 바꿔 30/30. 입력 순서를 섞은 사본 150개도 150/150, 장부 밖 열 개는 `sql/pnl/`과 글자째 같음. 결과는 `eval/e01_pnl/spark_check_result.json`.
 - Gold 손익 마트: 입력 여섯 개(`dbt/models/pnl/inputs/`)가 Gold 시세, 환율 마트와 `fct_execution`을 읽고, 계산 단위는 계좌 x 종목, 기준일은 데이터의 마지막 날, 기준 종목은 SPY입니다. `dbt build` 90개 통과. `lake.gold.pnl_position`(요약), `pnl_sells`(매도별), `pnl_daily`(누적 손익과 고점), `pnl_warnings`.
 - 화면 손익과 대조(`loaders/screen_trades.py --verify`): 기준일이 같은 종목마다 E01 정답 칸 16개와 연 환산(0.05%p 안)을 견줍니다. 저장 매매 1/1종목, 시험 매매 4/4종목(휴장일 매수, 초과 매도, 전량 매도 뒤 다시 매수, 체결가와 환율을 넣은 줄) 모두 칸마다 같았습니다. 데이터 탭 「내 매매가 지나온 길」의 마지막 칸이 「dbt → 손익 마트」입니다.
-- 남은 것: 화면은 지금처럼 넣는 즉시 계산 서버(DuckDB)가 손익을 셉니다. Gold 손익 마트는 저장한 매매를 옮긴 뒤 같은 값인지 보는 길입니다. 옮기기, Silver MERGE, `dbt build`, 확인을 Airflow DAG 하나로 잇는 것은 다음 판입니다.
+- 남은 것: 화면은 지금처럼 넣는 즉시 계산 서버(DuckDB)가 손익을 셉니다. Gold 손익 마트는 저장한 매매를 옮긴 뒤 같은 값인지 보는 길입니다. 옮기기, Silver MERGE, `dbt build`, 확인을 Airflow DAG 하나로 잇는 것은 다음 판입니다(아래 「Airflow로 묶기」에서 함).
+
+### Airflow로 묶기 (2026-11-18)
+
+담당자가 고른 다음 일입니다(11/18 「1안 Airflow로 묶기」). 위 세 절에서 사람이 `make` 목표를 차례로 돌리던 레이크 쪽 일을, 8회차에 만든 DAG `lakehouse_refresh`(`airflow/dags/lakehouse_refresh.py`)에 붙였습니다. 30분마다 한 번, 태스크 일곱 개가 차례로 돕니다.
+
+| 태스크 | 하는 일 | 다시 돌려도 같은 까닭 |
+|---|---|---|
+| `trades_to_source` | 화면 저장 매매를 원천 주문, 체결, 잔고로(`loaders/screen_trades.py`). 마지막 줄에 바꾼 키와 쓰기 전 WAL 위치를 JSON으로 찍어 XCom으로 넘김 | 값이 같은 줄은 고치지 않아 CDC 이벤트가 없음 |
+| `wait_bronze` | 그 키의 CDC 이벤트가 쓰기 전 위치 뒤의 LSN으로 Bronze에 모두 닿았는지 15초마다 봄(`BashSensor`, 종료코드 99 = 아직, 제한 10분) | 바꾼 것이 없으면 바로 넘어감 |
+| `silver_merge`, `dbt_build`, `gold_incremental` | 8회차 그대로. `dbt build`는 이제 손익 마트까지 90개 | MERGE 버전 가드, plan 먼저 progress 나중 |
+| `screen_export` | Gold 마트에서 화면 파일을 내보내고 원천, 원본과 대조(`ai.screen_data export --if-changed`) | 내용 테이블이 같고 검사가 통과하면 지금 파일을 그대로 둠 |
+| `trades_verify` | Gold 체결과 손익 마트가 화면 매매, 화면 손익과 같은지. 다르면 실패 | 읽기만, 결과 기록을 덮어씀 |
+
+- 컨테이너에서 돌게 한 것: Airflow 이미지에 두 번째 가상환경 `/opt/app-venv`(duckdb, psycopg, pyhive, `infra/airflow/app-requirements.lock`)를 더해 dbt 가상환경과 섞지 않았습니다. Gold 읽기(`_spark_rows`)는 내 Mac에서는 beeline(`infra/spark/sql.sh`)을, 컨테이너에서는 pyhive를 씁니다. 두 길의 결과가 같도록 값을 beeline 글자로 바꾸고(NULL, 소수, 시각의 소수 초), 시세 9,472행, 환율 488일, Gold 체결, 손익 마트, 스냅샷 시각 등 쿼리 일곱 개가 두 길에서 글자째 같은 것을 봤습니다. 원천 접속값은 `.env`를 붙이지 않고 compose에서 필요한 것만 넘기며, 쓰기는 `data/generated/`만 엽니다. 기록 시각은 서울 시간으로 고정했습니다(컨테이너는 UTC).
+- 확인(11/18, 서울 시각): 정기 실행 두 번(바뀐 것 없음) 모두 일곱 태스크 성공, 한 번에 약 2분 20초(내보내기 약 1분, `dbt build` 약 30초). Bronze 작업을 savepoint로 멈춘 채 시험 매매 파일로 수동 실행하자 `trades_to_source`가 주문 8, 체결 8, 잔고 3을 넣고 `wait_bronze`가 「0 / 8, 아직」을 네 번 찍으며 기다렸고, 13:36에 Bronze를 savepoint부터 다시 켜자 8 / 8, 8 / 8, 3 / 3으로 넘어가 끝까지 성공했습니다(`dbt build` 90/90, Gold 체결 9/9, 다시 센 손익 4/4종목, 손익 마트 4/4종목 칸마다 같음).
+- 수동 실행: `make lake-refresh`(시험용 매매 파일은 `TRADES=data/generated/f_screen/<파일>.json`, `data/generated/` 밖은 받지 않음). 화면의 「내 매매가 지나온 길」은 확인한 뒤 매매를 고치면 30분 안에 옮겨 확인한다고 밝힙니다.
+- 한계: 화면 계산 서버는 켤 때 화면 파일을 읽으므로, 내보내기가 새 파일을 쓰면 서버를 다시 켜야 새 시세가 보입니다(내용이 같으면 파일을 바꾸지 않아 평소에는 해당 없음). 시세와 환율을 받아 원천에 넣는 적재기와 화면 데이터 기간(2024-11-13 ~ 2026-11-12)은 이 DAG 밖입니다. 센서의 제한 시간(10분)에 걸리는 실패는 기다리기만 길어 돌려 보지 않았고, 키 목록을 받지 못한 경우가 「아직」이 아니라 오류로 끝나는 것은 자체 시험으로 봤습니다(`--selftest` 13/13).
 
 ## 8. 결과와 다음
 
