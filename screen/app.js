@@ -55,6 +55,26 @@ function renderPipe(s) {
   $("pipe-line").textContent = s.ok
     ? `내보낸 때 ${when}, 데이터 ${s.window[0]} ~ ${s.window[1]}, 검사 ${passed}/${s.checks.length} 통과, 기준 종목 ${s.bench}`
     : `내보낸 때 ${when}. 검사를 통과하지 못해 숫자를 보이지 않습니다.`;
+  // 화면 숫자가 지나온 길: 레이크 경로 대조(원천과 Gold를 한 행씩)가 있는 파일일 때만 보임
+  const lake = s.checks.find((c) => c.name.startsWith("레이크 경로 시세"));
+  const snap = s.checks.find((c) => c.name === "Gold 마트 스냅샷");
+  const flow = $("pipe-flow");
+  flow.hidden = !lake;
+  if (lake) {
+    const steps = [["원천 PostgreSQL", "주문, 체결, 시세, 환율"], ["Debezium, Kafka", "변경 이벤트"], ["Flink → Bronze", "Iceberg, 받은 그대로"],
+      ["Spark MERGE → Silver", "키마다 현재 상태"], ["dbt → Gold 마트", snap ? snap.value.split(", ")[0].replace("mart_symbol_daily ", "") : "시세, 환율"],
+      ["화면 파일", lake.value]];
+    flow.replaceChildren(...steps.map(([t, sub]) => {
+      const li = document.createElement("li");
+      li.className = lake.ok ? "ok" : "bad";
+      const b = document.createElement("b"); b.textContent = t;
+      const em = document.createElement("em"); em.textContent = sub;
+      li.append(b, em);
+      return li;
+    }));
+  }
+  $("pipe-src").hidden = !s.source;
+  $("pipe-src").textContent = s.source ? `읽는 곳: ${s.source}` : "";
   const tb = $("pipe-rows");
   tb.replaceChildren(...s.checks.map((c) => {
     const tr = document.createElement("tr");

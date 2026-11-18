@@ -294,13 +294,13 @@ def check_pipeline():
     no_golden = lambda: (True, "건너뜀")
     keys = sorted(raw_prices)
     src_breaks = {
-        "원천 행 하나 빠짐": ({k: v for k, v in raw_prices.items() if k != keys[len(keys) // 2]}, raw_fx,
-                       "원천과 원본의 시세 행 수"),
-        "원천 환율 하루 빠짐": (raw_prices, {d: r for d, r in raw_fx.items() if d != sorted(raw_fx)[100]},
-                         "환율 대조(원본과 하루씩)"),
-        "원천 종가 하나 다름": ({k: (v[:3] + ((v[3] * Decimal("1.01")).quantize(Decimal("0.0001")),) + v[4:])
+        "Gold 행 하나 빠짐": ({k: v for k, v in raw_prices.items() if k != keys[len(keys) // 2]}, raw_fx,
+                       "Gold와 원본의 시세 행 수"),
+        "Gold 환율 하루 빠짐": (raw_prices, {d: r for d, r in raw_fx.items() if d != sorted(raw_fx)[100]},
+                         "환율 대조(Gold와 원본 하루씩)"),
+        "Gold 종가 하나 다름": ({k: (v[:3] + ((v[3] * Decimal("1.01")).quantize(Decimal("0.0001")),) + v[4:])
                            if k == keys[len(keys) // 3] else v for k, v in raw_prices.items()}, raw_fx,
-                          "시세 값 대조(원본과 한 행씩)"),
+                          "시세 값 대조(Gold와 원본 한 행씩)"),
     }
     out = []
     with tempfile.TemporaryDirectory() as tmp:

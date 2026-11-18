@@ -32,3 +32,33 @@ models:
         data_tests: [not_null]
       - name: qty_diff
         data_tests: [not_null]
+
+  - name: mart_symbol_daily
+    description: >
+      종목과 거래일(그 시장의 현지 날짜)별 시세(시가, 고가, 저가, 종가, 거래량, 수정 전 가격)와
+      종목 정보, 미국 종목이면 그날 원/달러 매매기준율(없으면 NULL). 내 투자 돌아보기 화면이
+      이 마트를 읽고, 내보낼 때 원천과 받은 원본에 한 행씩 대조합니다(ai/screen_data.py).
+    columns:
+      - name: symbol
+        data_tests: [not_null]
+      - name: market
+        data_tests: [not_null]
+      - name: currency
+        data_tests: [not_null]
+      - name: trade_date
+        data_tests: [not_null]
+      - name: close_price
+        data_tests: [not_null]
+      - name: volume
+        data_tests: [not_null]
+
+  - name: mart_fx_daily
+    description: >
+      고시일별 원/달러 매매기준율(한국은행 ECOS). 한국 휴일에는 행이 없습니다.
+      화면이 이 마트를 읽고, 내보낼 때 원천과 받은 원본에 하루씩 대조합니다.
+    columns:
+      - name: rate_date
+        data_tests: [not_null, unique]
+      - name: usdkrw_rate
+        data_tests: [not_null]
+

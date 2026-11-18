@@ -1,13 +1,16 @@
 """화면 데이터 파일을 만들고 검사합니다(docs/ai/F-screen.md 2절 「구조」, 화면 10번 칸 「파이프라인 상태」).
 
-사용: .venv/bin/python -m ai.screen_data export        원천 PostgreSQL(VM 필요)과 data/raw/에서 내보내고 검사
+사용: .venv/bin/python -m ai.screen_data export        Gold 마트(Spark, VM 필요)에서 내보내고 원천과 원본에 대조
       .venv/bin/python -m ai.screen_data golden        E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)
       .venv/bin/python -m ai.screen_data status [파일]  저장한 검사 결과와 지문 대조
       .venv/bin/python -m ai.screen_data --selftest    일부러 깬 데이터를 잡는지(행 지우기, 환율 하루 빼기, 종가 바꾸기,
-                                                       내보낸 뒤 파일 고치기). VM 없이 원본을 원천 대신 씀
+                                                       내보낸 뒤 파일 고치기). VM 없이 원본을 Gold와 원천 대신 씀
 
-- 시세와 환율은 원천 DB에서 읽고, 내보낼 때 받은 원본(data/raw/)과 한 행씩 대조합니다. 원천이 원본과 다르면
-  (적재 실수, 빠진 행, 바뀐 값) 검사가 실패합니다. 원본 읽기는 독립 정답(eval/f_screen/real_world.py)과 공유하지 않습니다.
+- 시세와 환율은 레이크하우스의 Gold 마트(dbt 모델 mart_symbol_daily, mart_fx_daily)에서 읽습니다(11/18 화면 개편 뒤 1안).
+  원천 PostgreSQL → Debezium, Kafka → Flink Bronze → Spark MERGE Silver → dbt Gold를 거친 값입니다.
+- 내보낼 때 두 번 대조합니다. Gold와 원천(레이크 경로가 값을 바꾸거나 빠뜨리지 않았는지), Gold와 받은 원본(data/raw/,
+  적재 실수, 빠진 행, 바뀐 값). 하나라도 다르면 검사가 실패합니다. 원본 읽기는 독립 정답(eval/f_screen/real_world.py)과
+  공유하지 않습니다.
 - 수정한 가격(adj_close)과 기사는 원천 DB에 없어(설계서 6절 2, 6번) data/raw/에서 바로 넣습니다.
 - 검사 결과는 파일의 checks 테이블에, 내용의 지문은 meta에 둡니다. 서버는 열 때 지문을 다시 셉니다.
   검사가 하나라도 실패하거나 지문이 다르면 화면은 숫자 대신 실패 항목을 보입니다.
@@ -117,6 +120,38 @@ def read_source():
     return prices, fx, outside
 
 
+GOLD_PRICES = "lake.gold.mart_symbol_daily"
+GOLD_FX = "lake.gold.mart_fx_daily"
+
+
+def _spark_rows(sql):
+    """Spark Thrift server에 SQL을 보내 탭으로 나눈 결과 행(머리 뺌)을 돌려줍니다(infra/spark/sql.sh, beeline tsv2).
+    spark 컨테이너가 떠 있어야 합니다."""
+    import os
+    p = subprocess.run([str(ROOT / "infra" / "spark" / "sql.sh"), "-e", sql], cwd=ROOT, capture_output=True, text=True,
+                       env={**os.environ, "SQL_FORMAT": "tsv2"})
+    if p.returncode != 0:
+        sys.exit("Gold 마트를 읽지 못했습니다. docker compose --profile spark up -d로 Spark를 켜고, "
+                 "docker compose --profile spark run --rm dbt build를 먼저 돌리세요.\n" + p.stderr[-800:])
+    lines = [ln for ln in p.stdout.splitlines() if ln.strip()]
+    return [ln.split("\t") for ln in lines[1:]]
+
+
+def read_gold():
+    """Gold 마트의 시세와 환율(데이터 기간 안)과 두 마트의 마지막 스냅샷(id, 만든 때)."""
+    from datetime import date
+    prices = {(s, date.fromisoformat(d)): (_q(o), _q(h), _q(l), _q(c), int(v)) for s, d, o, h, l, c, v in _spark_rows(
+        f"select symbol, trade_date, open_price, high_price, low_price, close_price, volume from {GOLD_PRICES} "
+        f"where trade_date between '{START}' and '{END}'")}
+    fx = {date.fromisoformat(d): _q(r) for d, r in _spark_rows(
+        f"select rate_date, usdkrw_rate from {GOLD_FX} where rate_date between '{START}' and '{END}'")}
+    snaps = {}
+    for t in (GOLD_PRICES, GOLD_FX):
+        rows = _spark_rows(f"select snapshot_id, committed_at from {t}.snapshots order by committed_at desc limit 1")
+        snaps[t.rsplit(".", 1)[1]] = rows[0] if rows else None
+    return prices, fx, snaps
+
+
 def read_news():
     """data/raw/의 2년 전체 기사(E02 기준). 원천 DB에 넣지 않습니다(설계서 6절 6번)."""
     payload = json.loads((RAW / "news_massive" / f"ALL_{TAG}.json").read_text(encoding="utf-8"))
@@ -169,17 +204,45 @@ def _market_gaps(prices, insts):
     return gaps
 
 
-def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, golden=golden_sql):
-    """10번 칸의 검사. (이름, 통과, 보일 값, 실패 때 내용) 목록을 돌려줍니다. 가격 값은 내용에 넣지 않습니다."""
+def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, golden=golden_sql, source=None, snaps=None):
+    """10번 칸의 검사. (이름, 통과, 보일 값, 실패 때 내용) 목록을 돌려줍니다. 가격 값은 내용에 넣지 않습니다.
+    src_prices, src_fx는 화면에 들어갈 값(Gold 마트)입니다. source=(원천 시세, 원천 환율)을 주면 레이크 경로 대조를 앞에 더하고,
+    snaps를 주면 Gold 마트의 마지막 스냅샷을 보입니다."""
     out = []
     add = lambda name, ok, value, detail="": out.append((name, ok, value, detail))
     syms = [it["symbol"] for it in insts]
     count = lambda rows: {s: sum(1 for k in rows if k[0] == s) for s in syms}
 
+    if source is not None:
+        db_prices, db_fx = source
+        miss = sorted(set(db_prices) - set(src_prices))
+        extra = sorted(set(src_prices) - set(db_prices))
+        diff = sorted(k for k in set(db_prices) & set(src_prices) if db_prices[k] != src_prices[k])
+        n = len(miss) + len(extra) + len(diff)
+        add("레이크 경로 시세(원천 → Bronze → Silver → Gold 한 행씩)", n == 0,
+            f"{len(src_prices) - len(extra) - len(diff):,} / {len(db_prices):,}행 같음" + (f", {n}건 다름" if n else ""),
+            "; ".join([f"{s} {d} Gold에 없음" for s, d in miss[:3]] + [f"{s} {d} 원천에 없음" for s, d in extra[:3]] +
+                      [f"{s} {d} 값 다름" for s, d in diff[:3]]))
+        miss = sorted(set(db_fx) - set(src_fx))
+        extra = sorted(set(src_fx) - set(db_fx))
+        diff = sorted(d for d in set(db_fx) & set(src_fx) if db_fx[d] != src_fx[d])
+        n = len(miss) + len(extra) + len(diff)
+        add("레이크 경로 환율(원천 → Gold 하루씩)", n == 0,
+            f"{len(src_fx) - len(extra) - len(diff):,} / {len(db_fx):,}일 같음" + (f", {n}건 다름" if n else ""),
+            "; ".join([f"{d} Gold에 없음" for d in miss[:3]] + [f"{d} 원천에 없음" for d in extra[:3]] +
+                      [f"{d} 값 다름" for d in diff[:3]]))
+    if snaps is not None:
+        have = {k: v for k, v in snaps.items() if v}
+        seoul = lambda t: (datetime.fromisoformat(t[:19]).replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Seoul"))
+                           .strftime("%Y-%m-%d %H:%M") if t[:4].isdigit() else t)  # Spark 세션 시간대는 UTC
+        add("Gold 마트 스냅샷", len(have) == len(snaps),
+            ", ".join(f"{k} {seoul(v[1])}" for k, v in have.items()) or "없음",
+            "; ".join(f"{k} 스냅샷 {v[0]}" for k, v in have.items()) + ("" if len(have) == len(snaps) else "; 스냅샷 없는 마트 있음"))
+
     src_n, raw_n = count(src_prices), count(raw_prices)
     bad = [f"{s} {src_n[s]}/{raw_n[s]}" for s in syms if src_n[s] != raw_n[s]]
-    add("원천과 원본의 시세 행 수", not bad, f"{sum(src_n.values()):,} / {sum(raw_n.values()):,}",
-        "다른 종목(원천/원본): " + ", ".join(bad) if bad else "")
+    add("Gold와 원본의 시세 행 수", not bad, f"{sum(src_n.values()):,} / {sum(raw_n.values()):,}",
+        "다른 종목(Gold/원본): " + ", ".join(bad) if bad else "")
 
     missing = sorted(set(raw_prices) - set(src_prices))
     extra = sorted(set(src_prices) - set(raw_prices))
@@ -189,7 +252,7 @@ def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, 
            [f"{s} {d} " + ", ".join(n for n, a, b in zip(names, raw_prices[(s, d)], src_prices[(s, d)]) if a != b) +
             " 다름" for s, d in diff[:3]]
     bad_n = len(missing) + len(extra) + len(diff)
-    add("시세 값 대조(원본과 한 행씩)", bad_n == 0,
+    add("시세 값 대조(Gold와 원본 한 행씩)", bad_n == 0,
         f"{len(src_prices) - len(extra) - len(diff):,}행 같음" + (f", {bad_n}건 다름" if bad_n else ""), "; ".join(show))
 
     bad, spans = [], []
@@ -200,7 +263,7 @@ def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, 
             spans.append((a[0], a[-1]))
         else:
             span = lambda x: f"{x[0]} ~ {x[-1]}" if x else "없음"
-            bad.append(f"{s} 원천 {span(a)}, 원본 {span(b)}")
+            bad.append(f"{s} Gold {span(a)}, 원본 {span(b)}")
     add("기간", not bad, f"{min(x[0] for x in spans)} ~ {max(x[1] for x in spans)}" if spans else "없음",
         "; ".join(bad))
 
@@ -214,7 +277,7 @@ def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, 
     fx_extra = sorted(set(src_fx) - set(raw_fx))
     fx_diff = sorted(d for d in set(raw_fx) & set(src_fx) if raw_fx[d] != src_fx[d])
     bad_n = len(fx_missing) + len(fx_extra) + len(fx_diff)
-    add("환율 대조(원본과 하루씩)", bad_n == 0, f"{len(src_fx):,} / {len(raw_fx):,}일" + (f", {bad_n}건 다름" if bad_n else ""),
+    add("환율 대조(Gold와 원본 하루씩)", bad_n == 0, f"{len(src_fx):,} / {len(raw_fx):,}일" + (f", {bad_n}건 다름" if bad_n else ""),
         "; ".join([f"{d} 빠짐" for d in fx_missing[:3]] + [f"{d} 원본에 없음" for d in fx_extra[:3]] +
                   [f"{d} 값 다름" for d in fx_diff[:3]]))
 
@@ -295,7 +358,7 @@ def _finish(con, tmp, path, meta, checks):
     tmp.replace(path)
 
 
-def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((), False)):
+def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((), False), source_label=None):
     con, tmp = _create(path)
     events, fred = events
     try:
@@ -309,7 +372,7 @@ def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((
         tmp.unlink(missing_ok=True)
         raise
     meta = {"kind": "real", "bench": REAL_BENCH, "window_start": START, "window_end": END,
-            "source": "원천 PostgreSQL source.daily_prices, source.fx_rates(USDKRW). 수정 종가와 기사는 data/raw/",
+            "source": source_label or "받은 원본(자체 시험). 수정 종가와 기사는 data/raw/",
             "rows_prices": len(src_prices), "rows_fx": len(src_fx), "rows_news": len(news),
             "rows_events": len(events), "events_fred": fred}
     _finish(con, tmp, path, meta, checks)
@@ -330,10 +393,14 @@ def _fill_real(con, insts, src_prices, src_fx, raw_adj, news):
 
 def export(path=OUT):
     insts = instruments()
-    src_prices, src_fx, outside = read_source()
+    gold_prices, gold_fx, snaps = read_gold()
+    db_prices, db_fx, outside = read_source()
     raw_prices, raw_adj, raw_fx = read_raw(insts)
-    checks = check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx)
-    write_real(path, insts, src_prices, src_fx, raw_adj, read_news(), checks, read_events())
+    checks = check_real(insts, gold_prices, gold_fx, outside, raw_prices, raw_adj, raw_fx,
+                        source=(db_prices, db_fx), snaps=snaps)
+    label = (f"Gold 마트 {GOLD_PRICES}, {GOLD_FX}(원천 PostgreSQL → Debezium, Kafka → Flink Bronze → Spark Silver → dbt Gold). "
+             "수정 종가와 기사는 data/raw/")
+    write_real(path, insts, gold_prices, gold_fx, raw_adj, read_news(), checks, read_events(), source_label=label)
     return path
 
 
@@ -377,7 +444,7 @@ def status_of(con):
     checks.append({"name": "내보낸 뒤 바뀌지 않음(지문)", "ok": same, "value": "같음" if same else "다름",
                    "detail": "" if same else "내보낸 뒤 파일이 바뀜. 다시 내보냄"})
     fails = [c for c in checks if not c["ok"]]
-    return {"ok": not fails, "kind": meta.get("kind"), "exported_at": meta.get("exported_at"),
+    return {"ok": not fails, "kind": meta.get("kind"), "exported_at": meta.get("exported_at"), "source": meta.get("source"),
             "window": [meta.get("window_start"), meta.get("window_end")], "bench": meta.get("bench"),
             "checks": checks, "failures": fails}
 
@@ -417,7 +484,8 @@ def world_of(con):
 # ---------- 자체 시험 ----------
 
 def selftest():
-    """VM 없이 원본을 원천 대신 넣어(같으면 모든 검사 통과) 세 가지를 깨고, 내보낸 뒤 파일도 고쳐 봅니다."""
+    """VM 없이 원본을 Gold와 원천 대신 넣어(같으면 모든 검사 통과) Gold 쪽 값을 세 가지로 깨고, 내보낸 뒤 파일도 고쳐 봅니다.
+    원천은 원본 그대로라, Gold를 깨면 레이크 경로 대조와 원본 대조가 함께 실패해야 합니다."""
     insts = instruments()
     raw_prices, raw_adj, raw_fx = read_raw(insts)
     no_golden = lambda: (True, "30/30(자체 시험에서는 건너뜀)")
@@ -425,7 +493,8 @@ def selftest():
     results = []
 
     def run(name, prices, fx, want):
-        checks = check_real(insts, prices, fx, 0, raw_prices, raw_adj, raw_fx, golden=no_golden)
+        checks = check_real(insts, prices, fx, 0, raw_prices, raw_adj, raw_fx, golden=no_golden,
+                            source=(raw_prices, raw_fx), snaps={"mart_symbol_daily": ["1", "자체 시험"], "mart_fx_daily": ["2", "자체 시험"]})
         failed = [c[0] for c in checks if not c[1]]
         ok = failed == want
         results.append((name, ok, failed))
@@ -435,17 +504,28 @@ def selftest():
     k = rng.choice(keys)
     broken = dict(raw_prices)
     del broken[k]
-    run("시세 행 하나 지우기", broken, dict(raw_fx), ["원천과 원본의 시세 행 수", "시세 값 대조(원본과 한 행씩)", "기간"
+    LP, LF = "레이크 경로 시세(원천 → Bronze → Silver → Gold 한 행씩)", "레이크 경로 환율(원천 → Gold 하루씩)"
+    run("시세 행 하나 지우기", broken, dict(raw_fx), [LP, "Gold와 원본의 시세 행 수", "시세 값 대조(Gold와 원본 한 행씩)", "기간"
                                                if k in _ends(raw_prices) else "빈 거래일(시장 달력 기준)"])
     d = rng.choice(sorted(raw_fx))
     fx = dict(raw_fx)
     del fx[d]
-    run("환율 하루 빼기", dict(raw_prices), fx, ["환율 대조(원본과 하루씩)"])
+    run("환율 하루 빼기", dict(raw_prices), fx, [LF, "환율 대조(Gold와 원본 하루씩)"])
     k = rng.choice(keys)
     broken = dict(raw_prices)
     o, h, l, c, v = broken[k]
     broken[k] = (o, h, l, (c * Decimal("1.01")).quantize(Q4), v)
-    run("종가 하나 바꾸기", broken, dict(raw_fx), ["시세 값 대조(원본과 한 행씩)"])
+    run("종가 하나 바꾸기", broken, dict(raw_fx), [LP, "시세 값 대조(Gold와 원본 한 행씩)"])
+
+    # 원천만 다르고 Gold는 원본과 같은 경우(레이크 경로가 원천의 변경을 아직 반영하지 않음)는 레이크 경로 대조만 잡습니다
+    k = rng.choice(keys)
+    db = dict(raw_prices)
+    o, h, l, c, v = db[k]
+    db[k] = (o, h, l, (c * Decimal("0.99")).quantize(Q4), v)
+    checks = check_real(insts, dict(raw_prices), dict(raw_fx), 0, raw_prices, raw_adj, raw_fx, golden=no_golden,
+                        source=(db, dict(raw_fx)), snaps={"mart_symbol_daily": ["1", "자체 시험"], "mart_fx_daily": ["2", "자체 시험"]})
+    failed = [c[0] for c in checks if not c[1]]
+    results.append(("원천만 바뀌고 Gold는 그대로", failed == [LP], failed))
 
     tampers = [("내보낸 뒤 행 지우기",
                 "delete from prices where (symbol, trade_date) in (select symbol, trade_date from prices limit 1)"),

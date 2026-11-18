@@ -22,7 +22,8 @@ check-history:
 	$(PY) scripts/check_public.py --history
 
 # F 화면(docs/ai/F-screen.md). 아래는 받은 원본(data/raw/)이 있는 이 컴퓨터에서만 돕니다(CI에는 없음).
-# 원천 PostgreSQL에서 화면 데이터 파일로 내보내고 검사. VM과 원천 DB가 떠 있어야 함
+# Gold 마트(dbt mart_symbol_daily, mart_fx_daily)에서 화면 데이터 파일로 내보내고 원천과 원본에 대조.
+# VM, 원천 DB, Spark(--profile spark)가 떠 있고 Silver MERGE와 dbt build를 먼저 돌려야 함
 screen-data:
 	$(PY) -m ai.screen_data export
 
