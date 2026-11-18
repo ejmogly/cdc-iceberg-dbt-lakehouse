@@ -2111,5 +2111,256 @@
     "avg_file_kb": 4.0
    }
   }
+ },
+ "dag:silver_incremental": {
+  "run_id": "manual__2026-11-18T07:03:03.205279+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.1
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 1.6
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 28.3
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 7.3
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 64.1
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 5.0
+   }
+  },
+  "total_seconds": 110.6
+ },
+ "dag:silver_incremental_test": {
+  "run_id": "manual__2026-11-18T07:05:11.068189+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.3
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 25.6
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 6.2
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 23.7
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 3.1
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 61.4
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 5.0
+   }
+  },
+  "total_seconds": 129.5
+ },
+ "dag:silver_incremental_back": {
+  "run_id": "manual__2026-11-18T07:07:26.729748+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.5
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 23.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 3.7
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 19.6
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 2.4
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 58.9
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 4.4
+   }
+  },
+  "total_seconds": 116.7
+ },
+ "bronze:idx_clean": {
+  "run": {
+   "name": "idx_clean",
+   "kind": "clean",
+   "trades": 50000,
+   "deleted": {
+    "executions": 50000,
+    "orders": 50000,
+    "holdings": 19
+   },
+   "transactions": 11,
+   "batch": 5000,
+   "lsn_from": 357983312,
+   "lsn_to": 367926480,
+   "started": "2026-11-18T07:22:11.426+00:00",
+   "ended": "2026-11-18T07:22:11.898+00:00",
+   "write_seconds": 0.47,
+   "source_rows_after": {
+    "orders": 0,
+    "holdings": 0,
+    "executions": 0
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 50000,
+    "events_in_range": 50000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      1120,
+      2025,
+      2579
+     ],
+     "max": 2582
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      735,
+      5123,
+      6074
+     ],
+     "max": 6082
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      7989,
+      9565,
+      9629
+     ],
+     "max": 9666
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      9864,
+      10038,
+      10038
+     ],
+     "max": 10038
+    },
+    "source_span_s": 0.4,
+    "drain_s": 10.0,
+    "events_per_s": 4981.1,
+    "data_files": 1,
+    "snapshots": 1
+   },
+   "executions": {
+    "events": 50000,
+    "events_in_range": 50000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      1009,
+      1865,
+      1936
+     ],
+     "max": 1949
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      672,
+      3769,
+      5197
+     ],
+     "max": 5204
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      8136,
+      9745,
+      9822
+     ],
+     "max": 9863
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      9864,
+      10038,
+      10038
+     ],
+     "max": 10038
+    },
+    "source_span_s": 0.4,
+    "drain_s": 10.0,
+    "events_per_s": 4981.1,
+    "data_files": 1,
+    "snapshots": 1
+   },
+   "holdings": {
+    "events": 19,
+    "events_in_range": 19,
+    "capture_ms": {
+     "p50_p95_p99": [
+      2574,
+      2574,
+      2574
+     ],
+     "max": 2574
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      1,
+      4,
+      4
+     ],
+     "max": 4
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      7045,
+      7045,
+      7045
+     ],
+     "max": 7045
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      9620,
+      9620,
+      9620
+     ],
+     "max": 9620
+    },
+    "source_span_s": 0.0,
+    "drain_s": 9.6,
+    "events_per_s": 2.0,
+    "data_files": 1,
+    "snapshots": 1
+   }
+  }
  }
 }

@@ -15,6 +15,8 @@
 | [0008](0008-pnl-moving-average-in-sql.md) | 손익은 이동평균법으로, 모델이 아니라 SQL이 계산 | 2026-11-11 | 결정 |
 | [0009](0009-commit-evaluation-before-development.md) | AI 기능의 평가 기준은 개발 전에 커밋 | 2026-11-06 | 결정 |
 | [0010](0010-silver-current-state-rules.md) | Silver 현재 상태: LSN으로 최신 판단, 삭제는 표시 | 2026-11-11 | 제안(4회차) |
+| [0011](0011-silver-incremental-read.md) | Silver는 Bronze의 새 스냅샷만 읽는다(증분 읽기) | 2026-11-18 | 결정, 확인함 |
+| [0012](0012-executions-order-id-index.md) | 원천 체결 테이블의 order_id에 인덱스를 둔다 | 2026-11-18 | 결정, 확인함 |
 
 ## 다음에 쓸 것
 

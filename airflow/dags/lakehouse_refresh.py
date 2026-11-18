@@ -6,7 +6,8 @@ Bronze는 Flink가 계속 쌓으므로 이 DAG에 없습니다. 태스크는 모
                     값이 같은 줄은 고치지 않아 CDC 이벤트가 생기지 않음. 마지막 줄의 바꾼 키 목록이 XCom으로 감
   wait_bronze       그 키의 CDC 이벤트가 모두 Bronze에 닿을 때까지 15초마다 봄(BashSensor, 종료코드 99 = 아직).
                     바꾼 것이 없으면 바로 넘어감. Debezium, Kafka, Flink 중 하나가 멈춰 있으면 10분 뒤 실패
-  silver_merge      Silver 현재 상태 다섯 테이블 MERGE(sql/silver). 검사에 걸리면 실패
+  silver_merge      Silver 현재 상태 다섯 테이블 MERGE(sql/silver/run.py). 지난번 뒤에 더해진 Bronze 행만 읽음
+                    (증분 읽기, 11/18 규모 시험 뒤). 새 행이 없으면 MERGE를 건너뜀. 검사에 걸리면 실패
   dbt_build         dbt 모델과 데이터 테스트(정답지인 전체 재계산 Gold, 손익 마트 dbt/models/pnl 포함)
   gold_incremental  일별 종목별 체결 대금 증분(sql/gold_incremental/run.py)과 정답지 대조. 0 / 0이 아니면 실패
   screen_export     Gold 마트에서 화면 데이터 파일을 내보내고 원천, 원본과 대조(ai/screen_data.py). 내용이 같고 검사가
@@ -25,7 +26,6 @@ from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
 from airflow.sensors.bash import BashSensor
 
-SILVER_TABLES = ["orders", "executions", "holdings", "daily_prices", "fx_rates"]
 VENV = "/opt/dbt-venv/bin"
 APP = "/opt/app-venv/bin/python"   # 화면 매매 적재기와 화면 데이터 내보내기(duckdb, psycopg, pyhive)
 WORK = "/workspace"
@@ -33,11 +33,8 @@ WORK = "/workspace"
 TRADES_ENV = {"TRADES": "{{ params.trades }}"}
 TRADES_ARG = '${TRADES:+--trades "$TRADES"}'
 
-# 테이블마다 1_incoming.sql과 2_merge.sql을 한 세션에서
-silver_cmd = "set -e\n" + "\n".join(
-    f"{VENV}/python {WORK}/infra/spark/run_sql.py "
-    f"{WORK}/sql/silver/{t}/1_incoming.sql {WORK}/sql/silver/{t}/2_merge.sql"
-    for t in SILVER_TABLES)
+# 테이블마다 progress의 Bronze 스냅샷 뒤에 더해진 행만 읽어 1_incoming.sql, 2_merge.sql을 돌림(docs/decisions/0011)
+silver_cmd = f"{VENV}/python {WORK}/sql/silver/run.py"
 
 with DAG(
     dag_id="lakehouse_refresh",

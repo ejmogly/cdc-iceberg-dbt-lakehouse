@@ -47,6 +47,12 @@ CREATE TABLE source.executions (
 -- 이 테이블만 지워지기 전 행 전체를 남기게 합니다(가이드 06 14절, 2026-11-11 정함).
 ALTER TABLE source.executions REPLICA IDENTITY FULL;
 
+-- 외래 키를 거는 쪽 칸(order_id)에도 인덱스를 둡니다. 없으면 주문 한 건을 지울 때마다
+-- 그 주문을 가리키는 체결이 있는지 체결 테이블을 처음부터 훑습니다. 규모 시험에서 5만 건 지우기가
+-- 36.6초 걸렸고 이 인덱스를 두면 0.62초였습니다(docs/decisions/0012, 2026-11-18 정함).
+-- 이미 떠 있는 DB에는 infra/postgres/migrate/0012_executions_order_id_index.sql로 넣습니다(make source-migrate).
+CREATE INDEX executions_order_id_idx ON source.executions (order_id);
+
 -- 계좌별 종목 잔고의 현재 상태. 전량 매도하면 행을 지웁니다.
 CREATE TABLE source.holdings (
   account_id text NOT NULL,

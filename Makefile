@@ -1,11 +1,16 @@
 # 키와 Docker 없이 도는 확인. CI(.github/workflows/check.yml)도 같은 목표를 씁니다.
 PY ?= .venv/bin/python
 
-.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh
+.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh source-migrate
 
 setup:
 	python3 -m venv .venv
 	.venv/bin/pip install -r loaders/requirements.txt
+
+# 이미 떠 있는 원천 DB에 infra/postgres/migrate/의 SQL을 번호 순서로(여러 번 돌려도 같음). 새 DB는 init/이 같은 일을 함
+source-migrate:
+	for f in infra/postgres/migrate/*.sql; do echo "== $$f"; \
+	  docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' < $$f || exit 1; done
 
 check: check-pnl check-public
 
