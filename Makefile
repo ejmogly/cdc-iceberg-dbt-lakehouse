@@ -62,6 +62,7 @@ screen-example:
 check-screen:
 	$(PY) -m ai.screen_data --selftest
 	$(PY) loaders/screen_trades.py --selftest
+	$(PY) loaders/load_test.py --selftest
 	$(PY) eval/f_screen/replay_e04.py
 	$(PY) eval/f_screen/replay_e04.py --selftest
 	$(PY) eval/f_screen/check_api.py

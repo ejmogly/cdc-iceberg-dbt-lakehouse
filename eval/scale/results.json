@@ -1,0 +1,2115 @@
+{
+ "files:base": {
+  "at": "2026-11-18T05:35:19+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 11,
+    "bytes": 48342,
+    "rows": 58,
+    "snapshots": 55,
+    "manifests": 11,
+    "avg_file_kb": 4.3
+   },
+   "lake.bronze.executions": {
+    "data_files": 11,
+    "bytes": 49618,
+    "rows": 55,
+    "snapshots": 54,
+    "manifests": 11,
+    "avg_file_kb": 4.4
+   },
+   "lake.bronze.holdings": {
+    "data_files": 10,
+    "bytes": 39393,
+    "rows": 24,
+    "snapshots": 54,
+    "manifests": 10,
+    "avg_file_kb": 3.8
+   },
+   "lake.silver.orders": {
+    "data_files": 1,
+    "bytes": 5844,
+    "rows": 13,
+    "snapshots": 15,
+    "manifests": 2,
+    "avg_file_kb": 5.7
+   },
+   "lake.silver.executions": {
+    "data_files": 1,
+    "bytes": 4883,
+    "rows": 13,
+    "snapshots": 17,
+    "manifests": 2,
+    "avg_file_kb": 4.8
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 3832,
+    "rows": 6,
+    "snapshots": 28,
+    "manifests": 2,
+    "avg_file_kb": 3.7
+   }
+  }
+ },
+ "mem:base": {
+  "at": "2026-11-18T05:35:22+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.358GiB / 11.65GiB",
+    "cpu": "2.49%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "684.9MiB / 11.65GiB",
+    "cpu": "1.27%"
+   },
+   "cdclake-spark-1": {
+    "mem": "655.7MiB / 11.65GiB",
+    "cpu": "2.12%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "476.2MiB / 11.65GiB",
+    "cpu": "5.48%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "41.66MiB / 11.65GiB",
+    "cpu": "0.02%"
+   },
+   "cdclake-s3-1": {
+    "mem": "141MiB / 11.65GiB",
+    "cpu": "0.02%"
+   },
+   "cdclake-connect-1": {
+    "mem": "467.5MiB / 11.65GiB",
+    "cpu": "2.12%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "381.6MiB / 11.65GiB",
+    "cpu": "0.19%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "58.73MiB / 11.65GiB",
+    "cpu": "0.05%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "519.5MiB / 11.65GiB",
+    "cpu": "7.63%"
+   }
+  }
+ },
+ "bronze:smoke": {
+  "run": {
+   "name": "smoke",
+   "kind": "steady",
+   "trades": 50,
+   "transactions": 50,
+   "rate_asked": 5,
+   "batch": null,
+   "lsn_from": 32049904,
+   "lsn_to": 32091656,
+   "started": "2026-11-18T05:35:35.100+00:00",
+   "ended": "2026-11-18T05:35:44.919+00:00",
+   "write_seconds": 9.82,
+   "write_rate": 5.1,
+   "first_order_id": 800000000,
+   "source_rows_after": {
+    "orders": 50,
+    "holdings": 18,
+    "executions": 50
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 50,
+    "events_in_range": 50,
+    "capture_ms": {
+     "p50_p95_p99": [
+      602,
+      907,
+      1651
+     ],
+     "max": 2297
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      11,
+      47,
+      51
+     ],
+     "max": 52
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5109,
+      9407,
+      9635
+     ],
+     "max": 9635
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5728,
+      10137,
+      10524
+     ],
+     "max": 10624
+    },
+    "source_span_s": 11.1,
+    "drain_s": 15.0,
+    "events_per_s": 3.3,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "executions": {
+    "events": 50,
+    "events_in_range": 50,
+    "capture_ms": {
+     "p50_p95_p99": [
+      602,
+      907,
+      1651
+     ],
+     "max": 2297
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      10,
+      42,
+      48
+     ],
+     "max": 49
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5107,
+      9405,
+      9633
+     ],
+     "max": 9633
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5724,
+      10134,
+      10521
+     ],
+     "max": 10621
+    },
+    "source_span_s": 11.1,
+    "drain_s": 15.0,
+    "events_per_s": 3.3,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "holdings": {
+    "events": 50,
+    "events_in_range": 50,
+    "capture_ms": {
+     "p50_p95_p99": [
+      602,
+      907,
+      1651
+     ],
+     "max": 2297
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      10,
+      44,
+      49
+     ],
+     "max": 49
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5098,
+      9396,
+      9625
+     ],
+     "max": 9625
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5716,
+      10126,
+      10513
+     ],
+     "max": 10613
+    },
+    "source_span_s": 11.1,
+    "drain_s": 15.0,
+    "events_per_s": 3.3,
+    "data_files": 2,
+    "snapshots": 2
+   }
+  }
+ },
+ "dag:base": {
+  "run_id": "manual__2026-11-18T05:36:34.373448+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.2
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 8.7
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 22.6
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 2.4
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 59.8
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 4.4
+   }
+  },
+  "total_seconds": 102.1
+ },
+ "mem:s20": {
+  "at": "2026-11-18T05:39:10+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.439GiB / 11.65GiB",
+    "cpu": "3.59%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "812.6MiB / 11.65GiB",
+    "cpu": "1.93%"
+   },
+   "cdclake-spark-1": {
+    "mem": "1.35GiB / 11.65GiB",
+    "cpu": "0.13%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "477.1MiB / 11.65GiB",
+    "cpu": "1.03%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "42.38MiB / 11.65GiB",
+    "cpu": "0.00%"
+   },
+   "cdclake-s3-1": {
+    "mem": "232.5MiB / 11.65GiB",
+    "cpu": "0.79%"
+   },
+   "cdclake-connect-1": {
+    "mem": "481.4MiB / 11.65GiB",
+    "cpu": "6.61%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "387.4MiB / 11.65GiB",
+    "cpu": "0.13%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "62.81MiB / 11.65GiB",
+    "cpu": "2.17%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "560.4MiB / 11.65GiB",
+    "cpu": "3.10%"
+   }
+  }
+ },
+ "bronze:s20": {
+  "run": {
+   "name": "s20",
+   "kind": "steady",
+   "trades": 3600,
+   "transactions": 3600,
+   "rate_asked": 20,
+   "batch": null,
+   "lsn_from": 32105848,
+   "lsn_to": 34582992,
+   "started": "2026-11-18T05:39:00.122+00:00",
+   "ended": "2026-11-18T05:42:00.081+00:00",
+   "write_seconds": 179.96,
+   "write_rate": 20.0,
+   "first_order_id": 800000050,
+   "source_rows_after": {
+    "orders": 3650,
+    "holdings": 19,
+    "executions": 3650
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 3600,
+    "events_in_range": 3600,
+    "capture_ms": {
+     "p50_p95_p99": [
+      511,
+      934,
+      2721
+     ],
+     "max": 3045
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      9,
+      14,
+      43
+     ],
+     "max": 72
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5131,
+      9668,
+      10121
+     ],
+     "max": 10209
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5714,
+      10208,
+      10725
+     ],
+     "max": 11140
+    },
+    "source_span_s": 179.9,
+    "drain_s": 188.5,
+    "events_per_s": 19.1,
+    "data_files": 19,
+    "snapshots": 19
+   },
+   "executions": {
+    "events": 3600,
+    "events_in_range": 3600,
+    "capture_ms": {
+     "p50_p95_p99": [
+      511,
+      934,
+      2721
+     ],
+     "max": 3045
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      9,
+      13,
+      43
+     ],
+     "max": 71
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5131,
+      9669,
+      10119
+     ],
+     "max": 10211
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5714,
+      10208,
+      10722
+     ],
+     "max": 11142
+    },
+    "source_span_s": 179.9,
+    "drain_s": 188.5,
+    "events_per_s": 19.1,
+    "data_files": 19,
+    "snapshots": 19
+   },
+   "holdings": {
+    "events": 3600,
+    "events_in_range": 3600,
+    "capture_ms": {
+     "p50_p95_p99": [
+      511,
+      934,
+      2721
+     ],
+     "max": 3045
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      8,
+      12,
+      40
+     ],
+     "max": 71
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5131,
+      9670,
+      10123
+     ],
+     "max": 10203
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5714,
+      10208,
+      10727
+     ],
+     "max": 11133
+    },
+    "source_span_s": 179.9,
+    "drain_s": 188.5,
+    "events_per_s": 19.1,
+    "data_files": 19,
+    "snapshots": 19
+   }
+  }
+ },
+ "files:s20": {
+  "at": "2026-11-18T05:42:32+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 32,
+    "bytes": 352435,
+    "rows": 3708,
+    "snapshots": 77,
+    "manifests": 32,
+    "avg_file_kb": 10.8
+   },
+   "lake.bronze.executions": {
+    "data_files": 32,
+    "bytes": 369089,
+    "rows": 3705,
+    "snapshots": 76,
+    "manifests": 32,
+    "avg_file_kb": 11.3
+   },
+   "lake.bronze.holdings": {
+    "data_files": 31,
+    "bytes": 326225,
+    "rows": 3674,
+    "snapshots": 76,
+    "manifests": 31,
+    "avg_file_kb": 10.3
+   },
+   "lake.silver.orders": {
+    "data_files": 1,
+    "bytes": 7318,
+    "rows": 63,
+    "snapshots": 16,
+    "manifests": 2,
+    "avg_file_kb": 7.1
+   },
+   "lake.silver.executions": {
+    "data_files": 1,
+    "bytes": 6708,
+    "rows": 63,
+    "snapshots": 18,
+    "manifests": 2,
+    "avg_file_kb": 6.6
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4364,
+    "rows": 24,
+    "snapshots": 29,
+    "manifests": 2,
+    "avg_file_kb": 4.3
+   }
+  }
+ },
+ "dag:s20": {
+  "run_id": "manual__2026-11-18T05:42:37.113709+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.0
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 8.6
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 22.3
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 1.8
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 63.2
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 5.2
+   }
+  },
+  "total_seconds": 105.3
+ },
+ "mem:b10k": {
+  "at": "2026-11-18T05:44:48+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.491GiB / 11.65GiB",
+    "cpu": "5.10%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "880.3MiB / 11.65GiB",
+    "cpu": "1.62%"
+   },
+   "cdclake-spark-1": {
+    "mem": "1.74GiB / 11.65GiB",
+    "cpu": "0.19%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "488MiB / 11.65GiB",
+    "cpu": "1.27%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "44.34MiB / 11.65GiB",
+    "cpu": "0.08%"
+   },
+   "cdclake-s3-1": {
+    "mem": "362.6MiB / 11.65GiB",
+    "cpu": "0.09%"
+   },
+   "cdclake-connect-1": {
+    "mem": "650.7MiB / 11.65GiB",
+    "cpu": "0.77%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "391.6MiB / 11.65GiB",
+    "cpu": "0.13%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "65MiB / 11.65GiB",
+    "cpu": "0.02%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "670.5MiB / 11.65GiB",
+    "cpu": "41.82%"
+   }
+  }
+ },
+ "bronze:b10k": {
+  "run": {
+   "name": "b10k",
+   "kind": "burst",
+   "trades": 10000,
+   "transactions": 20,
+   "rate_asked": null,
+   "batch": 500,
+   "lsn_from": 34608328,
+   "lsn_to": 38985264,
+   "started": "2026-11-18T05:44:37.996+00:00",
+   "ended": "2026-11-18T05:44:38.402+00:00",
+   "write_seconds": 0.41,
+   "write_rate": 24673.4,
+   "first_order_id": 800003650,
+   "source_rows_after": {
+    "orders": 13650,
+    "holdings": 19,
+    "executions": 13650
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 10000,
+    "events_in_range": 10000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      483,
+      1319,
+      1337
+     ],
+     "max": 1337
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      352,
+      557,
+      559
+     ],
+     "max": 566
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      9519,
+      9933,
+      9951
+     ],
+     "max": 10046
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      10500,
+      10666,
+      10685
+     ],
+     "max": 10685
+    },
+    "source_span_s": 0.4,
+    "drain_s": 10.7,
+    "events_per_s": 932.7,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "executions": {
+    "events": 10000,
+    "events_in_range": 10000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      535,
+      1323,
+      1339
+     ],
+     "max": 1339
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      228,
+      531,
+      533
+     ],
+     "max": 536
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      9528,
+      10002,
+      10019
+     ],
+     "max": 10026
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      10515,
+      10673,
+      10691
+     ],
+     "max": 10691
+    },
+    "source_span_s": 0.4,
+    "drain_s": 10.7,
+    "events_per_s": 932.2,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "holdings": {
+    "events": 380,
+    "events_in_range": 380,
+    "capture_ms": {
+     "p50_p95_p99": [
+      548,
+      1323,
+      1340
+     ],
+     "max": 1340
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      95,
+      188,
+      240
+     ],
+     "max": 240
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      9785,
+      10033,
+      10033
+     ],
+     "max": 10033
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      10511,
+      10669,
+      10687
+     ],
+     "max": 10687
+    },
+    "source_span_s": 0.4,
+    "drain_s": 10.7,
+    "events_per_s": 35.4,
+    "data_files": 2,
+    "snapshots": 2
+   }
+  }
+ },
+ "files:b10k": {
+  "at": "2026-11-18T05:45:13+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 34,
+    "bytes": 704185,
+    "rows": 13708,
+    "snapshots": 80,
+    "manifests": 34,
+    "avg_file_kb": 20.2
+   },
+   "lake.bronze.executions": {
+    "data_files": 34,
+    "bytes": 757988,
+    "rows": 13705,
+    "snapshots": 79,
+    "manifests": 34,
+    "avg_file_kb": 21.8
+   },
+   "lake.bronze.holdings": {
+    "data_files": 33,
+    "bytes": 346123,
+    "rows": 4054,
+    "snapshots": 79,
+    "manifests": 33,
+    "avg_file_kb": 10.2
+   },
+   "lake.silver.orders": {
+    "data_files": 1,
+    "bytes": 59228,
+    "rows": 3663,
+    "snapshots": 17,
+    "manifests": 2,
+    "avg_file_kb": 57.8
+   },
+   "lake.silver.executions": {
+    "data_files": 1,
+    "bytes": 77807,
+    "rows": 3663,
+    "snapshots": 19,
+    "manifests": 2,
+    "avg_file_kb": 76.0
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4419,
+    "rows": 25,
+    "snapshots": 30,
+    "manifests": 2,
+    "avg_file_kb": 4.3
+   }
+  }
+ },
+ "dag:b10k": {
+  "run_id": "manual__2026-11-18T05:45:18.203534+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 5.3
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 10.8
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 24.0
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 2.0
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 62.8
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 2.6
+   }
+  },
+  "total_seconds": 107.6
+ },
+ "files:b10k_after": {
+  "at": "2026-11-18T05:47:27+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 34,
+    "bytes": 704185,
+    "rows": 13708,
+    "snapshots": 81,
+    "manifests": 34,
+    "avg_file_kb": 20.2
+   },
+   "lake.bronze.executions": {
+    "data_files": 34,
+    "bytes": 757988,
+    "rows": 13705,
+    "snapshots": 80,
+    "manifests": 34,
+    "avg_file_kb": 21.8
+   },
+   "lake.bronze.holdings": {
+    "data_files": 33,
+    "bytes": 346123,
+    "rows": 4054,
+    "snapshots": 80,
+    "manifests": 33,
+    "avg_file_kb": 10.2
+   },
+   "lake.silver.orders": {
+    "data_files": 1,
+    "bytes": 140881,
+    "rows": 13663,
+    "snapshots": 18,
+    "manifests": 2,
+    "avg_file_kb": 137.6
+   },
+   "lake.silver.executions": {
+    "data_files": 1,
+    "bytes": 197918,
+    "rows": 13663,
+    "snapshots": 20,
+    "manifests": 2,
+    "avg_file_kb": 193.3
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4327,
+    "rows": 25,
+    "snapshots": 31,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "mem:b50k": {
+  "at": "2026-11-18T05:47:52+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.491GiB / 11.65GiB",
+    "cpu": "5.46%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "892.4MiB / 11.65GiB",
+    "cpu": "1.27%"
+   },
+   "cdclake-spark-1": {
+    "mem": "1.51GiB / 11.65GiB",
+    "cpu": "0.83%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "508.3MiB / 11.65GiB",
+    "cpu": "1.26%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "44.37MiB / 11.65GiB",
+    "cpu": "3.01%"
+   },
+   "cdclake-s3-1": {
+    "mem": "367.6MiB / 11.65GiB",
+    "cpu": "0.00%"
+   },
+   "cdclake-connect-1": {
+    "mem": "1.07GiB / 11.65GiB",
+    "cpu": "0.80%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "393.6MiB / 11.65GiB",
+    "cpu": "0.11%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "77.3MiB / 11.65GiB",
+    "cpu": "3.03%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "1.006GiB / 11.65GiB",
+    "cpu": "2.15%"
+   }
+  }
+ },
+ "bronze:b50k": {
+  "run": {
+   "name": "b50k",
+   "kind": "burst",
+   "trades": 50000,
+   "transactions": 50,
+   "rate_asked": null,
+   "batch": 1000,
+   "lsn_from": 39083256,
+   "lsn_to": 60662424,
+   "started": "2026-11-18T05:47:42.664+00:00",
+   "ended": "2026-11-18T05:47:45.068+00:00",
+   "write_seconds": 2.4,
+   "write_rate": 20812.7,
+   "first_order_id": 800013650,
+   "source_rows_after": {
+    "orders": 63650,
+    "holdings": 19,
+    "executions": 63650
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 50000,
+    "events_in_range": 50000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      1221,
+      1397,
+      1555
+     ],
+     "max": 1557
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      464,
+      2572,
+      2592
+     ],
+     "max": 2603
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      3373,
+      5020,
+      5280
+     ],
+     "max": 5338
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      4868,
+      5842,
+      5911
+     ],
+     "max": 5911
+    },
+    "source_span_s": 2.3,
+    "drain_s": 5.9,
+    "events_per_s": 8458.8,
+    "data_files": 1,
+    "snapshots": 1
+   },
+   "executions": {
+    "events": 50000,
+    "events_in_range": 50000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      1255,
+      1428,
+      2064
+     ],
+     "max": 2067
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      406,
+      2526,
+      2541
+     ],
+     "max": 2561
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      3412,
+      5017,
+      5252
+     ],
+     "max": 5322
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      4868,
+      5842,
+      5911
+     ],
+     "max": 5911
+    },
+    "source_span_s": 2.3,
+    "drain_s": 5.9,
+    "events_per_s": 8458.8,
+    "data_files": 1,
+    "snapshots": 1
+   },
+   "holdings": {
+    "events": 950,
+    "events_in_range": 950,
+    "capture_ms": {
+     "p50_p95_p99": [
+      1262,
+      1432,
+      2068
+     ],
+     "max": 2068
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      3,
+      13,
+      23
+     ],
+     "max": 23
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      3942,
+      5010,
+      5109
+     ],
+     "max": 5109
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      4868,
+      5842,
+      5911
+     ],
+     "max": 5911
+    },
+    "source_span_s": 2.3,
+    "drain_s": 5.9,
+    "events_per_s": 160.7,
+    "data_files": 1,
+    "snapshots": 1
+   }
+  }
+ },
+ "files:b50k": {
+  "at": "2026-11-18T05:48:16+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 35,
+    "bytes": 2410428,
+    "rows": 63708,
+    "snapshots": 82,
+    "manifests": 35,
+    "avg_file_kb": 67.3
+   },
+   "lake.bronze.executions": {
+    "data_files": 35,
+    "bytes": 2650823,
+    "rows": 63705,
+    "snapshots": 81,
+    "manifests": 35,
+    "avg_file_kb": 74.0
+   },
+   "lake.bronze.holdings": {
+    "data_files": 34,
+    "bytes": 381238,
+    "rows": 5004,
+    "snapshots": 81,
+    "manifests": 34,
+    "avg_file_kb": 11.0
+   },
+   "lake.silver.orders": {
+    "data_files": 1,
+    "bytes": 140881,
+    "rows": 13663,
+    "snapshots": 18,
+    "manifests": 2,
+    "avg_file_kb": 137.6
+   },
+   "lake.silver.executions": {
+    "data_files": 1,
+    "bytes": 197918,
+    "rows": 13663,
+    "snapshots": 20,
+    "manifests": 2,
+    "avg_file_kb": 193.3
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4327,
+    "rows": 25,
+    "snapshots": 31,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "dag:b50k": {
+  "run_id": "manual__2026-11-18T05:48:21.433325+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.0
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 16.7
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 28.1
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 2.7
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 64.3
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 5.4
+   }
+  },
+  "total_seconds": 121.4
+ },
+ "files:b50k_after": {
+  "at": "2026-11-18T05:50:42+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 35,
+    "bytes": 2410428,
+    "rows": 63708,
+    "snapshots": 83,
+    "manifests": 35,
+    "avg_file_kb": 67.3
+   },
+   "lake.bronze.executions": {
+    "data_files": 35,
+    "bytes": 2650823,
+    "rows": 63705,
+    "snapshots": 82,
+    "manifests": 35,
+    "avg_file_kb": 74.0
+   },
+   "lake.bronze.holdings": {
+    "data_files": 34,
+    "bytes": 381238,
+    "rows": 5004,
+    "snapshots": 82,
+    "manifests": 34,
+    "avg_file_kb": 11.0
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 510680,
+    "rows": 63663,
+    "snapshots": 19,
+    "manifests": 2,
+    "avg_file_kb": 249.4
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 730336,
+    "rows": 63663,
+    "snapshots": 21,
+    "manifests": 2,
+    "avg_file_kb": 356.6
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4335,
+    "rows": 25,
+    "snapshots": 32,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "mem:b200k": {
+  "at": "2026-11-18T05:51:10+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.562GiB / 11.65GiB",
+    "cpu": "7.03%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "885.2MiB / 11.65GiB",
+    "cpu": "17.60%"
+   },
+   "cdclake-spark-1": {
+    "mem": "2.328GiB / 11.65GiB",
+    "cpu": "0.16%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "558.5MiB / 11.65GiB",
+    "cpu": "1.22%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "44.38MiB / 11.65GiB",
+    "cpu": "3.48%"
+   },
+   "cdclake-s3-1": {
+    "mem": "379.8MiB / 11.65GiB",
+    "cpu": "9.37%"
+   },
+   "cdclake-connect-1": {
+    "mem": "973.9MiB / 11.65GiB",
+    "cpu": "222.03%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "405.6MiB / 11.65GiB",
+    "cpu": "0.12%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "130.3MiB / 11.65GiB",
+    "cpu": "106.19%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "1.087GiB / 11.65GiB",
+    "cpu": "52.24%"
+   }
+  }
+ },
+ "bronze:b200k": {
+  "run": {
+   "name": "b200k",
+   "kind": "burst",
+   "trades": 200000,
+   "transactions": 100,
+   "rate_asked": null,
+   "batch": 2000,
+   "lsn_from": 60758896,
+   "lsn_to": 147040312,
+   "started": "2026-11-18T05:51:00.543+00:00",
+   "ended": "2026-11-18T05:51:10.841+00:00",
+   "write_seconds": 10.3,
+   "write_rate": 19423.2,
+   "first_order_id": 800063650,
+   "source_rows_after": {
+    "orders": 263650,
+    "holdings": 19,
+    "executions": 263650
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 200000,
+    "events_in_range": 200000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      801,
+      1062,
+      3072
+     ],
+     "max": 3113
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      852,
+      2099,
+      3351
+     ],
+     "max": 3410
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5368,
+      9379,
+      10044
+     ],
+     "max": 10164
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      6857,
+      11539,
+      11888
+     ],
+     "max": 11994
+    },
+    "source_span_s": 9.8,
+    "drain_s": 17.9,
+    "events_per_s": 11195.7,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "executions": {
+    "events": 200000,
+    "events_in_range": 200000,
+    "capture_ms": {
+     "p50_p95_p99": [
+      853,
+      1099,
+      3123
+     ],
+     "max": 3159
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      509,
+      1590,
+      3104
+     ],
+     "max": 3165
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      5234,
+      9367,
+      10029
+     ],
+     "max": 10160
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      6581,
+      11261,
+      11624
+     ],
+     "max": 11714
+    },
+    "source_span_s": 9.8,
+    "drain_s": 17.9,
+    "events_per_s": 11198.2,
+    "data_files": 2,
+    "snapshots": 2
+   },
+   "holdings": {
+    "events": 1900,
+    "events_in_range": 1900,
+    "capture_ms": {
+     "p50_p95_p99": [
+      866,
+      1125,
+      3150
+     ],
+     "max": 3159
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      3,
+      13,
+      63
+     ],
+     "max": 125
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      4976,
+      9760,
+      10148
+     ],
+     "max": 10148
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5872,
+      10617,
+      10944
+     ],
+     "max": 11025
+    },
+    "source_span_s": 9.8,
+    "drain_s": 17.9,
+    "events_per_s": 106.4,
+    "data_files": 2,
+    "snapshots": 2
+   }
+  }
+ },
+ "files:b200k": {
+  "at": "2026-11-18T05:51:54+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 37,
+    "bytes": 9183456,
+    "rows": 263708,
+    "snapshots": 85,
+    "manifests": 37,
+    "avg_file_kb": 242.4
+   },
+   "lake.bronze.executions": {
+    "data_files": 37,
+    "bytes": 10183535,
+    "rows": 263705,
+    "snapshots": 84,
+    "manifests": 37,
+    "avg_file_kb": 268.8
+   },
+   "lake.bronze.holdings": {
+    "data_files": 36,
+    "bytes": 451122,
+    "rows": 6904,
+    "snapshots": 84,
+    "manifests": 36,
+    "avg_file_kb": 12.2
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 510680,
+    "rows": 63663,
+    "snapshots": 19,
+    "manifests": 2,
+    "avg_file_kb": 249.4
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 730336,
+    "rows": 63663,
+    "snapshots": 21,
+    "manifests": 2,
+    "avg_file_kb": 356.6
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4335,
+    "rows": 25,
+    "snapshots": 32,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "dag:b200k": {
+  "run_id": "manual__2026-11-18T05:51:59.593020+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 3.9
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 34.1
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 77.5
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 5.3
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 63.1
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 2.4
+   }
+  },
+  "total_seconds": 186.4
+ },
+ "files:b200k_after": {
+  "at": "2026-11-18T05:55:27+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 37,
+    "bytes": 9183456,
+    "rows": 263708,
+    "snapshots": 87,
+    "manifests": 37,
+    "avg_file_kb": 242.4
+   },
+   "lake.bronze.executions": {
+    "data_files": 37,
+    "bytes": 10183535,
+    "rows": 263705,
+    "snapshots": 86,
+    "manifests": 37,
+    "avg_file_kb": 268.8
+   },
+   "lake.bronze.holdings": {
+    "data_files": 36,
+    "bytes": 451122,
+    "rows": 6904,
+    "snapshots": 86,
+    "manifests": 36,
+    "avg_file_kb": 12.2
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 1922106,
+    "rows": 263663,
+    "snapshots": 20,
+    "manifests": 2,
+    "avg_file_kb": 938.5
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2665318,
+    "rows": 263663,
+    "snapshots": 22,
+    "manifests": 2,
+    "avg_file_kb": 1301.4
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4342,
+    "rows": 25,
+    "snapshots": 33,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "mem:clean": {
+  "at": "2026-11-18T05:56:18+00:00",
+  "containers": {
+   "cdclake-airflow-1": {
+    "mem": "1.496GiB / 11.65GiB",
+    "cpu": "2.10%"
+   },
+   "cdclake-taskmanager-1": {
+    "mem": "890.6MiB / 11.65GiB",
+    "cpu": "0.73%"
+   },
+   "cdclake-spark-1": {
+    "mem": "1.495GiB / 11.65GiB",
+    "cpu": "0.23%"
+   },
+   "cdclake-jobmanager-1": {
+    "mem": "603.8MiB / 11.65GiB",
+    "cpu": "1.23%"
+   },
+   "cdclake-catalog-db-1": {
+    "mem": "44.41MiB / 11.65GiB",
+    "cpu": "2.52%"
+   },
+   "cdclake-s3-1": {
+    "mem": "382.6MiB / 11.65GiB",
+    "cpu": "0.00%"
+   },
+   "cdclake-connect-1": {
+    "mem": "1.003GiB / 11.65GiB",
+    "cpu": "0.45%"
+   },
+   "cdclake-kafka-ui-1": {
+    "mem": "396.5MiB / 11.65GiB",
+    "cpu": "0.08%"
+   },
+   "cdclake-postgres-1": {
+    "mem": "212.1MiB / 11.65GiB",
+    "cpu": "103.24%"
+   },
+   "cdclake-kafka-1": {
+    "mem": "1.101GiB / 11.65GiB",
+    "cpu": "1.06%"
+   }
+  }
+ },
+ "bronze:clean": {
+  "run": {
+   "name": "clean",
+   "kind": "clean",
+   "trades": 263650,
+   "deleted": {
+    "executions": 263650,
+    "orders": 263650,
+    "holdings": 19
+   },
+   "transactions": 54,
+   "batch": 5000,
+   "lsn_from": 147241736,
+   "lsn_to": 261033064,
+   "started": "2026-11-18T05:56:08.464+00:00",
+   "ended": "2026-11-18T06:15:06.596+00:00",
+   "write_seconds": 1138.13,
+   "source_rows_after": {
+    "orders": 0,
+    "holdings": 0,
+    "executions": 0
+   }
+  },
+  "tables": {
+   "orders": {
+    "events": 263650,
+    "events_in_range": 263650,
+    "capture_ms": {
+     "p50_p95_p99": [
+      600,
+      1271,
+      2832
+     ],
+     "max": 3395
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      83,
+      1976,
+      3102
+     ],
+     "max": 4076
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      4840,
+      9478,
+      9943
+     ],
+     "max": 10087
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5647,
+      10499,
+      11602
+     ],
+     "max": 14949
+    },
+    "source_span_s": 1094.5,
+    "drain_s": 1096.7,
+    "events_per_s": 240.4,
+    "data_files": 55,
+    "snapshots": 55
+   },
+   "executions": {
+    "events": 263650,
+    "events_in_range": 263650,
+    "capture_ms": {
+     "p50_p95_p99": [
+      451,
+      713,
+      2625
+     ],
+     "max": 2729
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      40,
+      532,
+      1063
+     ],
+     "max": 2015
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      4909,
+      9490,
+      9960
+     ],
+     "max": 10070
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      5400,
+      9992,
+      10498
+     ],
+     "max": 11383
+    },
+    "source_span_s": 1094.5,
+    "drain_s": 1096.7,
+    "events_per_s": 240.4,
+    "data_files": 50,
+    "snapshots": 50
+   },
+   "holdings": {
+    "events": 19,
+    "events_in_range": 19,
+    "capture_ms": {
+     "p50_p95_p99": [
+      743,
+      743,
+      743
+     ],
+     "max": 743
+    },
+    "read_ms": {
+     "p50_p95_p99": [
+      3,
+      3,
+      3
+     ],
+     "max": 3
+    },
+    "commit_ms": {
+     "p50_p95_p99": [
+      1496,
+      1496,
+      1498
+     ],
+     "max": 1498
+    },
+    "total_ms": {
+     "p50_p95_p99": [
+      2242,
+      2242,
+      2242
+     ],
+     "max": 2242
+    },
+    "source_span_s": 0.0,
+    "drain_s": 2.2,
+    "events_per_s": 8.5,
+    "data_files": 1,
+    "snapshots": 1
+   }
+  }
+ },
+ "files:clean": {
+  "at": "2026-11-18T06:15:57+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 92,
+    "bytes": 15026523,
+    "rows": 527358,
+    "snapshots": 143,
+    "manifests": 92,
+    "avg_file_kb": 159.5
+   },
+   "lake.bronze.executions": {
+    "data_files": 87,
+    "bytes": 20375332,
+    "rows": 527355,
+    "snapshots": 137,
+    "manifests": 87,
+    "avg_file_kb": 228.7
+   },
+   "lake.bronze.holdings": {
+    "data_files": 37,
+    "bytes": 455250,
+    "rows": 6923,
+    "snapshots": 99,
+    "manifests": 37,
+    "avg_file_kb": 12.0
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 1922106,
+    "rows": 263663,
+    "snapshots": 20,
+    "manifests": 2,
+    "avg_file_kb": 938.5
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2665318,
+    "rows": 263663,
+    "snapshots": 22,
+    "manifests": 2,
+    "avg_file_kb": 1301.4
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4342,
+    "rows": 25,
+    "snapshots": 33,
+    "manifests": 2,
+    "avg_file_kb": 4.2
+   }
+  }
+ },
+ "dag:clean": {
+  "run_id": "manual__2026-11-18T06:16:02.761791+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 3.8
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.1
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 51.3
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 17.4
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 3.8
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 61.4
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 4.7
+   }
+  },
+  "total_seconds": 142.5
+ },
+ "files:clean_after": {
+  "at": "2026-11-18T06:18:44+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 92,
+    "bytes": 15026523,
+    "rows": 527358,
+    "snapshots": 145,
+    "manifests": 92,
+    "avg_file_kb": 159.5
+   },
+   "lake.bronze.executions": {
+    "data_files": 87,
+    "bytes": 20375332,
+    "rows": 527355,
+    "snapshots": 139,
+    "manifests": 87,
+    "avg_file_kb": 228.7
+   },
+   "lake.bronze.holdings": {
+    "data_files": 37,
+    "bytes": 455250,
+    "rows": 6923,
+    "snapshots": 101,
+    "manifests": 37,
+    "avg_file_kb": 12.0
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 972906,
+    "rows": 263663,
+    "snapshots": 21,
+    "manifests": 2,
+    "avg_file_kb": 475.1
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2589405,
+    "rows": 263663,
+    "snapshots": 23,
+    "manifests": 2,
+    "avg_file_kb": 1264.4
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4088,
+    "rows": 25,
+    "snapshots": 34,
+    "manifests": 2,
+    "avg_file_kb": 4.0
+   }
+  }
+ },
+ "files:before_compact": {
+  "at": "2026-11-18T06:21:17+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 101,
+    "bytes": 19896306,
+    "rows": 696708,
+    "snapshots": 154,
+    "manifests": 2,
+    "avg_file_kb": 192.4
+   },
+   "lake.bronze.executions": {
+    "data_files": 96,
+    "bytes": 26865665,
+    "rows": 699619,
+    "snapshots": 148,
+    "manifests": 96,
+    "avg_file_kb": 273.3
+   },
+   "lake.bronze.holdings": {
+    "data_files": 44,
+    "bytes": 545241,
+    "rows": 8861,
+    "snapshots": 108,
+    "manifests": 44,
+    "avg_file_kb": 12.1
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 972906,
+    "rows": 263663,
+    "snapshots": 21,
+    "manifests": 2,
+    "avg_file_kb": 475.1
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2589405,
+    "rows": 263663,
+    "snapshots": 23,
+    "manifests": 2,
+    "avg_file_kb": 1264.4
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4088,
+    "rows": 25,
+    "snapshots": 34,
+    "manifests": 2,
+    "avg_file_kb": 4.0
+   }
+  }
+ },
+ "silver_merge_executions:before_compact": {
+  "seconds_3_runs": [
+   29.8,
+   30.1,
+   29.1
+  ],
+  "note": "Silver 체결 MERGE만, 바뀐 것 없음, 세 번"
+ },
+ "silver_merge_executions:after_compact": {
+  "seconds_3_runs": [
+   54.1,
+   50.2,
+   49.2
+  ],
+  "note": "Silver 체결 MERGE만, 바뀐 것 없음, 세 번"
+ },
+ "files:after_compact": {
+  "at": "2026-11-18T06:27:57+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 103,
+    "bytes": 20539965,
+    "rows": 727358,
+    "snapshots": 159,
+    "manifests": 4,
+    "avg_file_kb": 194.7
+   },
+   "lake.bronze.executions": {
+    "data_files": 1,
+    "bytes": 27696457,
+    "rows": 727355,
+    "snapshots": 133,
+    "manifests": 1,
+    "avg_file_kb": 27047.3
+   },
+   "lake.bronze.holdings": {
+    "data_files": 44,
+    "bytes": 545241,
+    "rows": 8861,
+    "snapshots": 111,
+    "manifests": 44,
+    "avg_file_kb": 12.1
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 972906,
+    "rows": 263663,
+    "snapshots": 21,
+    "manifests": 2,
+    "avg_file_kb": 475.1
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2572163,
+    "rows": 263663,
+    "snapshots": 32,
+    "manifests": 2,
+    "avg_file_kb": 1255.9
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4088,
+    "rows": 25,
+    "snapshots": 34,
+    "manifests": 2,
+    "avg_file_kb": 4.0
+   }
+  }
+ },
+ "silver_merge_executions:after_compact_split4mb": {
+  "seconds_3_runs": [
+   52.3,
+   53.2,
+   50.9
+  ],
+  "note": "Silver 체결 MERGE만, 바뀐 것 없음, 세 번"
+ },
+ "silver_merge_executions:compact_4mb_files": {
+  "seconds_3_runs": [
+   32.4,
+   28.8,
+   30.4
+  ],
+  "note": "Silver 체결 MERGE만, 바뀐 것 없음, 세 번"
+ },
+ "dag:final": {
+  "run_id": "manual__2026-11-18T06:33:35.796992+00:00",
+  "tasks": {
+   "trades_to_source": {
+    "state": "success",
+    "seconds": 4.9
+   },
+   "wait_bronze": {
+    "state": "success",
+    "seconds": 0.2
+   },
+   "silver_merge": {
+    "state": "success",
+    "seconds": 73.3
+   },
+   "dbt_build": {
+    "state": "success",
+    "seconds": 20.3
+   },
+   "gold_incremental": {
+    "state": "success",
+    "seconds": 10.6
+   },
+   "screen_export": {
+    "state": "success",
+    "seconds": 65.3
+   },
+   "trades_verify": {
+    "state": "success",
+    "seconds": 5.0
+   }
+  },
+  "total_seconds": 179.5
+ },
+ "files:final": {
+  "at": "2026-11-18T06:36:56+00:00",
+  "tables": {
+   "lake.bronze.orders": {
+    "data_files": 103,
+    "bytes": 20539965,
+    "rows": 727358,
+    "snapshots": 164,
+    "manifests": 4,
+    "avg_file_kb": 194.7
+   },
+   "lake.bronze.executions": {
+    "data_files": 7,
+    "bytes": 27703282,
+    "rows": 727355,
+    "snapshots": 140,
+    "manifests": 1,
+    "avg_file_kb": 3864.9
+   },
+   "lake.bronze.holdings": {
+    "data_files": 44,
+    "bytes": 545241,
+    "rows": 8861,
+    "snapshots": 117,
+    "manifests": 44,
+    "avg_file_kb": 12.1
+   },
+   "lake.silver.orders": {
+    "data_files": 2,
+    "bytes": 972036,
+    "rows": 263663,
+    "snapshots": 22,
+    "manifests": 2,
+    "avg_file_kb": 474.6
+   },
+   "lake.silver.executions": {
+    "data_files": 2,
+    "bytes": 2572163,
+    "rows": 263663,
+    "snapshots": 39,
+    "manifests": 2,
+    "avg_file_kb": 1255.9
+   },
+   "lake.silver.holdings": {
+    "data_files": 1,
+    "bytes": 4088,
+    "rows": 25,
+    "snapshots": 35,
+    "manifests": 2,
+    "avg_file_kb": 4.0
+   }
+  }
+ }
+}
