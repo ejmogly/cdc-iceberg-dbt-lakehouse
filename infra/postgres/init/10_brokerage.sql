@@ -4,6 +4,9 @@
 -- 가격과 환율은 numeric이라, 커넥터에 decimal.handling.mode=string을 먼저 넣어 둡니다.
 
 -- 주문 한 건. 정정은 새 주문 번호 대신 이 행을 고칩니다.
+-- order_type TRANSFER_IN(입고): 다른 곳에서 들여온 주식. 매수 쪽(side BUY)이고 체결가는 취득 단가입니다.
+-- 화면의 지금 잔고 줄(데이터 기간 전부터 가진 주식)을 데이터 첫날의 보유로 넣을 때 씁니다(docs/decisions/0013,
+-- 2026-11-19 더함). 이미 떠 있는 DB에는 infra/postgres/migrate/0013_orders_transfer_in.sql로 넣습니다.
 CREATE TABLE source.orders (
   order_id    bigint PRIMARY KEY,
   account_id  text   NOT NULL,
@@ -11,7 +14,8 @@ CREATE TABLE source.orders (
   side        text   NOT NULL
     CHECK (side IN ('BUY', 'SELL')),
   order_type  text   NOT NULL
-    CHECK (order_type IN ('LIMIT', 'MARKET')),
+    CONSTRAINT orders_order_type_check
+    CHECK (order_type IN ('LIMIT', 'MARKET', 'TRANSFER_IN')),
   order_qty   int    NOT NULL
     CHECK (order_qty > 0),
   limit_price numeric(18,4),

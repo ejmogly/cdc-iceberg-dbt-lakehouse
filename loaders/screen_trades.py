@@ -10,7 +10,11 @@
   .venv/bin/python loaders/screen_trades.py --selftest  DB 없이 바꿀 것 계산 규칙을 시험
 
 옮기는 규칙
-- 계좌는 A-SCREEN 하나입니다(원천 시나리오 계좌 A-0001과 나눔).
+- 계좌는 증권사마다 하나입니다: 증권사를 고르지 않은 줄은 A-SCREEN, 고른 줄은 A-SCREEN-<증권사 코드>(예: A-SCREEN-TOSS,
+  코드는 ai/holdings.py). 원천 시나리오 계좌 A-0001, 규모 시험 계좌 A-LOAD와 나눕니다. 증권사 앱처럼 계좌마다 평단을 셉니다.
+- 지금 잔고 줄(데이터 기간 전부터 가진 주식)은 화면이 데이터 첫날의 보유로 되짚은 값(ai/holdings.py)을 입고 주문
+  (order_type TRANSFER_IN, 매수 쪽) 한 건과 체결 한 건으로 넣습니다. 체결가는 그 보유의 평균 단가, 환율은 평균 매입 환율이고,
+  시각은 데이터 첫날 장 마감입니다. 번호는 899000000대라 같은 계좌, 종목의 체결 가운데 맨 앞입니다(결정 기록 0013).
 - 매매 한 줄 = 주문 한 건(시장가, 전량 체결) + 체결 한 건. 체결가와 환율은 화면 계산 서버가 손익을 셀 때 쓴 값
   (비운 칸은 그날 종가와 매매기준율, 휴장일은 직전 거래일)을 그대로 씁니다. 그래서 원천의 체결과 화면 손익이 같은 값에서 나옵니다.
 - 계산에서 빠지는 줄(보유보다 많이 팖, 기준일 뒤, 수량 0 이하, 데이터 기간 밖, 소수 수량)은 넣지 않습니다.
@@ -36,8 +40,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "loaders"))
 
-ACCOUNT = "A-SCREEN"
+ACCOUNT = "A-SCREEN"  # 증권사를 고르지 않은 줄의 계좌. 증권사를 고르면 A-SCREEN-<코드>
 ORDER_BASE, EXEC_OFFSET = 900_000_000, 100_000_000
+OPEN_BASE = 899_000_000  # 시작 보유(입고) 주문. 체결 번호도 매매 체결보다 작아 손익 장부(체결 번호 순)의 맨 앞
 TRADES = ROOT / "data" / "generated" / "f_screen" / "screen_trades.json"
 OUT = ROOT / "data" / "generated" / "f_screen" / "trades_lake.json"
 CLOSE = {"KRX": (ZoneInfo("Asia/Seoul"), time(15, 30)), "US": (ZoneInfo("America/New_York"), time(16, 0))}
@@ -47,6 +52,21 @@ Q4 = Decimal("0.0001")
 def instruments():
     with open(ROOT / "loaders" / "instruments.csv", encoding="utf-8", newline="") as f:
         return [r for r in csv.DictReader(f)]
+
+
+def account_of(broker):
+    return f"{ACCOUNT}-{broker}" if broker else ACCOUNT
+
+
+def broker_of(account):
+    return account[len(ACCOUNT) + 1:] if account.startswith(ACCOUNT + "-") else ""
+
+
+def usable(t, currency):
+    """원천으로 옮길 줄: 매매는 날짜와 수량, 지금 잔고는 수량, 평균 단가, (미국 종목) 평균 매입 환율이 있는 줄."""
+    if t.get("side") == "HOLD":
+        return bool(t.get("qty") and t.get("price") and (currency == "KRW" or t.get("fx_rate")))
+    return bool(t.get("date") and t.get("qty"))
 
 
 def file_sha(path):
@@ -61,8 +81,10 @@ def plan_rows(saved, pnl_fn, insts):
     currency = {r["symbol"]: r["currency"] for r in insts}
     orders, execs, holds, results = {}, {}, {}, {}
     for symbol, v in sorted(saved.get("symbols", {}).items()):
-        trades = [t for t in v.get("trades", []) if t.get("date") and t.get("qty")]
-        if symbol not in order_of or not trades:
+        if symbol not in order_of:
+            continue
+        trades = [t for t in v.get("trades", []) if usable(t, currency[symbol])]
+        if not trades:
             continue
         res = pnl_fn(symbol, v["asof"], trades)
         results[symbol] = res
@@ -71,20 +93,24 @@ def plan_rows(saved, pnl_fn, insts):
             if s["excluded"]:
                 continue
             k = s["trade_index"]
-            oid = ORDER_BASE + order_of[symbol] * 1000 + k
+            opening = bool(s.get("opening"))
+            oid = (OPEN_BASE if opening else ORDER_BASE) + order_of[symbol] * 1000 + k
             at = datetime.combine(date.fromisoformat(s["date"]), close, tz).astimezone(timezone.utc)
             qty = int(Decimal(str(s["qty"])))
-            orders[oid] = {"order_id": oid, "account_id": ACCOUNT, "symbol": symbol, "side": s["side"],
-                           "order_type": "MARKET", "order_qty": qty, "limit_price": None, "filled_qty": qty,
-                           "status": "FILLED", "ordered_at": at}
+            orders[oid] = {"order_id": oid, "account_id": account_of(s.get("broker") or ""), "symbol": symbol,
+                           "side": s["side"], "order_type": "TRANSFER_IN" if opening else "MARKET", "order_qty": qty,
+                           "limit_price": None, "filled_qty": qty, "status": "FILLED", "ordered_at": at}
             execs[oid + EXEC_OFFSET] = {"execution_id": oid + EXEC_OFFSET, "order_id": oid, "exec_qty": qty,
                                         "exec_price": Decimal(str(s["price"])).quantize(Q4),
                                         "fx_rate": None if currency[symbol] == "KRW" else Decimal(str(s["fx"])).quantize(Q4),
                                         "executed_at": at}
-        summ = res.get("summary")
-        if summ and Decimal(str(summ["qty_left"])) > 0:
-            holds[symbol] = {"account_id": ACCOUNT, "symbol": symbol, "qty": int(Decimal(str(summ["qty_left"]))),
-                             "avg_price": Decimal(str(summ["avg_cost_local"])).quantize(Q4, ROUND_HALF_UP)}
+        # 잔고는 계좌(증권사)마다: 그 계좌 장부 끝의 남은 수량과 평균 단가
+        for a in res.get("accounts") or [{"broker": "", "summary": res.get("summary")}]:
+            summ = a.get("summary")
+            if summ and Decimal(str(summ["qty_left"])) > 0:
+                acct = account_of(a["broker"])
+                holds[f"{acct}:{symbol}"] = {"account_id": acct, "symbol": symbol, "qty": int(Decimal(str(summ["qty_left"]))),
+                                             "avg_price": Decimal(str(summ["avg_cost_local"])).quantize(Q4, ROUND_HALF_UP)}
     return orders, execs, holds, results
 
 
@@ -107,16 +133,20 @@ EXEC_KEYS = ("order_id", "exec_qty", "exec_price", "fx_rate", "executed_at")
 HOLD_KEYS = ("qty", "avg_price")
 
 
+# 화면 계좌 전부(A-SCREEN과 A-SCREEN-<증권사>). LIKE의 _는 한 글자 자리라 - 앞까지 그대로 씀
+SCREEN_ACCOUNTS = f"(account_id = '{ACCOUNT}' or account_id like '{ACCOUNT}-%')"
+
+
 def read_have(cur):
     cols = ", ".join(("order_id",) + ORDER_KEYS)
-    cur.execute(f"select {cols} from source.orders where account_id = %s", (ACCOUNT,))
+    cur.execute(f"select {cols} from source.orders where {SCREEN_ACCOUNTS}")
     orders = {r[0]: dict(zip(("order_id",) + ORDER_KEYS, r)) for r in cur.fetchall()}
     cols = ", ".join(("execution_id",) + EXEC_KEYS)
     cur.execute(f"select {cols} from source.executions e where e.order_id in "
-                f"(select order_id from source.orders where account_id = %s)", (ACCOUNT,))
+                f"(select order_id from source.orders where {SCREEN_ACCOUNTS})")
     execs = {r[0]: dict(zip(("execution_id",) + EXEC_KEYS, r)) for r in cur.fetchall()}
-    cur.execute("select symbol, qty, avg_price from source.holdings where account_id = %s", (ACCOUNT,))
-    holds = {r[0]: {"account_id": ACCOUNT, "symbol": r[0], "qty": r[1], "avg_price": r[2]} for r in cur.fetchall()}
+    cur.execute(f"select account_id, symbol, qty, avg_price from source.holdings where {SCREEN_ACCOUNTS}")
+    holds = {f"{r[0]}:{r[1]}": {"account_id": r[0], "symbol": r[1], "qty": r[2], "avg_price": r[3]} for r in cur.fetchall()}
     return orders, execs, holds
 
 
@@ -165,7 +195,7 @@ def sync(dry_run, trades_path=TRADES):
         if d_order:
             cur.execute("delete from source.orders where order_id = any(%s)", (d_order,))
         if d_hold:
-            cur.execute("delete from source.holdings where account_id = %s and symbol = any(%s)", (ACCOUNT, d_hold))
+            cur.execute("delete from source.holdings where account_id || ':' || symbol = any(%s)", (d_hold,))
         a, c, _ = plan["주문"]
         for k in a + c:
             o = orders[k]
@@ -195,7 +225,8 @@ def sync(dry_run, trades_path=TRADES):
                 "on conflict (account_id, symbol) do update set qty = excluded.qty, avg_price = excluded.avg_price, "
                 "updated_at = excluded.updated_at", (h["account_id"], h["symbol"], h["qty"], h["avg_price"], now))
         conn.commit()
-    print(f"원천에 씀(계좌 {ACCOUNT}). 매매 파일 {trades_path.name}, sha256 {file_sha(trades_path)[:12]}")
+    accts = sorted({o["account_id"] for o in orders.values()} | {h["account_id"] for h in holds.values()})
+    print(f"원천에 씀(계좌 {', '.join(accts) or ACCOUNT}). 매매 파일 {trades_path.name}, sha256 {file_sha(trades_path)[:12]}")
     print(json.dumps(changes_of(plan, lsn_from)))
     return 0
 
@@ -206,7 +237,7 @@ BRONZE_KEY = {"orders": "get_json_object(r, '$.order_id')", "executions": "get_j
 
 
 def bronze_sql(table, keys, lsn_from):
-    want = [f"{ACCOUNT}:{k}" if table == "holdings" else str(int(k)) for k in keys]
+    want = [str(k) if table == "holdings" else str(int(k)) for k in keys]  # 잔고 키는 「계좌:종목」
     for w in want:  # 키는 숫자와 종목 코드만(따옴표가 들어갈 수 없음)
         if not all(ch.isalnum() or ch in ":-." for ch in w):
             raise ValueError(f"이상한 키: {w!r}")
@@ -248,13 +279,14 @@ def wait_bronze(changes_json):
 
 
 def verify(trades_path=TRADES):
-    """Gold fct_execution(계좌 A-SCREEN)을 화면 매매에서 만든 체결과 견주고, Gold 체결만으로 다시 센 손익을 화면 손익과 견줍니다."""
+    """Gold fct_execution(화면 계좌 A-SCREEN, A-SCREEN-<증권사>)을 화면 매매에서 만든 체결과 견주고, Gold 체결만으로 다시 센
+    손익과 Gold 손익 마트(pnl_position)를 화면의 계좌(증권사)별 손익과 견줍니다. 단위는 「계좌:종목」(position_id)입니다."""
     from ai.screen_data import _spark_rows
     saved = json.loads(trades_path.read_text(encoding="utf-8"))
     pnl = pnl_from_server()
     orders, execs, holds, results = plan_rows(saved, pnl, instruments())
-    rows = _spark_rows("select execution_id, order_id, symbol, side, exec_qty, exec_price, fx_rate, trade_date "
-                       f"from lake.silver.fct_execution where account_id = '{ACCOUNT}'")
+    rows = _spark_rows("select execution_id, order_id, symbol, side, exec_qty, exec_price, fx_rate, trade_date, account_id "
+                       f"from lake.silver.fct_execution where {SCREEN_ACCOUNTS}")
     gold = {int(r[0]): [("" if x == "NULL" else x) for x in r] for r in rows}
     bad = []
     for k, e in execs.items():
@@ -262,37 +294,51 @@ def verify(trades_path=TRADES):
         o = orders[e["order_id"]]
         want = (str(e["order_id"]), o["symbol"], o["side"], str(e["exec_qty"]), str(e["exec_price"]),
                 "" if e["fx_rate"] is None else str(e["fx_rate"]),
-                e["executed_at"].astimezone(CLOSE["KRX" if e["fx_rate"] is None else "US"][0]).date().isoformat())
+                e["executed_at"].astimezone(CLOSE["KRX" if e["fx_rate"] is None else "US"][0]).date().isoformat(),
+                o["account_id"])
         if g is None:
             bad.append(f"체결 {k} Gold에 없음")
         elif tuple(g[1:]) != want:
             bad.append(f"체결 {k} 값 다름")
     bad += [f"체결 {k} 원천 계획에 없음" for k in gold if k not in execs]
-    # Gold 체결만으로(체결가와 환율을 넣어) 다시 센 손익이 화면 손익과 같은지
-    same, diff_syms = 0, []
+    # 화면의 계좌(증권사)별 손익: 「계좌:종목」 → 손익 SQL 요약. 원천에 체결이 하나도 가지 않은 계좌(모든 줄이 계산에서
+    # 빠짐: 기간 밖, 초과 매도 등)는 Gold에도 행이 없으므로 견주지 않고 따로 셉니다(11/19 실제 저장 매매에서 드러남)
+    booked = {f"{o['account_id']}:{o['symbol']}" for o in orders.values()}
+    screen_pos, empty_pos = {}, []
     for symbol, res in results.items():
+        for a in res.get("accounts") or [{"broker": "", "summary": res.get("summary")}]:
+            pos = f"{account_of(a['broker'])}:{symbol}"
+            if pos not in booked:
+                empty_pos.append(pos)
+            elif a.get("summary"):
+                screen_pos[pos] = (symbol, a["summary"])
+    # Gold 체결만으로(체결가와 환율을 넣어) 다시 센 손익이 화면의 그 계좌 손익과 같은지. 체결 번호 순서가 손익 장부의 순서
+    same, diff_syms = 0, []
+    for pos, (symbol, s_) in sorted(screen_pos.items()):
+        acct = pos.rsplit(":", 1)[0]
         g_trades = [{"date": r[7], "side": r[3], "qty": r[4], "price": r[5], **({} if r[6] == "" else {"fx_rate": r[6]})}
-                    for r in sorted((g for g in gold.values() if g[2] == symbol), key=lambda g: (g[7], int(g[0])))]
+                    for r in sorted((g for g in gold.values() if g[2] == symbol and g[8] == acct),
+                                    key=lambda g: (g[7], int(g[0])))]
         if not g_trades:
             continue
         again = pnl(symbol, saved["symbols"][symbol]["asof"], g_trades)
         keys = ("total_krw", "realized_krw", "unrealized_krw", "qty_left", "price_effect_krw", "fx_effect_krw")
-        if all(again["summary"][x] == res["summary"][x] for x in keys):
+        if again["summary"] and all(again["summary"][x] == s_[x] for x in keys):
             same += 1
         else:
-            diff_syms.append(symbol)
+            diff_syms.append(pos)
     # Gold 손익 마트(dbt/models/pnl, 손익 SQL의 Spark 판)가 화면 손익과 칸마다 같은지. 기준일이 같은 종목만 견줍니다
     gold_asof = _spark_rows("select max(cal_date) from lake.gold.pnl_calendar")[0][0]
     cols = ("position_id",) + PNL_EXACT + PNL_NEAR
     gp = {r[0]: dict(zip(cols, r)) for r in _spark_rows(
-        f"select {', '.join(cols)} from lake.gold.pnl_position where position_id like '{ACCOUNT}:%'")}
+        f"select {', '.join(cols)} from lake.gold.pnl_position "
+        f"where position_id like '{ACCOUNT}:%' or position_id like '{ACCOUNT}-%'")}
     g_same, g_diff, g_skip = 0, [], []
-    for symbol, res in results.items():
+    for pos, (symbol, s_) in sorted(screen_pos.items()):
         if saved["symbols"][symbol]["asof"] != gold_asof:
-            g_skip.append(symbol)
+            g_skip.append(pos)
             continue
-        g = gp.get(f"{ACCOUNT}:{symbol}")
-        s_ = res["summary"]
+        g = gp.get(pos)
         dec = lambda v: None if v in (None, "", "NULL") else Decimal(str(v))
         bad_cols = [] if g else ["행 없음"]
         if g:
@@ -300,10 +346,12 @@ def verify(trades_path=TRADES):
             bad_cols += [c for c in PNL_NEAR if (dec(g[c]) is None) != (dec(s_[c]) is None)
                          or (dec(g[c]) is not None and abs(dec(g[c]) - dec(s_[c])) > Decimal("0.05"))]
         if bad_cols:
-            g_diff.append(f"{symbol}: {', '.join(bad_cols)}")
+            g_diff.append(f"{pos}: {', '.join(bad_cols)}")
         else:
             g_same += 1
-    out = {"at": datetime.now(CLOSE["KRX"][0]).isoformat(timespec="seconds"), "account": ACCOUNT,  # 서울 시각(Airflow 컨테이너는 UTC)
+    accts = sorted({p.rsplit(":", 1)[0] for p in screen_pos})
+    out = {"at": datetime.now(CLOSE["KRX"][0]).isoformat(timespec="seconds"),  # 서울 시각(Airflow 컨테이너는 UTC)
+           "account": ", ".join(accts) or ACCOUNT, "positions": len(screen_pos), "positions_without_executions": empty_pos,
            "trades_file": trades_path.name, "trades_sha256": file_sha(trades_path), "symbols": len(results), "executions_want": len(execs),
            "executions_gold": len(gold), "executions_ok": not bad, "problems": bad[:10],
            "pnl_same": same, "pnl_checked": same + len(diff_syms), "pnl_diff_symbols": diff_syms,
@@ -313,9 +361,10 @@ def verify(trades_path=TRADES):
     if trades_path == TRADES:  # 시험용 매매 파일의 결과는 화면이 보이는 기록에 쓰지 않음
         OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Gold 체결 {len(gold)}건 / 화면 매매에서 만든 체결 {len(execs)}건, {'같음' if not bad else f'{len(bad)}건 다름'}; "
-          f"Gold 체결로 다시 센 손익 {same}/{same + len(diff_syms)}종목 같음; "
-          f"Gold 손익 마트(pnl_position, 기준일 {gold_asof}) {g_same}/{g_same + len(g_diff)}종목 칸마다 같음"
+          f"Gold 체결로 다시 센 손익 {same}/{same + len(diff_syms)}(계좌, 종목) 같음; "
+          f"Gold 손익 마트(pnl_position, 기준일 {gold_asof}) {g_same}/{g_same + len(g_diff)}(계좌, 종목) 칸마다 같음"
           + (f"(기준일이 달라 건너뜀 {len(g_skip)})" if g_skip else "") + (f" 다름: {g_diff}" if g_diff else "")
+          + (f"; 체결이 없는 계좌 {len(empty_pos)}곳(모든 줄이 계산에서 빠짐)은 견주지 않음" if empty_pos else "")
           + (f" → {OUT.relative_to(ROOT)}" if trades_path == TRADES else "(시험용 매매 파일이라 기록하지 않음)"))
     return 0 if not bad and not diff_syms and not g_diff else 1
 
@@ -339,7 +388,7 @@ def selftest():
     checks = [("빠지는 줄은 넣지 않음", len(e1) == 4),
               ("국내 체결 환율은 비움", e1[EXEC_OFFSET + ORDER_BASE]["fx_rate"] is None),
               ("뉴욕 장 마감 시각(UTC 21시)", e1[EXEC_OFFSET + ORDER_BASE + 1000]["executed_at"].hour == 21),
-              ("잔고 수량과 평균 단가 넷째 자리", h1["QQQ"]["qty"] == 7 and str(h1["QQQ"]["avg_price"]) == "100.1235"),
+              ("잔고 수량과 평균 단가 넷째 자리", h1["A-SCREEN:QQQ"]["qty"] == 7 and str(h1["A-SCREEN:QQQ"]["avg_price"]) == "100.1235"),
               ("같은 계획은 바꿀 것 0", diff(e1, e1, EXEC_KEYS) == ([], [], []))]
     saved["symbols"]["QQQ"]["trades"][1]["qty"] = "6"
     o2, e2, h2, _ = plan_rows(saved, fake, insts)
@@ -352,11 +401,11 @@ def selftest():
     del saved["symbols"]["005930"]
     o4, e4, h4, _ = plan_rows(saved, fake, insts)
     a, c, d = diff(h4, h3, HOLD_KEYS)
-    checks.append(("종목을 비우면 잔고를 지움", d == ["005930"]))
+    checks.append(("종목을 비우면 잔고를 지움", d == ["A-SCREEN:005930"]))
     ch = changes_of({"주문": diff(o4, o3, ORDER_KEYS), "체결": diff(e4, e3, EXEC_KEYS), "잔고": (a, c, d)}, 123)
     checks.append(("바꾼 키 목록에 지운 종목의 주문, 체결, 잔고",
-                   ch["holdings"] == ["005930"] and ch["orders"] == [ORDER_BASE] and ch["executions"] == [ORDER_BASE + EXEC_OFFSET]))
-    sql = bronze_sql("holdings", ["005930"], 123)
+                   ch["holdings"] == ["A-SCREEN:005930"] and ch["orders"] == [ORDER_BASE] and ch["executions"] == [ORDER_BASE + EXEC_OFFSET]))
+    sql = bronze_sql("holdings", ["A-SCREEN:005930"], 123)
     checks.append(("Bronze 기다리기 SQL: 지움은 before의 키, LSN 기준", "'A-SCREEN:005930'" in sql and "lsn >= 123" in sql
                    and "'$.before'" in sql))
     try:
@@ -364,6 +413,37 @@ def selftest():
         checks.append(("키에 따옴표가 있으면 막음", False))
     except ValueError:
         checks.append(("키에 따옴표가 있으면 막음", True))
+    # 증권사와 지금 잔고(11/19): 계좌가 증권사마다 나뉘고, 시작 보유는 입고 주문(899000000대, TRANSFER_IN)
+    def fake2(symbol, asof, trades):
+        steps, accts = [], {}
+        for i, t in enumerate(trades):
+            b = t.get("broker", "")
+            if t["side"] == "HOLD":
+                steps.append({"trade_index": i, "broker": b, "opening": True, "date": "2024-11-13", "side": "BUY",
+                              "qty": 5, "price": "90", "fx": "1300", "excluded": False})
+            else:
+                steps.append({"trade_index": i, "broker": b, "opening": False, "date": t["date"], "side": t["side"],
+                              "qty": t["qty"], "price": "100", "fx": "1400", "excluded": False})
+        for x in steps:
+            a = accts.setdefault(x["broker"], 0)
+            accts[x["broker"]] = a + (1 if x["side"] == "BUY" else -1) * int(x["qty"])
+        return {"steps": steps, "accounts": [{"broker": b, "summary": {"qty_left": q, "avg_cost_local": "95"}}
+                                             for b, q in accts.items()]}
+    saved2 = {"symbols": {"QQQ": {"asof": "2026-11-12", "trades": [
+        {"date": "2025-03-03", "side": "BUY", "qty": "3", "broker": "TOSS"},
+        {"date": "2025-03-04", "side": "BUY", "qty": "2"},
+        {"side": "HOLD", "qty": "5", "price": "90", "fx_rate": "1300", "broker": "KIS"},
+        {"side": "HOLD", "qty": "5", "broker": "KB"}]}}}  # 평균 단가가 없는 지금 잔고 줄은 옮기지 않음
+    o5, e5, h5, _ = plan_rows(saved2, fake2, insts)
+    open_id = OPEN_BASE + 1000 + 2
+    checks.append(("증권사마다 계좌(A-SCREEN-TOSS, A-SCREEN, A-SCREEN-KIS)",
+                   sorted({o["account_id"] for o in o5.values()}) == ["A-SCREEN", "A-SCREEN-KIS", "A-SCREEN-TOSS"]))
+    checks.append(("시작 보유는 입고 주문 한 건(TRANSFER_IN, 899000000대, 체결 번호가 매매 체결보다 작음)",
+                   o5.get(open_id, {}).get("order_type") == "TRANSFER_IN" and o5[open_id]["side"] == "BUY"
+                   and open_id + EXEC_OFFSET < min(k for k in e5 if k != open_id + EXEC_OFFSET)))
+    checks.append(("평균 단가가 없는 지금 잔고 줄은 옮기지 않음", len(o5) == 3))
+    checks.append(("잔고는 계좌마다", sorted(h5) == ["A-SCREEN-KIS:QQQ", "A-SCREEN-TOSS:QQQ", "A-SCREEN:QQQ"]))
+    checks.append(("계좌 이름과 증권사 코드", account_of("") == "A-SCREEN" and broker_of(account_of("KIS")) == "KIS"))
     checks.append(("바꾼 것이 없으면 기다리지 않음", wait_bronze(json.dumps(changes_of(
         {"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}, None))) == 0))
     checks.append(("키 목록을 받지 못하면 오류(아직이 아님)", wait_bronze("None") == 2 and wait_bronze("") == 2))

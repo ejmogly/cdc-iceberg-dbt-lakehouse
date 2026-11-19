@@ -115,7 +115,9 @@ export function drawPrice(svg, readout, res, rowNo, onBig) {
   const end = res.asof_price_date;
   let endIdx = all.findIndex(([d]) => d === end);
   if (endIdx < 0) endIdx = all.length - 1;
-  const live = (res.steps || []).filter((s) => !s.excluded);
+  // 시작 보유(지금 잔고 줄을 데이터 첫날의 보유로 바꾼 것)는 시장에서 한 매매가 아니라 표시와 가격 범위에서 뺍니다
+  const trades = (res.steps || []).filter((s) => !s.opening);
+  const live = trades.filter((s) => !s.excluded);
   // 창은 계산에서 빠진 줄(빈 원)까지 담습니다. 기준일 뒤 매매는 창 밖이라 그리지 않습니다
   const first = [...(res.steps || []).map((s) => s.date), ...(res.holding ? [res.holding[0]] : [])].sort()[0];
   const startIdx = first ? Math.max(0, all.findIndex(([d]) => d >= first) - 15) : Math.max(0, endIdx - 250);
@@ -131,9 +133,11 @@ export function drawPrice(svg, readout, res, rowNo, onBig) {
     return i;
   };
 
-  // 평균 단가: 장부에 들어간 줄마다 그 뒤 평균 단가, 남은 수량이 0이면 끊음
+  // 평균 단가: 장부에 들어간 줄마다 그 뒤 평균 단가, 남은 수량이 0이면 끊음. 증권사가 둘 이상이면 평단이 증권사마다
+  // 달라 선을 그리지 않습니다(증권사별 평단은 요약 탭)
   const avg = new Array(dates.length).fill(null);
-  const sorted = [...live].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const sorted = res.multi ? [] : (res.steps || []).filter((s) => !s.excluded)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   let k = 0, a = null;
   dates.forEach((d, i) => {
     while (k < sorted.length && sorted[k].date <= d) { a = sorted[k].qty_after > 0 ? sorted[k].avg_cost_after : null; k++; }
@@ -141,7 +145,7 @@ export function drawPrice(svg, readout, res, rowNo, onBig) {
   });
 
   const vals = [...pts.map(([, c]) => c), ...avg.filter((v) => v !== null),
-    ...(res.steps || []).filter((s) => s.price !== null && at(s.date) >= 0).map((s) => s.price)];
+    ...trades.filter((s) => s.price !== null && at(s.date) >= 0).map((s) => s.price)];
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.08 || hi * 0.05 || 1;
   lo -= pad; hi += pad;
@@ -160,7 +164,7 @@ export function drawPrice(svg, readout, res, rowNo, onBig) {
   for (const d of bm ? bm.dates : []) {
     if (pos.has(d)) el("line", { class: "m-big", "data-d": d, x1: x(pos.get(d)), x2: x(pos.get(d)), y1: H - M.b - STRIP + 2, y2: H - M.b - 1 }, svg);
   }
-  for (const s of res.steps || []) {
+  for (const s of trades) {
     const i = at(s.date);
     if (i < 0) continue;
     const cx = x(i), cy = y(s.price);
@@ -173,7 +177,7 @@ export function drawPrice(svg, readout, res, rowNo, onBig) {
   const dot = el("circle", { class: "dot-now", r: 3.6, visibility: "hidden" }, svg);
 
   const stepAt = new Map();
-  for (const s of res.steps || []) { const i = at(s.date); stepAt.set(i, [...(stepAt.get(i) || []), s]); }
+  for (const s of trades) { const i = at(s.date); stepAt.set(i, [...(stepAt.get(i) || []), s]); }
   const bigSet = new Set(bm ? bm.dates : []);
   const show = (i) => {
     const [d, c] = pts[i];
@@ -215,7 +219,9 @@ export function drawPnl(svg, readout, res) {
     return "";
   }
   const dates = daily.map((r) => r.date);
-  const vals = daily.flatMap((r) => [r.pnl_krw, r.bench_krw]).concat([0]);
+  // 데이터 첫날 전부터 가진 주식이 있으면(지금 잔고 줄) 같은 날 같은 돈의 SPY 선을 그리지 않습니다
+  const bench = !res.opening;
+  const vals = daily.flatMap((r) => (bench ? [r.pnl_krw, r.bench_krw] : [r.pnl_krw])).concat([0]);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.08 || 1;
   lo -= pad; hi += pad;
@@ -233,7 +239,7 @@ export function drawPnl(svg, readout, res) {
     el("text", { class: "lbl", x: tx, y: H - M.b - 8, "text-anchor": "middle" }, svg, `최대 낙폭 ${krw(mdd)}`);
   }
   el("line", { class: "zero-line", x1: M.l, x2: W - M.r, y1: y(0), y2: y(0) }, svg);
-  el("path", { class: "l-bench", d: pathOf(daily.map((r, i) => [x(i), y(r.bench_krw)])) }, svg);
+  if (bench) el("path", { class: "l-bench", d: pathOf(daily.map((r, i) => [x(i), y(r.bench_krw)])) }, svg);
   el("path", { class: "l-main", d: pathOf(daily.map((r, i) => [x(i), y(r.pnl_krw)])) }, svg);
   const dot = el("circle", { class: "dot-now", r: 3.6, visibility: "hidden" }, svg);
   const dot2 = el("circle", { class: "dot-now", r: 3, visibility: "hidden" }, svg);
@@ -241,12 +247,14 @@ export function drawPnl(svg, readout, res) {
   const show = (i) => {
     const r = daily[i];
     dot.setAttribute("cx", x(i)); dot.setAttribute("cy", y(r.pnl_krw)); dot.setAttribute("visibility", "visible");
-    dot2.setAttribute("cx", x(i)); dot2.setAttribute("cy", y(r.bench_krw)); dot2.setAttribute("visibility", "visible");
-    readout.innerHTML = `<b>${r.date}</b>, 내 매매 <b>${krw(r.pnl_krw, true)}</b>, SPY에 넣었다면 <b>${krw(r.bench_krw, true)}</b>`;
+    if (bench) { dot2.setAttribute("cx", x(i)); dot2.setAttribute("cy", y(r.bench_krw)); dot2.setAttribute("visibility", "visible"); }
+    readout.innerHTML = `<b>${r.date}</b>, 내 매매 <b>${krw(r.pnl_krw, true)}</b>`
+      + (bench ? `, SPY에 넣었다면 <b>${krw(r.bench_krw, true)}</b>` : "");
   };
   interact(svg, daily.length, x, show, daily.length - 1);
   const last = daily[daily.length - 1];
-  const label = `누적 손익 ${dates[0]} ~ ${last.date}. 마지막 날 내 매매 ${krw(last.pnl_krw, true)}, 같은 돈을 SPY에 넣었다면 ${krw(last.bench_krw, true)}.`;
+  const label = `누적 손익 ${dates[0]} ~ ${last.date}. 마지막 날 내 매매 ${krw(last.pnl_krw, true)}`
+    + (bench ? `, 같은 돈을 SPY에 넣었다면 ${krw(last.bench_krw, true)}.` : ". 데이터 첫날 전부터 가진 주식이 있어 SPY 선은 그리지 않았어요.");
   svg.setAttribute("aria-label", label);
   return label;
 }

@@ -32,8 +32,10 @@ const PRICE = /^\d+(\.\d{1,4})?$/;
 const st = {
   symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
   saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
-  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false, eseq: 0, evBusy: false, evSel: null,
+  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false, eseq: 0, evBusy: false, evSel: null, brokers: [],
 };
+const brokerName = (code) => st.brokers.find((b) => b.code === code)?.name || "증권사 안 고름";
+const isHold = (r) => (r.side || "BUY") === "HOLD";
 
 // ---------- 서버 ----------
 
@@ -82,7 +84,7 @@ function renderPipe(s) {
     const steps = [["화면에 저장한 매매", `계좌 ${tl.account}`], ["원천 주문, 체결, 잔고", "loaders/screen_trades.py"],
       ["Debezium, Kafka", "변경 이벤트"], ["Flink → Bronze", "Iceberg"], ["Spark MERGE → Silver", "지운 줄은 지움 표시"],
       ["dbt → fct_execution", `체결 ${tl.executions_gold} / ${tl.executions_want}건 ${tl.executions_ok ? "같음" : "다름"}`],
-      ...(gp ? [["dbt → 손익 마트", `pnl_position ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}종목 같음`]] : [])];
+      ...(gp ? [["dbt → 손익 마트", `pnl_position ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}(계좌, 종목) 같음`]] : [])];
     $("trade-flow").replaceChildren(...steps.map(([t, sub]) => {
       const li = document.createElement("li");
       li.className = ok ? "ok" : "bad";
@@ -93,8 +95,8 @@ function renderPipe(s) {
     }));
     $("trade-lake-at").textContent = `확인한 때 ${(tl.at || "").slice(0, 16).replace("T", " ")}`;
     $("trade-lake-note").textContent = (gp
-      ? `Gold 손익 마트(pnl_position, 기준일 ${tl.gold_pnl_asof})가 화면 손익과 ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}종목 칸마다 같고, `
-      : "") + `Gold 체결만으로 다시 센 손익도 화면 손익과 ${tl.pnl_same} / ${tl.pnl_checked}종목 같습니다.` +
+      ? `Gold 손익 마트(pnl_position, 기준일 ${tl.gold_pnl_asof})가 화면 손익과 ${tl.gold_pnl_same} / ${tl.gold_pnl_checked}(계좌, 종목) 칸마다 같고, `
+      : "") + `Gold 체결만으로 다시 센 손익도 화면 손익과 ${tl.pnl_same} / ${tl.pnl_checked}(계좌, 종목) 같습니다. 계좌는 증권사마다 하나예요.` +
       (tl.stale ? " 확인한 뒤 매매를 고쳐, 새로 고친 매매는 아직 레이크에서 확인하지 않았습니다. " +
         "Airflow DAG lakehouse_refresh가 켜져 있으면 30분 안에 옮기고 확인합니다(직접 하려면 make trades-to-source)." : "");
     $("trade-lake-note").classList.toggle("err", Boolean(tl.stale) || !ok);
@@ -144,8 +146,9 @@ function rowEl(r, i) {
   const [lo, hi] = st.calendar;
   const unit = unitName();
   div.innerHTML = `
-    <div class="cell" role="cell"><label for="d${i}">날짜</label><input id="d${i}" data-k="date" type="date" min="${lo}" max="${hi}" aria-label="${n}번 줄 날짜"></div>
-    <div class="cell" role="cell"><label for="s${i}">구분</label><select id="s${i}" data-k="side" aria-label="${n}번 줄 구분"><option value="BUY">매수</option><option value="SELL">매도</option></select></div>
+    <div class="cell datecell" role="cell"><label for="d${i}">날짜</label><input id="d${i}" data-k="date" type="date" min="${lo}" max="${hi}" aria-label="${n}번 줄 날짜"><span class="holdtag">앱 잔고 그대로</span></div>
+    <div class="cell" role="cell"><label for="s${i}">구분</label><select id="s${i}" data-k="side" aria-label="${n}번 줄 구분"><option value="BUY">매수</option><option value="SELL">매도</option><option value="HOLD">지금 잔고</option></select></div>
+    <div class="cell" role="cell"><label for="b${i}">증권사</label><select id="b${i}" data-k="broker" aria-label="${n}번 줄 증권사"><option value="">안 고름</option>${st.brokers.map((b) => `<option value="${b.code}">${b.name}</option>`).join("")}</select></div>
     <div class="cell" role="cell"><label for="q${i}">수량(주)</label><input id="q${i}" data-k="qty" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 수량"></div>
     <div class="cell" role="cell"><label for="p${i}">체결가(${unit})</label><input id="p${i}" data-k="price" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 체결가(${unit})"></div>
     <div class="cell fxcell" role="cell"><label for="f${i}">환율(원)</label><input id="f${i}" data-k="fx_rate" inputmode="decimal" autocomplete="off" aria-label="${n}번 줄 환율(원)"></div>
@@ -158,10 +161,31 @@ function rowEl(r, i) {
     // 처음 연 값을 속성에도 둡니다(화면 값 대조가 저장 파일에서 다시 열린 값을 DOM으로 읽음)
     if (inp.tagName === "SELECT") for (const o of inp.options) o.defaultSelected = o.value === inp.value;
     else inp.defaultValue = r[inp.dataset.k] ?? "";
-    inp.addEventListener("input", () => { st.rows[i][inp.dataset.k] = inp.value.trim(); changed(); });
+    inp.addEventListener("input", () => {
+      st.rows[i][inp.dataset.k] = inp.value.trim();
+      if (inp.dataset.k === "side") holdMode(div, i);
+      changed();
+    });
   }
   div.querySelector(".rm").addEventListener("click", () => removeRow(i));
+  holdMode(div, i);
   return div;
+}
+
+// 지금 잔고 줄(구분 HOLD): 날짜 칸 대신 「앱 잔고 그대로」, 체결가 칸은 평균 단가, 환율 칸은 평균 매입 환율
+function holdMode(div, i) {
+  const hold = isHold(st.rows[i]), n = i + 1, unit = unitName();
+  div.classList.toggle("hold", hold);
+  const d = div.querySelector('[data-k="date"]');
+  d.disabled = hold;
+  d.tabIndex = hold ? -1 : 0;
+  const names = hold ? [`평균 단가(${unit})`, "평균 매입 환율(원)"] : [`체결가(${unit})`, "환율(원)"];
+  for (const [k, name] of [["price", names[0]], ["fx_rate", names[1]]]) {
+    const inp = div.querySelector(`[data-k="${k}"]`);
+    inp.setAttribute("aria-label", `${n}번 줄 ${name}`);
+    inp.closest(".cell").querySelector("label").textContent = name;
+    if (hold) inp.placeholder = k === "price" ? "평균 단가" : "매입 환율";
+  }
 }
 
 function renderRows() {
@@ -173,7 +197,9 @@ function renderRows() {
 
 function addRow() {
   const last = st.rows[st.rows.length - 1];
-  st.rows.push({ date: last?.date || "", side: "BUY", qty: "", price: "", fx_rate: "" });
+  // 날짜와 증권사는 앞 줄을 따름(같은 증권사의 매매를 이어 넣는 경우가 많음)
+  st.rows.push({ date: (last && !isHold(last) && last.date) || "", side: "BUY", qty: "", price: "", fx_rate: "",
+    ...(last?.broker ? { broker: last.broker } : {}) });
   renderRows();
   $(`d${st.rows.length - 1}`).focus();
   changed();
@@ -193,6 +219,19 @@ function clean(v) {
 
 // 서버와 같은 규칙으로 먼저 봅니다(서버도 다시 검사). 틀린 줄이 있으면 계산하지 않고 그 줄을 알립니다.
 function check(r) {
+  if (isHold(r)) {
+    const need = isUSD() ? "수량, 평균 단가, 평균 매입 환율" : "수량과 평균 단가";
+    if (!["qty", "price", "fx_rate"].some((k) => r[k])) return { skip: true, note: `증권사 앱 잔고 화면의 ${need}을 넣으면 계산에 넣습니다` };
+    if (!r.qty || !r.price || (isUSD() && !r.fx_rate)) return { skip: true, note: `${need}을 모두 넣으면 계산에 넣습니다` };
+    const q = clean(r.qty);
+    if (!/^\d+$/.test(q) || Number(q) <= 0) return { err: "지금 잔고 수량은 0보다 큰 정수로 넣어 주세요", key: "qty" };
+    for (const [k, label] of [["price", "평균 단가"], ["fx_rate", "평균 매입 환율"]]) {
+      if (k === "fx_rate" && !isUSD()) continue;
+      const v = clean(r[k]);
+      if (!PRICE.test(v) || Number(v) <= 0) return { err: `${label}는 0보다 큰 수, 소수 넷째 자리까지입니다`, key: k };
+    }
+    return {};
+  }
   const filled = ["date", "qty", "price", "fx_rate"].some((k) => r[k]);
   if (!filled) return { skip: true };
   if (!r.date || !r.qty) return { skip: true, note: "날짜와 수량을 넣으면 계산에 넣습니다" };
@@ -248,7 +287,7 @@ function setState(text, err = false) {
 
 // ---------- 계산 ----------
 
-const KEY_OF = { "날짜": "date", "수량": "qty", "체결가": "price", "환율": "fx_rate" };
+const KEY_OF = { "날짜": "date", "수량": "qty", "체결가": "price", "환율": "fx_rate", "평균 단가": "price", "평균 매입 환율": "fx_rate" };
 
 // 지금 입력으로 계산할 수 없을 때: 앞 결과가 있으면 흐리게 두고, 없으면 숨깁니다. 경고 목록은 앞 결과의 것이라 비웁니다.
 function hold(text) {
@@ -277,9 +316,10 @@ async function run() {
     const c = check(r);
     if (c.err) { decorate(i, "badrow", c.err, "", c.key); errs.push(`${i + 1}번 줄 ${c.err}`); return; }
     if (c.skip) { decorate(i, null, c.note || "", ""); if (c.note) pending++; return; }
-    const t = { date: r.date, side: r.side || "BUY", qty: clean(r.qty) };
+    const t = isHold(r) ? { side: "HOLD", qty: clean(r.qty) } : { date: r.date, side: r.side || "BUY", qty: clean(r.qty) };
     if (clean(r.price)) t.price = clean(r.price);
     if (isUSD() && clean(r.fx_rate)) t.fx_rate = clean(r.fx_rate);
+    if (r.broker) t.broker = r.broker;
     sent.push(t); map.push(i);
   });
   if (st.asofErr) errs.unshift(st.asofErr);
@@ -323,7 +363,7 @@ async function run() {
     const k = r.body.trade_index;
     if (k !== undefined && map[k] !== undefined) {
       const msg = r.body.message.replace(/\d+번 줄/, `${map[k] + 1}번 줄`);
-      const m = msg.match(/번 줄의 (날짜|수량|체결가|환율)/);
+      const m = msg.match(/번 줄(?:\(지금 잔고\))?의 (날짜|수량|체결가|환율|평균 단가|평균 매입 환율)/);
       decorate(map[k], "badrow", msg, "", m ? KEY_OF[m[1]] : undefined);
       hold(msg);
     } else {
@@ -346,13 +386,25 @@ function render(pending) {
     byRow.set(i, [...(byRow.get(i) || []), w]);
   }
   const stepByRow = new Map(res.steps.map((s) => [st.map[s.trade_index], s]));
+  // 계산 안내(지금 잔고를 어떻게 셌는지 등): 줄에 붙이고 아래 목록에도. 거꾸로 셀 수 없었던 안내는 경고처럼 표시
+  const noteByRow = new Map();
+  for (const n of res.notes || []) {
+    if (n.trade_index === null || n.trade_index === undefined) continue;
+    const i = st.map[n.trade_index];
+    noteByRow.set(i, [...(noteByRow.get(i) || []), n]);
+  }
+  const BAD_NOTE = new Set(["HOLD_TOO_FEW", "HOLD_SOLD_OUT", "HOLD_BAD_COST", "HOLD_COST_MISMATCH"]);
   st.rows.forEach((r, i) => {
     if (!st.map.includes(i)) return;
-    const s = stepByRow.get(i), ws = byRow.get(i) || [];
-    const avg = s ? (s.excluded ? "계산에서 빠짐" : s.qty_after > 0 ? price(s.avg_cost_after, cur) : "남은 수량 없음") : "계산에서 빠짐";
-    decorate(i, ws.length ? "warnrow" : null, ws.map((w) => w.message).join(" "), avg);
+    const s = stepByRow.get(i), ws = byRow.get(i) || [], ns = noteByRow.get(i) || [];
+    const avg = !s ? (isHold(r) && ns.some((n) => n.code === "HOLD_EXPLAINED") ? "첫날 전 보유 없음" : "계산에서 빠짐")
+      : s.opening ? `첫날 ${num(s.qty)}주, ${price(s.price, cur)}`
+      : (s.excluded ? "계산에서 빠짐" : s.qty_after > 0 ? price(s.avg_cost_after, cur) : "남은 수량 없음");
+    const bad = ws.length || ns.some((n) => BAD_NOTE.has(n.code));
+    decorate(i, bad ? "warnrow" : null, [...ws, ...ns].map((w) => w.message).join(" "), avg);
     const div = $("rows").children[i];
     if (!s) div.classList.add("out");
+    if (isHold(r)) return;
     // 비운 칸에는 계산에 쓴 값을 흐리게 보임(서버가 채운 그날 종가와 매매기준율). 계산에서 빠진 줄은 비움
     const used = s && !s.excluded;
     div.querySelector('[data-k="price"]').placeholder = used && s.price !== null ? price(s.price, cur) : "";
@@ -365,18 +417,28 @@ function render(pending) {
     li.children[1].textContent = w.code;
     return li;
   }));
+  $("hold-notes").replaceChildren(...(res.notes || []).map((n) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span></span><span class="code"></span>`;
+    const where = n.trade_index === null || n.trade_index === undefined ? "" : `${rowNo(n.trade_index)}번 줄(${n.broker_name}): `;
+    li.children[0].textContent = where + n.message;
+    li.children[1].textContent = n.code;
+    return li;
+  }));
 
   const notes = [`계산 ${res.ms}ms`];
   if (res.asof_price_date && res.asof_price_date !== res.asof) {
     notes.push(`기준일이 이 종목의 거래일이 아니라, 기준일 이전 마지막 거래일 ${res.asof_price_date}의 종가로 평가했습니다`);
   }
   if (res.warnings.length) notes.push(`입력 경고 ${res.warnings.length}건(아래 목록)`);
+  if ((res.notes || []).length) notes.push(`계산 안내 ${res.notes.length}건(아래 목록)`);
   if (pending) notes.push(`넣는 중인 줄 ${pending}개는 아직 계산에 넣지 않았습니다`);
   st.notes = notes;
   showNotes();
 
   renderVerdict(res);
   renderKpis(res);
+  renderAccounts(res);
   renderEffects(res);
   renderSells(res);
   $("px-unit").textContent = cur === "KRW" ? "원" : "달러";
@@ -390,6 +452,7 @@ function drawCharts() {
   if (!st.res) return;
   $("px-desc").textContent = drawPrice($("px"), $("px-read"), st.res, rowNo, openEvents);
   $("pl-desc").textContent = drawPnl($("pl"), $("pl-read"), st.res);
+  $("lg-bench").hidden = Boolean(st.res.opening);
 }
 
 function setKpi(id, text, cls, sub, exact) {
@@ -424,13 +487,16 @@ function renderKpis(res) {
     setKpi("k-local", local(s.total_local, cur, true), tone(s.total_local),
       `실현 ${local(s.realized_local, cur, true)}, 평가 ${local(s.unrealized_local, cur, true)}`);
   }
-  setKpi("k-bench", krwBig(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
+  if (res.opening) setKpi("k-bench", "세지 않음", "na", "데이터 첫날 전부터 가진 주식이 있어 같은 날 같은 돈으로 견줄 수 없어요");
+  else setKpi("k-bench", krwBig(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
     `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`,
     shortened(s.total_minus_bench_krw) ? krw(s.total_minus_bench_krw, true) : undefined);
   if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없어요");
   else setKpi("k-mdd", krwBig(s.max_drawdown_krw), "down", "앞선 고점에서 가장 크게 내려간 폭",
     shortened(s.max_drawdown_krw) ? krw(s.max_drawdown_krw) : undefined);
-  if (s.irr_pct === null) {
+  if (res.opening) {
+    setKpi("k-irr", "세지 않음", "na", "데이터 첫날 전 보유를 언제 얼마에 샀는지 몰라 세지 않아요");
+  } else if (s.irr_pct === null) {
     setKpi("k-irr", "계산 못 함", "na", res.irr_short
       ? "첫 매매일부터 기준일까지 30일이 안 되어 세지 않아요"
       : "현금 흐름으로 풀리는 값이 없어요");
@@ -440,16 +506,61 @@ function renderKpis(res) {
   const items = [];
   if (!res.booked) items.push(["장부에 들어간 매수가 없어요", null]);
   items.push(["남은 수량", `${num(s.qty_left)}주`]);
-  if (s.qty_left > 0) items.push(["평균 단가", local(s.avg_cost_local, cur)]);
-  if (cur !== "KRW" && s.qty_left > 0) items.push(["평균 매수 환율", `${num(s.avg_buy_fx)}원`]);
-  items.push(["넣은 원화", krw(s.invested_krw)], ["단순 수익률", pct(s.simple_return_pct)]);
-  if (res.holding) items.push(["보유 기간(첫 매수일 ~ 기준일)", `${res.holding[0]} ~ ${res.holding[1]}`]);
+  if (res.multi && s.qty_left > 0) items.push(["평균 단가", "증권사마다 달라요(아래 증권사별)"]);
+  if (!res.multi && s.qty_left > 0) items.push(["평균 단가", local(s.avg_cost_local, cur)]);
+  if (!res.multi && cur !== "KRW" && s.qty_left > 0) items.push(["평균 매수 환율", `${num(s.avg_buy_fx)}원`]);
+  if (!res.multi && s.holding_return_pct !== null && s.holding_return_pct !== undefined) {
+    items.push(["남은 주식 수익률(증권사 앱의 수익률)", pct(s.holding_return_pct)
+      + (cur !== "KRW" && s.holding_return_krw_pct !== null ? `, 원화로 ${pct(s.holding_return_krw_pct)}` : "")]);
+  }
+  items.push([res.opening ? "넣은 원화(첫날 전 보유는 그 원가)" : "넣은 원화", krw(s.invested_krw)], ["단순 수익률", pct(s.simple_return_pct)]);
+  if (res.holding) items.push([res.opening ? "보유 기간(데이터 첫날 전부터 ~ 기준일)" : "보유 기간(첫 매수일 ~ 기준일)", `${res.holding[0]} ~ ${res.holding[1]}`]);
   $("holding-line").replaceChildren(...items.map(([k, v]) => {
     const span = document.createElement("span");
     span.textContent = v === null ? k : `${k} `;
     if (v !== null) { const b = document.createElement("b"); b.textContent = v; span.appendChild(b); }
     return span;
   }));
+}
+
+// 증권사별(계좌마다 이동평균): 증권사를 고른 줄이 있거나 지금 잔고 줄이 있을 때. 큰 숫자는 증권사 앱의 「수익률」과 같은
+// 남은 주식 수익률(남은 주식의 평가 손익 / 남은 매입 금액, 현지 통화)
+function renderAccounts(res) {
+  const box = $("acct-box"), list = $("acct-list"), cur = res.currency;
+  const accts = res.accounts || [];
+  const show = res.summary && (res.multi || res.opening || accts.some((a) => a.broker));
+  box.hidden = !show;
+  if (!show) { list.replaceChildren(); return; }
+  list.replaceChildren(...accts.map((a) => {
+    const s = a.summary;
+    const div = document.createElement("div");
+    div.className = "li";
+    div.setAttribute("role", "listitem");
+    div.innerHTML = `<div class="li-l"><b></b><span class="sub"></span></div><span class="value"></span>`;
+    div.querySelector("b").textContent = a.broker_name;
+    const parts = [];
+    if (!s) parts.push("계산에 들어간 매매가 없어요");
+    else {
+      parts.push(`남은 ${num(s.qty_left)}주`);
+      if (s.qty_left > 0) parts.push(`평균 단가 ${local(s.avg_cost_local, cur)}`);
+      if (s.qty_left > 0 && cur !== "KRW") parts.push(`매입 환율 ${num(s.avg_buy_fx)}원`);
+      parts.push(`실현 ${krw(s.realized_krw, true)}`, `손익 ${krw(s.total_krw, true)}`);
+      if (a.opening) parts.push(`데이터 첫날 보유 ${num(a.opening.qty)}주로 시작`);
+    }
+    div.querySelector(".sub").textContent = parts.join(", ");
+    const v = div.querySelector(".value");
+    if (a.holding_return_pct === null) { v.textContent = s && s.qty_left === 0 ? "모두 팖" : "–"; v.className = "value na"; }
+    else {
+      v.textContent = pct(a.holding_return_pct);
+      v.className = "value " + tone(a.holding_return_pct);
+      if (cur !== "KRW" && a.holding_return_krw_pct !== null) v.title = `원화로 ${pct(a.holding_return_krw_pct)}`;
+    }
+    return div;
+  }));
+  const notes = ["오른쪽 숫자는 증권사 앱의 「수익률」처럼 남은 주식의 평가 손익을 남은 매입 금액으로 나눈 값이에요(현지 통화, 기준일 종가)."];
+  if (res.multi) notes.push("증권사마다 평균 단가를 따로 셉니다. 위 원화 손익의 실현과 평가는 증권사별 합이고, 합계는 모두 합쳐 셈한 값과 같아요.");
+  if (cur !== "KRW") notes.push("미국 종목은 숫자에 마우스를 올리면 원화 기준 수익률이 보여요.");
+  $("acct-note").textContent = notes.join(" ");
 }
 
 // 국내 종목은 환율 효과와 교차 효과가 0이라 나누기 칸 대신 결론 문장 한 줄로 적습니다
@@ -487,6 +598,7 @@ function renderVerdict(res) {
     p.append(gap ? `으로 나뉘어요(원 단위 반올림으로 셋의 합과 ${krw(Math.abs(gap))} 차이).` : "으로 나뉘어요.");
   }
   if (res.symbol === res.bench) return;
+  if (res.opening) { p.append(" 데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요."); return; }
   const d = s.total_minus_bench_krw;
   p.append(" 같은 날 같은 돈을 SPY에 넣었다면 ");
   n(krwBig(s.bench_total_krw, true), s.bench_total_krw, krw(s.bench_total_krw, true));
@@ -542,7 +654,8 @@ function renderSells(res) {
   tb.replaceChildren(...res.sells.map((s) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td>`;
-    const cells = [s.date, `${num(s.qty)}주`, price(s.price, cur), price(s.avg_cost_before, cur), krw(s.realized_krw, true)];
+    // 증권사가 둘 이상이면 날짜 칸에 증권사 이름을 붙임(팔기 전 평균 단가가 그 증권사 계좌의 평단)
+    const cells = [res.multi ? `${s.date} ${brokerName(s.broker)}` : s.date, `${num(s.qty)}주`, price(s.price, cur), price(s.avg_cost_before, cur), krw(s.realized_krw, true)];
     const labels = ["날짜", "수량", `가격(${unit})`, `팔기 전 평균 단가(${unit})`, "원화 손익"];
     cells.forEach((t, k) => { tr.children[k].textContent = t; tr.children[k].dataset.l = labels[k]; });
     tr.children[4].className = "num " + tone(s.realized_krw);
@@ -778,9 +891,12 @@ function account() {
   const all = { ...st.saved.symbols, [st.sym]: snapshot() };
   const out = {};
   for (const [sym, v] of Object.entries(all)) {
-    const rows = (v?.trades || []).filter((t) => t.date && t.qty)
-      .map((t) => ({ date: t.date, side: t.side || "BUY", qty: clean(t.qty),
-        ...(clean(t.price) ? { price: clean(t.price) } : {}), ...(clean(t.fx_rate) ? { fx_rate: clean(t.fx_rate) } : {}) }));
+    // 지금 잔고 줄은 날짜 없이, 수량과 평균 단가가 있으면 보냄(서버가 한 계좌로 합쳐 셈)
+    const krw = st.symbols.get(sym)?.currency === "KRW";
+    const rows = (v?.trades || []).filter((t) => (isHold(t) ? t.qty && t.price && (krw || t.fx_rate) : t.date && t.qty))
+      .map((t) => ({ ...(isHold(t) ? {} : { date: t.date }), side: t.side || "BUY", qty: clean(t.qty),
+        ...(clean(t.price) ? { price: clean(t.price) } : {}), ...(clean(t.fx_rate) ? { fx_rate: clean(t.fx_rate) } : {}),
+        ...(t.broker ? { broker: t.broker } : {}) }));
     if (rows.length) out[sym] = rows;
   }
   return out;
@@ -912,6 +1028,7 @@ async function boot() {
   const sy = await api("/api/symbols");
   if (sy.status !== 200) { await pipelineFailed(); return; }
   st.calendar = sy.body.calendar;
+  st.brokers = sy.body.brokers || [];
   for (const s of sy.body.symbols) st.symbols.set(s.symbol, s);
   const sel = $("sym");
   for (const [label, test] of [["국내", (s) => s.market === "KRX"], ["미국", (s) => s.market !== "KRX"]]) {
@@ -936,7 +1053,7 @@ async function boot() {
     $("ledger-note").textContent = `넣어 둔 매매를 읽지 못해 저장을 껐습니다. ${tr.body?.message || `(${tr.status})`}`;
     $("ledger-note").classList.add("err");
   } else {
-    $("ledger-note").textContent = "체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 이 서버는 매매를 저장하지 않습니다.";
+    $("ledger-note").textContent = "체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법이고, 증권사를 고르면 증권사마다 따로 셉니다. 데이터 기간(2년) 전부터 가진 주식은 구분을 「지금 잔고」로 두고 증권사 앱 잔고 화면의 수량, 평균 단가, 평균 매입 환율을 넣으면 됩니다. 이 서버는 매매를 저장하지 않습니다.";
   }
   sel.addEventListener("change", () => {
     // 앞 종목 저장은 기다리지 않습니다(실패해도 종목은 바뀌고, 실패는 상태 줄에 남음)

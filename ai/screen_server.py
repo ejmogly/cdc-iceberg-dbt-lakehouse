@@ -5,7 +5,8 @@
 API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
   GET  /api/status   10번 칸. 내보내기 검사와 지문 대조. ok가 거짓이면 아래 API는 503과 실패 항목만 돌려줍니다
   GET  /api/symbols  종목과 데이터 기간
-  POST /api/pnl      {"symbol", "asof", "trades": [{"date", "side": "BUY"|"SELL", "qty", "price"?, "fx_rate"?}]}
+  POST /api/pnl      {"symbol", "asof", "trades": [{"date", "side": "BUY"|"SELL"|"HOLD", "qty", "price"?, "fx_rate"?, "broker"?}]}
+                     HOLD은 지금 잔고 줄(날짜 없음, 수량, 평균 단가, 미국 종목은 평균 매입 환율). broker는 증권사 코드(ai/holdings.py)
                      요약(2번 칸), 가격과 내 매매와 큰 움직임(3번), 누적 손익과 SPY 선(4번), 원화 수익 나누기(5번),
                      매도별 손익(6번), 경고(코드, 줄 번호, 문구). 한 줄의 입력이 틀리면 400과 그 줄 번호(trade_index).
                      금액이 손익 SQL의 decimal 범위를 넘으면(약 100억 원) 400 AMOUNT_TOO_LARGE와 금액이 가장 큰 줄
@@ -51,8 +52,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 
-from ai import llm, screen_data, screen_range
-from ai.pnl import compute, iso_date, number
+from ai import holdings, llm, screen_data, screen_range
+from ai.pnl import iso_date, number
 from ai.tools import real_data
 
 SAFE = (Path(__file__).resolve().parents[1] / "data" / "generated").resolve()
@@ -66,7 +67,7 @@ MAX_QUESTION = 300
 # 7번 칸의 「같은 날 다른 자산」: 미국 증시, 나스닥, 장기 국채, 금, 달러, 비트코인, 원유
 OTHERS = ["SPY", "QQQ", "TLT", "GLD", "UUP", "IBIT", "USO"]
 MAX_ASKS = 200  # 서버를 한 번 띄운 동안 9번 칸이 물을 수 있는 수(모델 호출 상한과 따로 두는 화면 쪽 상한)
-TRADE_KEYS = ("date", "side", "qty", "price", "fx_rate")
+TRADE_KEYS = ("date", "side", "qty", "price", "fx_rate", "broker")
 SIX = Decimal("0.000001")
 
 
@@ -277,35 +278,57 @@ class App:
             rows = d.rows[s]
             out.append({"symbol": s, "name": v["name"], "market": v["market"], "currency": v["currency"],
                         "first": rows[0], "last": rows[-1]})
-        return {"symbols": out, "calendar": [d.calendar[0], d.calendar[-1]], "bench": d.bench}
+        return {"symbols": out, "calendar": [d.calendar[0], d.calendar[-1]], "bench": d.bench,
+                "brokers": [{"code": c, "name": n} for c, n in holdings.BROKERS]}
 
-    def _trades(self, body):
+    def _trades(self, body, symbol=None):
+        """매매 줄 검사. symbol을 주면 지금 잔고 줄의 매입 환율(미국 종목)이 있는지도 봅니다."""
         trades = body.get("trades")
         if not isinstance(trades, list) or not trades:
             raise BadRequest("NO_TRADES", "매매 줄이 없습니다")
         if len(trades) > MAX_TRADES:
             raise BadRequest("TOO_MANY_TRADES", f"매매 줄은 {MAX_TRADES}개까지입니다")
-        out = []
+        out, holds = [], set()
+        usd = symbol is not None and self.data.symbols[symbol]["currency"] == "USD"
         for k, t in enumerate(trades):
             n = k + 1  # 문구의 줄 번호는 1부터, trade_index는 0부터
             if not isinstance(t, dict):
                 raise BadRequest("BAD_TRADE", f"{n}번 줄의 모양이 틀렸습니다", k)
-            if not iso_date(t.get("date")):
-                raise BadRequest("BAD_DATE", f"{n}번 줄의 날짜는 YYYY-MM-DD로 주세요", k)
             side = str(t.get("side", "")).upper()
-            if side not in ("BUY", "SELL"):
-                raise BadRequest("BAD_TRADE", f"{n}번 줄의 매매는 BUY나 SELL입니다", k)
-            row = {"d": t["date"], "side": side}
+            if side not in ("BUY", "SELL", "HOLD"):
+                raise BadRequest("BAD_TRADE", f"{n}번 줄의 매매는 BUY, SELL, HOLD(지금 잔고)입니다", k)
+            broker = t.get("broker") or ""
+            if broker and broker not in holdings.BROKER_NAME:
+                raise BadRequest("BAD_TRADE", f"{n}번 줄의 증권사를 모릅니다: {str(broker)[:20]}", k)
+            if side == "HOLD":
+                # 지금 잔고 줄: 날짜는 쓰지 않음(증권사 앱 잔고를 본 때). 증권사마다 하나
+                if broker in holds:
+                    raise BadRequest("BAD_TRADE", f"{n}번 줄: {holdings.broker_name(broker)}의 지금 잔고 줄이 둘입니다", k)
+                holds.add(broker)
+                row = {"d": None, "side": side}
+            else:
+                if not iso_date(t.get("date")):
+                    raise BadRequest("BAD_DATE", f"{n}번 줄의 날짜는 YYYY-MM-DD로 주세요", k)
+                row = {"d": t["date"], "side": side}
+            if broker:
+                row["broker"] = broker
+            hold_label = {"price": "평균 단가", "fx_rate": "평균 매입 환율"}
             for key, name, label in (("qty", "q", "수량"), ("price", "p", "체결가"), ("fx_rate", "fx", "환율")):
+                if side == "HOLD":
+                    label = hold_label.get(key, label)
                 v = t.get(key)
                 if v is None or v == "":
                     if key == "qty":
                         raise BadRequest("BAD_TRADE", f"{n}번 줄의 수량이 없습니다", k)
+                    if side == "HOLD" and (key == "price" or (key == "fx_rate" and usd)):
+                        raise BadRequest("BAD_TRADE", f"{n}번 줄(지금 잔고)의 {label}이 없습니다", k)
                     continue
                 try:
                     v = number(v, {"q": "qty", "p": "price", "fx": "fx"}[name])
                 except ValueError as e:
                     raise BadRequest("BAD_TRADE", f"{n}번 줄의 {label}: {e}", k) from None
+                if side == "HOLD" and name == "q" and (v <= 0 or v != v.to_integral_value()):
+                    raise BadRequest("BAD_TRADE", f"{n}번 줄(지금 잔고)의 수량은 0보다 큰 정수입니다", k)
                 row[name] = (int(v) if v == v.to_integral_value() else v) if name == "q" else v
             out.append(row)
         return out
@@ -321,7 +344,7 @@ class App:
             fill = {"first": rows[0], "last": rows[-1]}
         elif w["code"] == "FX_CARRIED":
             fill["fx_date"] = _last_on_or_before(d.fx_days, _last_on_or_before(d.calendar, t["d"]))
-        return {**w, "trade_date": t["d"], "message": WARNINGS[w["code"]].format(**fill), **fill}
+        return {**w, "trade_date": t["d"] or "지금 잔고", "message": WARNINGS[w["code"]].format(**fill), **fill}
 
     def api_pnl(self, body):
         d = self.data
@@ -333,12 +356,11 @@ class App:
             raise BadRequest("BAD_DATE", "기준일은 YYYY-MM-DD로 주세요")
         if not d.calendar[0] <= asof <= d.calendar[-1]:
             raise BadRequest("OUT_OF_DATA_RANGE", f"기준일은 데이터 기간({d.calendar[0]} ~ {d.calendar[-1]}) 안이어야 합니다")
-        trades = self._trades(body)
+        trades = self._trades(body, symbol)
         t0 = time.perf_counter()
         try:
             with d.lock:
-                summary, sells, warnings, kept = compute(d.engine(), d.world, symbol, trades, asof, d.bench)
-                daily, steps = d.engine().series() if kept else ([], [])
+                r = holdings.run(d.engine(), d.world, symbol, trades, asof, d.bench)
         except duckdb.OutOfRangeException:
             # 손익 SQL의 decimal 곱셈이 넘침(매매 금액이나 기준일 평가액이 약 100억 원). 가장 큰 매매를 짚어 줍니다
             k = max(range(len(trades)), key=lambda i: self._amount(symbol, trades[i]))
@@ -346,27 +368,41 @@ class App:
                              f"금액이 계산할 수 있는 범위(매매 한 건이나 기준일 평가액이 약 100억 원)를 넘었습니다. "
                              f"금액이 가장 큰 {k + 1}번 줄에서 수량, 체결가, 환율의 단위를 확인하세요", k) from None
         rows = d.symbols[symbol]["rows"]
+        currency = d.symbols[symbol]["currency"]
+        summary, sells, warnings = r["summary"], r["sells"], r["warnings"]
+        kept, (daily, steps) = r["combined"]
         if summary:
             summary = {k: _num(v) for k, v in summary.items() if not k.startswith("gap_")}
             summary["total_minus_bench_krw"] = summary["total_krw"] - summary["bench_total_krw"]
             summary["naive_minus_total_krw"] = summary["naive_krw"] - summary["total_krw"]
+            if not r["multi"]:
+                summary["holding_return_pct"], summary["holding_return_krw_pct"] = holdings.holding_return(summary, currency)
+            else:
+                summary["holding_return_pct"] = summary["holding_return_krw_pct"] = None
+        # 첫 매수일: 합친 장부의 첫 매수(시작 보유면 데이터 첫날)
         buys = [kept[seq] for seq, _, side, *_ in steps if side == "BUY"]
-        holding = [trades[buys[0]]["d"], asof] if buys else None
+        holding = [trades[buys[0]]["d"] or d.rows[symbol][0], asof] if buys else None
         # 연 환산이 없는 까닭(pnl_irr): 첫 매매일부터 기준일(달력에 맞춘 날)까지 30일 미만인지
         live = [cd for _, cd, _, _, _, _, over, *_ in steps if not over]
         end = _last_on_or_before(d.calendar, asof)
         irr_short = bool(live) and (date.fromisoformat(end) - min(live)).days < 30
+        accounts = [{**a, "summary": {k: _num(v) for k, v in a["summary"].items()} if a["summary"] else None,
+                     "opening": {k: _num(v) if k != "date" else v for k, v in a["opening"].items()} if a["opening"] else None}
+                    for a in r["accounts"]]
         took = time.perf_counter() - t0
         return {
             "symbol": symbol, "name": d.symbols[symbol]["name"], "currency": d.symbols[symbol]["currency"],
             "asof": asof, "asof_price_date": _last_on_or_before(d.rows[symbol], asof), "bench": d.bench,
             "summary": summary or None, "booked": bool(buys),
-            "sells": [{k: _num(v) for k, v in s.items()} for s in sells],
+            "sells": [{k: (_num(v) if k != "broker" else v) for k, v in s.items()} for s in sells],
             "warnings": [self._message(w, symbol, trades) for w in warnings],
-            "steps": [{"trade_index": kept[seq], "date": cd.isoformat(), "side": side, "qty": q, "price": _num(p),
+            # 매매 줄마다(증권사별 장부): 처리 뒤 수량과 평균 단가. 시작 보유(opening)는 지금 잔고 줄의 번호
+            "steps": [{"trade_index": x["trade_index"], "broker": x["broker"], "opening": x["opening"],
+                       "date": cd.isoformat(), "side": side, "qty": q, "price": _num(p),
                        "fx": _num(fx), "excluded": bool(over), "qty_after": qa,
                        "avg_cost_after": _round(cost / qa, 4) if qa else None}
-                      for seq, cd, side, q, p, fx, over, qa, cost in steps],
+                      for x in r["steps"] for seq, cd, side, q, p, fx, over, qa, cost in [x["row"]]],
+            "accounts": accounts, "notes": r["notes"], "multi": r["multi"], "opening": r["opening"],
             "daily": [{"date": c.isoformat(), "pnl_krw": won(p), "peak_krw": won(pk), "bench_krw": won(b)}
                       for c, p, pk, b in daily],
             "prices": [[x, _num(rows[x]["close"])] for x in d.rows[symbol]],
@@ -499,7 +535,10 @@ class App:
             if not rows:
                 continue
             try:
-                trades[sym] = self._trades({"trades": rows})
+                parsed = self._trades({"trades": rows}, sym)
+                # 지금 잔고 줄과 증권사는 합친 매매로 바꿔 넘김(묻고 답하기는 한 계좌로 셈, 7절 「증권사와 지금 잔고」)
+                with d.lock:
+                    trades[sym] = holdings.effective(d.engine(), d.world, sym, parsed, d.bench)
             except BadRequest as e:
                 # 화면은 날짜와 수량이 있는 줄만 보내므로 「n번 줄」이 화면의 줄 번호와 다를 수 있어 번호를 뺌
                 msg = re.sub(r"^\d+번 줄의 ", "", e.message)

@@ -7,6 +7,7 @@
       .venv/bin/python eval/f_screen/check_api.py latency    계산 지연(매매 20줄 사례 200번, p95)
       .venv/bin/python eval/f_screen/check_api.py pipeline   파이프라인 상태(깬 원천, 깬 파일)
       .venv/bin/python eval/f_screen/check_api.py edges      입력 경계(잘못된 날짜와 수, 빠진 줄만 있는 매매, Host 머리)
+      .venv/bin/python eval/f_screen/check_api.py accounts   증권사별 계좌와 지금 잔고(11/19 중간 판 의견, ai/holdings.py)
 
 - 골든: E01 골든 30개(eval/e01_pnl/cases.json)를 골든용 파일(data/generated/screen_golden.duckdb)로 띄운 서버에 넣고
   정답과 맞춥니다. 허용 오차는 E01과 같음(원은 원 단위, 달러는 센트, 연 환산 0.05%p). 경고는 여덟 코드를 한 건씩
@@ -533,8 +534,152 @@ def check_edges():
     return {"pass": n, "cases": len(tests), "rows": [{"name": a, "pass": b, "got": c} for a, b, c in tests]}
 
 
+def check_accounts():
+    """증권사별 계좌와 지금 잔고(ai/holdings.py). 금액은 출력하지 않고 같음과 코드만 봅니다.
+    - 증권사가 둘이면 계좌마다 따로 셈: 계좌 요약 = 그 계좌 줄만 넣은 계산, 실현과 평가와 합계는 계좌 합, 합계는 합친 계산과 같음
+    - 지금 잔고: 거꾸로 되짚은 데이터 첫날 보유(손으로 센 값), 앞으로 다시 세면 지금 잔고로 돌아옴, 안내 코드
+    - 잘못된 지금 잔고 줄과 증권사는 400, 묻고 답하기에는 시작 보유를 합친 줄로 넘김, 저장 파일에 증권사가 남음"""
+    tmp = GEN / "check_accounts_trades.json"
+    httpd, _ = serve(screen_data.OUT, 0, trades=tmp)
+    port = httpd.server_address[1]
+    base = f"http://127.0.0.1:{port}"
+    pnl = lambda trades, sym="005930", asof="2026-11-11": http(base, "/api/pnl", {"symbol": sym, "asof": asof, "trades": trades})
+    row = lambda d, side, q, b="", **kw: {"date": d, "side": side, "qty": q, **({"broker": b} if b else {}), **kw}
+    hold = lambda q, p, b="", **kw: {"side": "HOLD", "qty": q, "price": p, **({"broker": b} if b else {}), **kw}
+    D = lambda v: Decimal(str(v))
+    tests = []
+
+    def ok(name, cond, got=""):
+        tests.append((name, bool(cond), got))
+
+    # 1. 국내 종목, 증권사 둘
+    t1 = [row("2025-03-04", "BUY", "10", "TOSS"), row("2025-06-02", "BUY", "5", "KAKAOPAY"), row("2025-09-01", "SELL", "3", "KAKAOPAY")]
+    c, r = pnl(t1)
+    s = r.get("summary") or {}
+    acc = {a["broker"]: a for a in r.get("accounts", [])}
+    ok("두 증권사: 계좌 둘, 여러 계좌 표시", c == 200 and r["multi"] and list(acc) == ["TOSS", "KAKAOPAY"], f"{c} {list(acc)}")
+    sums = {k: sum(a["summary"][k] for a in acc.values()) for k in ("realized_krw", "unrealized_krw", "total_krw")}
+    ok("두 증권사: 실현, 평가, 합계는 계좌 합", all(s.get(k) == v for k, v in sums.items()))
+    ok("두 증권사: 계좌 합계 = 합친 계산의 합계", s.get("total_krw") == s.get("combined_total_krw"))
+    alone_same = True
+    for b, a in acc.items():
+        c2, r2 = pnl([{k: v for k, v in t.items() if k != "broker"} for t in t1 if t.get("broker") == b])
+        alone_same &= c2 == 200 and all(same(r2["summary"][k], a["summary"][k]) for k in EXACT)
+        basis = D(a["summary"]["qty_left"]) * D(a["summary"]["avg_cost_local"])
+        want = round(float(D(a["summary"]["unrealized_local"]) / basis * 100), 2) if basis else None
+        alone_same &= a["holding_return_pct"] == want
+    ok("두 증권사: 계좌 요약 = 그 계좌 줄만 넣은 계산, 남은 주식 수익률", alone_same)
+    ok("두 증권사: 매도는 그 증권사 평단으로", [x["broker"] for x in r["sells"]] == ["KAKAOPAY"]
+       and same(r["sells"][0]["avg_cost_before"], acc["KAKAOPAY"]["summary"]["avg_cost_local"]))
+    ok("두 증권사: 평단이 하나가 아님", s.get("avg_cost_local") is None and s.get("holding_return_pct") is None)
+
+    # 2. 계좌별 초과 매도(합치면 팔 수 있어도 그 계좌에는 없음)
+    c, r = pnl([row("2025-03-04", "BUY", "5", "TOSS"), row("2025-06-02", "BUY", "1", "KAKAOPAY"),
+                row("2025-09-01", "SELL", "3", "KAKAOPAY")])
+    ok("계좌별 초과 매도", c == 200 and [(w["code"], w["trade_index"]) for w in r["warnings"]] == [("OVERSOLD", 2)]
+       and r["summary"]["total_krw"] == r["summary"]["combined_total_krw"], f"{c} {[w['code'] for w in r.get('warnings', [])]}")
+
+    # 3. 미국 종목 지금 잔고: 기간 전 매수 한 줄, 기간 안 매수 4와 매도 6, 지금 잔고 48주 420달러 1,350원
+    t3 = [row("2023-05-01", "BUY", "50", "KIS", price="300", fx_rate="1300"),
+          row("2025-03-03", "BUY", "4", "KIS", price="480", fx_rate="1450"),
+          row("2025-08-01", "SELL", "6", "KIS", price="560", fx_rate="1390"), hold("48", "420", "KIS", fx_rate="1350")]
+    c, r = pnl(t3, "QQQ")
+    a = (r.get("accounts") or [{}])[0]
+    o = a.get("opening") or {}
+    # 손으로 센 값: 되짚어 54주 원가 22,680달러(원화 30,618,000원) → 매수 4 빼면 50주 20,760달러(27,834,000원)
+    ok("지금 잔고: 데이터 첫날 보유를 거꾸로 셈(50주, 415.2달러, 환율 27,834,000 / 20,760)",
+       c == 200 and o.get("qty") == 50 and same(o.get("avg_cost_local"), 415.2)
+       and same(o.get("avg_buy_fx"), float((D(27834000) / D(20760)).quantize(Decimal("0.0001")))), f"{c} {o}")
+    ss = a.get("summary") or {}
+    ok("지금 잔고: 앞으로 다시 세면 지금 잔고(48주, 420달러, 1,350원)", ss.get("qty_left") == 48
+       and abs(D(ss.get("avg_cost_local", 0)) - 420) < Decimal("0.001") and abs(D(ss.get("avg_buy_fx", 0)) - 1350) < Decimal("0.001"))
+    codes = sorted(n["code"] for n in r.get("notes", []))
+    ok("지금 잔고: 안내(시작 보유, 기간 전 줄 대신, SPY 견주지 않음)",
+       codes == ["BENCH_OFF", "HOLD_USED", "PRE_WINDOW_COVERED"] and r["opening"], str(codes))
+    st0 = (r.get("steps") or [{}])[0]
+    ok("지금 잔고: 장부 첫 단계가 시작 보유(지금 잔고 줄 번호, 데이터 첫날)", st0.get("opening") and st0.get("trade_index") == 3
+       and st0.get("date") == r["prices"][0][0])
+    # 시험용 체결가(480, 560달러)는 그날 범위 밖이라 1, 2번 줄에는 PRICE_OUT_OF_RANGE가 맞음. 시작 보유(평단)에는 붙이지 않음
+    ws = [(w["code"], w["trade_index"]) for w in r["warnings"]]
+    ok("지금 잔고: 기간 전 줄은 그대로 OUT_OF_DATA_RANGE, 시작 보유에는 가격 범위 경고 없음",
+       [x for x in ws if x[1] in (0, 3)] == [("OUT_OF_DATA_RANGE", 0)], str(ws))
+    ok("지금 잔고: 한 계좌라 요약 칸에 남은 주식 수익률", r["summary"].get("holding_return_pct") == a["holding_return_pct"] is not None)
+
+    # 4. 지금 잔고로 셀 수 없는 경우들(시작 보유를 넣지 않고 안내만)
+    qq = lambda trades: pnl(trades, "QQQ")
+    fx = {"fx_rate": "1400"}
+    cases = [
+        ("지금 잔고가 기간 안 매수보다 적음", [row("2025-03-03", "BUY", "20", "KIS"), hold("10", "400", "KIS", **fx)], ["HOLD_TOO_FEW"]),
+        ("기간 안 매매로 모두 설명됨", [row("2025-03-03", "BUY", "5", "KIS", price="400", **fx), hold("5", "400", "KIS", **fx)],
+         ["HOLD_EXPLAINED"]),
+        ("모두 설명되나 평단이 다름", [row("2025-03-03", "BUY", "5", "KIS", price="400", **fx), hold("5", "410", "KIS", **fx)],
+         ["HOLD_COST_MISMATCH", "HOLD_EXPLAINED"]),
+        ("모두 판 뒤 다시 산 것까지 설명됨", [row("2025-03-03", "BUY", "5", "KIS", price="400", **fx),
+                                       row("2025-04-01", "SELL", "5", "KIS", price="420", **fx),
+                                       row("2025-06-02", "BUY", "3", "KIS", price="450", **fx), hold("3", "450", "KIS", **fx)],
+         ["HOLD_EXPLAINED"]),
+        ("모두 판 매도 앞의 평단을 모름", [row("2025-04-01", "SELL", "5", "KIS", price="420", **fx),
+                                     row("2025-06-02", "BUY", "3", "KIS", price="450", **fx), hold("3", "450", "KIS", **fx)],
+         ["HOLD_SOLD_OUT"]),
+    ]
+    for name, trades, want in cases:
+        c, r = qq(trades)
+        got = sorted(n["code"] for n in r.get("notes", []))
+        ok(f"지금 잔고: {name}", c == 200 and got == want and not r["opening"], f"{c} {got}")
+
+    # 5. 잘못된 지금 잔고 줄과 증권사
+    bad = [("지금 잔고 환율 없음(미국)", [hold("3", "450", "KIS")]),
+           ("지금 잔고 둘(같은 증권사)", [hold("3", "450", "KIS", **fx), hold("2", "450", "KIS", **fx)]),
+           ("모르는 증권사", [row("2025-03-03", "BUY", "5", "FOO")]),
+           ("지금 잔고 수량 0", [hold("0", "450", "KIS", **fx)]),
+           ("지금 잔고 소수 수량", [hold("1.5", "450", "KIS", **fx)]),
+           ("지금 잔고 평균 단가 없음", [{"side": "HOLD", "qty": "3", "fx_rate": "1400"}])]
+    for name, trades in bad:
+        c, r = qq(trades)
+        ok(f"400: {name}", c == 400 and r.get("error") == "BAD_TRADE", f"{c} {r.get('error')}")
+
+    # 6. 증권사 없는 한 계좌는 전과 같은 한 번의 계산(계좌 하나, 빈 증권사)
+    c, r = pnl([row("2025-03-04", "BUY", "10")])
+    ok("증권사 없음: 계좌 하나, 여러 계좌 아님, 시작 보유 없음", c == 200 and not r["multi"] and not r["opening"]
+       and [a["broker"] for a in r["accounts"]] == [""] and r["summary"]["holding_return_pct"] == r["accounts"][0]["holding_return_pct"])
+
+    # 7. 묻고 답하기에는 시작 보유를 합친 줄(지금 잔고 줄과 증권사 칸은 빠짐)
+    seen = {}
+
+    def fake(ts, q):
+        seen["trades"] = ts.account["trades"]
+        return ({"status": "answered", "text": "가짜 답", "numbers": [], "dates_used": [], "warnings": []},
+                {"tool_calls": [], "llm": [], "decided_by": None})
+    httpd.app.ask_fn = fake
+    c, r = http(base, "/api/ask", {"question": "QQQ 손익?", "asof": "2026-11-11", "account": {"QQQ": t3}})
+    got = seen.get("trades", {}).get("QQQ", [])
+    ok("묻기: 시작 보유가 맨 앞 매수(50주), 지금 잔고 줄과 증권사 칸 없음", c == 200 and got and got[0]["side"] == "BUY"
+       and got[0]["q"] == 50 and all(t["side"] != "HOLD" and "broker" not in t for t in got)
+       and [t["q"] for t in got[1:]] == [4, 6], f"{c} {[(t['side'], t['q']) for t in got]}")
+
+    # 8. 저장 파일에 증권사와 지금 잔고 줄이 그대로 남음
+    req = urllib.request.Request(base + "/api/trades", method="PUT", headers={"Content-Type": "application/json"},
+                                 data=json.dumps({"symbol": "QQQ", "asof": "2026-11-11", "trades": t3[1:]}).encode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            c = resp.status
+    except urllib.error.HTTPError as e:
+        c = e.code
+    saved = json.loads(tmp.read_text(encoding="utf-8")) if tmp.exists() else {}
+    rows_saved = saved.get("symbols", {}).get("QQQ", {}).get("trades", [])
+    ok("저장: 증권사와 지금 잔고 줄이 남음", c == 200 and [t.get("broker") for t in rows_saved] == ["KIS"] * 3
+       and rows_saved[-1].get("side") == "HOLD" and "date" not in rows_saved[-1])
+    stop(httpd)
+    tmp.unlink(missing_ok=True)
+    n = sum(1 for _, b, _ in tests if b)
+    print(f"증권사와 지금 잔고: {n}/{len(tests)}")
+    for name, b, got in tests:
+        print(f"  {'통과' if b else '실패'}  {name}" + (f": {got}" if not b and got else ""))
+    return {"pass": n, "cases": len(tests), "rows": [{"name": a, "pass": b} for a, b, _ in tests]}
+
+
 CHECKS = {"golden": check_golden, "real": check_real, "latency": check_latency, "pipeline": check_pipeline,
-          "edges": check_edges}
+          "edges": check_edges, "accounts": check_accounts}
 
 
 def passed(k, v):

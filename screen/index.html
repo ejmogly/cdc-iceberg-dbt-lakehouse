@@ -70,6 +70,13 @@
       <p id="holding-line" class="holding-line"></p>
     </section>
 
+    <!-- 증권사별(11/19 중간 판 의견): 증권사를 고른 줄이나 지금 잔고 줄이 있을 때만 -->
+    <section id="acct-box" class="x-card" aria-labelledby="acct-h" hidden>
+      <div class="x-sec-h"><h3 id="acct-h">증권사별 <span class="note">남은 주식 수익률</span></h3></div>
+      <div id="acct-list" class="li-list acct-list" role="list"></div>
+      <p id="acct-note" class="x-note"></p>
+    </section>
+
     <!-- 5번 칸: 원화 수익 나누기(미국 종목만. 국내 종목은 결론 문장 한 줄) -->
     <section id="fx-box" class="x-card fx-box" aria-labelledby="fx-h">
       <div class="x-sec-h"><h3 id="fx-h">원화 수익은 어디서 왔나</h3><button type="button" class="x-link" data-sheet="sh-fx">계산법</button></div>
@@ -104,7 +111,7 @@
     <div class="x-sec-h"><h2 id="in-h">매매</h2><span>줄을 고치면 바로 다시 계산</span></div>
     <div class="ledger" role="table" aria-label="매매 줄" aria-describedby="ledger-note">
       <div class="lrow lhead" role="row">
-        <span role="columnheader">날짜</span><span role="columnheader">구분</span><span role="columnheader">수량(주)</span>
+        <span role="columnheader">날짜</span><span role="columnheader">구분</span><span role="columnheader">증권사</span><span role="columnheader">수량(주)</span>
         <span role="columnheader" id="h-price">체결가</span><span role="columnheader" class="fx-col">환율(원)</span>
         <span role="columnheader" id="h-avg">이 매매 뒤 평균 단가</span><span role="columnheader"><span class="sr">빼기</span></span>
       </div>
@@ -115,7 +122,8 @@
       <p id="state" class="state" role="status" aria-live="polite"></p>
     </div>
     <ul id="warnings" class="warnings" aria-label="입력 경고"></ul>
-    <p id="ledger-note" class="x-note">체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법입니다. 넣은 매매는 이 컴퓨터의 <span class="mono">data/generated/</span>에 저장됩니다.</p>
+    <ul id="hold-notes" class="warnings notes" aria-label="계산 안내"></ul>
+    <p id="ledger-note" class="x-note">체결가와 환율을 비우면 그날 종가와 매매기준율로 계산합니다(칸에 흐리게 보이는 값). 평균 단가는 이동평균법이고, 증권사를 고르면 증권사마다 따로 셉니다. 데이터 기간(2년) 전부터 가진 주식은 구분을 「지금 잔고」로 두고 증권사 앱 잔고 화면의 수량, 평균 단가, 평균 매입 환율을 넣으면 됩니다. 넣은 매매는 이 컴퓨터의 <span class="mono">data/generated/</span>에 저장됩니다.</p>
   </section>
 </section>
 
@@ -152,7 +160,7 @@
         <svg id="pl" viewBox="0 0 560 280" role="img" tabindex="0" aria-describedby="pl-desc"></svg>
         <div class="legend">
           <span><i class="lg line accent"></i>내 매매</span>
-          <span><i class="lg line edge"></i>같은 날 같은 돈을 SPY에</span>
+          <span id="lg-bench"><i class="lg line edge"></i>같은 날 같은 돈을 SPY에</span>
           <span><i class="lg dd"></i>최대 낙폭 구간</span>
         </div>
         <p id="pl-desc" class="x-note"></p>
