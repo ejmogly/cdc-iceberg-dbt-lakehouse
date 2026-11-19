@@ -41,9 +41,12 @@ sold as (
     end as out_krw,
     case when f.is_sell then cast(f.cost_local_before as double) / f.qty_before end as avg_before,
     case when f.is_sell then cast(f.cost_krw_before as double) / cast(f.cost_local_before as double) end as af_before,
+    -- 기준 종목 단위는 double로 나눕니다. Spark는 decimal(38,18) x 수량 / 수량에서 정밀도가 넘쳐 소수 여섯째 자리로 줄이는데,
+    -- 단위에 기준 종목의 원화 값(약 100만 원)이 곱해져 그 오차가 0.5원까지 커집니다. 2026-11-19 화면 매매에서 기준선이
+    -- DuckDB와 1원 달랐습니다(장부 pnl_ledger의 Spark 판과 같은 처리, sql/pnl/README.md 엔진 함정 3, 4).
     case when f.is_sell then
       case when f.is_full_sell then f.bench_units_before
-           else cast(f.bench_units_before * f.qty / f.qty_before as decimal(38, 18)) end
+           else cast(cast(f.bench_units_before as double) * f.qty / f.qty_before as decimal(38, 18)) end
     end as bench_units_out
   from flagged f
 )

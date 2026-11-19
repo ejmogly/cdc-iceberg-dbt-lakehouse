@@ -32,7 +32,7 @@ const PRICE = /^\d+(\.\d{1,4})?$/;
 const st = {
   symbols: new Map(), calendar: null, sym: null, asof: null, asofErr: null, rows: [], saved: { symbols: {}, last: null },
   saveOn: false, example: false, seq: 0, ctl: null, timer: null, saveTimer: null, res: null, map: [], savedAt: null,
-  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false, eseq: 0, evBusy: false, evSel: null, brokers: [],
+  saveErr: null, notes: null, rseq: 0, rctl: null, asking: false, eseq: 0, evBusy: false, evSel: null, brokers: [], pseq: 0,
 };
 const brokerName = (code) => st.brokers.find((b) => b.code === code)?.name || "증권사 안 고름";
 const isHold = (r) => (r.side || "BUY") === "HOLD";
@@ -202,6 +202,17 @@ function addRow() {
     ...(last?.broker ? { broker: last.broker } : {}) });
   renderRows();
   $(`d${st.rows.length - 1}`).focus();
+  changed();
+}
+
+// 지금 잔고 줄 넣기(기간 전 매매에 붙은 안내의 단추): 그 증권사를 채운 지금 잔고 줄을 맨 아래에 더하고 수량 칸으로
+function addHoldRow(broker) {
+  // 그 증권사의 지금 잔고 줄이 이미 있으면(아직 덜 채움) 새로 더하지 않고 그 줄 수량 칸으로(증권사마다 하나)
+  const have = st.rows.findIndex((r) => isHold(r) && (r.broker || "") === (broker || ""));
+  if (have >= 0) { $(`q${have}`).focus(); return; }
+  st.rows.push({ side: "HOLD", qty: "", price: "", fx_rate: "", ...(broker ? { broker } : {}) });
+  renderRows();
+  $(`q${st.rows.length - 1}`).focus();
   changed();
 }
 
@@ -403,6 +414,15 @@ function render(pending) {
     const bad = ws.length || ns.some((n) => BAD_NOTE.has(n.code));
     decorate(i, bad ? "warnrow" : null, [...ws, ...ns].map((w) => w.message).join(" "), avg);
     const div = $("rows").children[i];
+    const need = ns.find((n) => n.code === "PRE_WINDOW_NEEDS_HOLD");
+    if (need) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "x-ghost sm addhold";
+      b.textContent = `${need.broker_name} 지금 잔고 줄 넣기`;
+      b.addEventListener("click", () => addHoldRow(need.broker));
+      div.querySelector(".rowmsg").append(" ", b);
+    }
     if (!s) div.classList.add("out");
     if (isHold(r)) return;
     // 비운 칸에는 계산에 쓴 값을 흐리게 보임(서버가 채운 그날 종가와 매매기준율). 계산에서 빠진 줄은 비움
@@ -438,6 +458,7 @@ function render(pending) {
 
   renderVerdict(res);
   renderKpis(res);
+  renderBench(res);
   renderAccounts(res);
   renderEffects(res);
   renderSells(res);
@@ -471,7 +492,7 @@ function renderKpis(res) {
   const s = res.summary, cur = res.currency;
   $("k-local-l").textContent = cur === "KRW" ? "단순 수익률" : "달러 손익";
   if (!s) {
-    for (const id of ["k-krw", "k-local", "k-bench", "k-mdd", "k-irr"]) setKpi(id, "–", "na", "");
+    for (const id of ["k-krw", "k-local", "k-bench", "k-birr", "k-mdd", "k-irr"]) setKpi(id, "–", "na", "");
     $("k-krw-s").textContent = "계산에 들어간 매매가 없어요(내 매매 탭의 경고를 봐 주세요)";
     $("holding-line").replaceChildren();
     return;
@@ -487,10 +508,16 @@ function renderKpis(res) {
     setKpi("k-local", local(s.total_local, cur, true), tone(s.total_local),
       `실현 ${local(s.realized_local, cur, true)}, 평가 ${local(s.unrealized_local, cur, true)}`);
   }
-  if (res.opening) setKpi("k-bench", "세지 않음", "na", "데이터 첫날 전부터 가진 주식이 있어 같은 날 같은 돈으로 견줄 수 없어요");
-  else setKpi("k-bench", krwBig(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
-    `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`,
-    shortened(s.total_minus_bench_krw) ? krw(s.total_minus_bench_krw, true) : undefined);
+  if (res.opening) {
+    setKpi("k-bench", "세지 않음", "na", "데이터 첫날 전부터 가진 주식이 있어 같은 날 같은 돈으로 견줄 수 없어요");
+    setKpi("k-birr", "세지 않음", "na", "");
+  } else {
+    setKpi("k-bench", krwBig(s.total_minus_bench_krw, true), tone(s.total_minus_bench_krw),
+      `SPY에 넣었다면 ${krw(s.bench_total_krw, true)}${res.symbol === res.bench ? "(이 종목이 SPY)" : ""}`,
+      shortened(s.total_minus_bench_krw) ? krw(s.total_minus_bench_krw, true) : undefined);
+    if (s.bench_irr_pct === null) setKpi("k-birr", "계산 못 함", "na", "이 매매의 연 환산과 같은 까닭으로 세지 않아요");
+    else setKpi("k-birr", pct(s.bench_irr_pct), tone(s.bench_irr_pct), "같은 날 같은 돈을 SPY에 넣고 뺐을 때");
+  }
   if (s.max_drawdown_krw === 0) setKpi("k-mdd", "없음", "zero", "누적 손익이 앞선 고점 아래로 내려간 날이 없어요");
   else setKpi("k-mdd", krwBig(s.max_drawdown_krw), "down", "앞선 고점에서 가장 크게 내려간 폭",
     shortened(s.max_drawdown_krw) ? krw(s.max_drawdown_krw) : undefined);
@@ -501,7 +528,7 @@ function renderKpis(res) {
       ? "첫 매매일부터 기준일까지 30일이 안 되어 세지 않아요"
       : "현금 흐름으로 풀리는 값이 없어요");
   }
-  else setKpi("k-irr", pct(s.irr_pct), tone(s.irr_pct), `SPY ${pct(s.bench_irr_pct)}`);
+  else setKpi("k-irr", pct(s.irr_pct), tone(s.irr_pct), "돈이 들어가고 나온 때를 감안한 한 해 수익률");
 
   const items = [];
   if (!res.booked) items.push(["장부에 들어간 매수가 없어요", null]);
@@ -539,7 +566,8 @@ function renderAccounts(res) {
     div.innerHTML = `<div class="li-l"><b></b><span class="sub"></span></div><span class="value"></span>`;
     div.querySelector("b").textContent = a.broker_name;
     const parts = [];
-    if (!s) parts.push("계산에 들어간 매매가 없어요");
+    const none = !s || !s.invested_krw;  // 장부에 들어간 매수가 없음(기간 전 매수와 초과 매도뿐 등)
+    if (none) parts.push("계산에 들어간 매수가 없어요");
     else {
       parts.push(`남은 ${num(s.qty_left)}주`);
       if (s.qty_left > 0) parts.push(`평균 단가 ${local(s.avg_cost_local, cur)}`);
@@ -549,7 +577,7 @@ function renderAccounts(res) {
     }
     div.querySelector(".sub").textContent = parts.join(", ");
     const v = div.querySelector(".value");
-    if (a.holding_return_pct === null) { v.textContent = s && s.qty_left === 0 ? "모두 팖" : "–"; v.className = "value na"; }
+    if (a.holding_return_pct === null) { v.textContent = !none && s.qty_left === 0 ? "모두 팖" : "–"; v.className = "value na"; }
     else {
       v.textContent = pct(a.holding_return_pct);
       v.className = "value " + tone(a.holding_return_pct);
@@ -582,6 +610,20 @@ function renderVerdict(res) {
     p.append(b);
   };
   if (!res.booked) {
+    const need = (res.notes || []).find((n) => n.code === "PRE_WINDOW_NEEDS_HOLD");
+    if (need) {
+      // 기간 전 매매만 있는 종목(장기 보유): 지금 잔고 줄로 가는 길을 요약에서도 보임
+      p.append("데이터 기간 전 매매만 있어 아직 셀 수 없어요. 「지금 잔고」 줄에 증권사 앱 잔고를 넣으면 셀 수 있어요. ");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "x-ghost sm addhold";
+      b.dataset.goto = "trade";
+      b.textContent = `${need.broker_name} 지금 잔고 줄 넣기`;
+      // 탭 바꾸기(ui.js, 문서에서 받음)가 먼저 끝난 뒤 줄을 더해야 새 줄 수량 칸에 초점이 감
+      b.addEventListener("click", () => setTimeout(() => addHoldRow(need.broker), 0));
+      p.append(b);
+      return;
+    }
     p.append("장부에 들어간 매수가 없어 손익을 말할 수 없어요. 내 매매 탭의 경고를 봐 주세요.");
     return;
   }
@@ -597,10 +639,25 @@ function renderVerdict(res) {
     const gap = s.price_effect_krw + s.fx_effect_krw + s.cross_effect_krw - s.total_krw;
     p.append(gap ? `으로 나뉘어요(원 단위 반올림으로 셋의 합과 ${krw(Math.abs(gap))} 차이).` : "으로 나뉘어요.");
   }
-  if (res.symbol === res.bench) return;
-  if (res.opening) { p.append(" 데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요."); return; }
+}
+
+// SPY와 견주기 카드의 문장(전에 결론 문장 끝에 있던 SPY 비교, 11/19에 원화 손익 카드에서 뺌)
+function renderBench(res) {
+  const p = $("bench-line"), s = res.summary;
+  p.replaceChildren();
+  $("bench-box").hidden = !s || !res.booked;
+  if (!s || !res.booked) return;
+  if (res.symbol === res.bench) { p.textContent = "이 종목이 SPY라 견줄 것이 없어요."; return; }
+  if (res.opening) { p.textContent = "데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요."; return; }
+  const n = (text, v, exact) => {
+    const b = document.createElement("b");
+    b.className = "n " + tone(v);
+    b.textContent = text;
+    if (exact && exact !== text) b.title = exact;
+    p.append(b);
+  };
   const d = s.total_minus_bench_krw;
-  p.append(" 같은 날 같은 돈을 SPY에 넣었다면 ");
+  p.append("같은 날 같은 돈을 SPY에 넣었다면 ");
   n(krwBig(s.bench_total_krw, true), s.bench_total_krw, krw(s.bench_total_krw, true));
   if (d === 0) { p.append("으로 이 매매와 같아요."); return; }
   p.append("이라, 이 매매가 ");
@@ -902,6 +959,84 @@ function account() {
   return out;
 }
 
+// ---------- 전체 탭(11/19 중간 판 의견): 저장한 모든 종목을 지금 기준일로 다시 셈 ----------
+
+function pfState(text, err = false) {
+  const p = $("pf-state");
+  p.textContent = text;
+  p.classList.toggle("err", err);
+}
+
+async function fetchPortfolio() {
+  if (!st.calendar || !st.asof) return;  // 주소가 #all이면 탭이 시작 전에 보여, 시작이 끝난 뒤(boot 끝) 다시 부름
+  const my = ++st.pseq;
+  const acct = account();  // 저장한 모든 종목 + 지금 고치는 종목(묻고 답하기와 같은 계좌)
+  if (!Object.keys(acct).length) {
+    for (const id of ["pf-list", "pf-brokers"]) $(id).replaceChildren();
+    setKpi("pf-krw", "–", "na", "넣은 매매가 없어요. 종목을 골라 내 매매 탭에서 넣어 주세요.");
+    $("pf-asof").textContent = "";
+    $("pf-note").textContent = "";
+    pfState("");
+    return;
+  }
+  pfState("계산하는 중");
+  let r;
+  try {
+    r = await api("/api/portfolio", { method: "POST", body: JSON.stringify({ asof: st.asof, account: acct }) });
+  } catch {
+    if (my === st.pseq) pfState("서버에 닿지 못했습니다. make screen으로 서버가 떠 있는지 확인하세요.", true);
+    return;
+  }
+  if (my !== st.pseq) return;
+  if (r.status !== 200) { pfState(`계산하지 못했습니다(${r.status}${r.body?.message ? ", " + r.body.message : ""}).`, true); return; }
+  renderPortfolio(r.body);
+}
+
+function pfLi(name, sub, valueText, valueTone, small, onClick) {
+  const el = document.createElement(onClick ? "button" : "div");
+  el.className = "li" + (onClick ? " pf-row" : "");
+  el.setAttribute("role", "listitem");
+  if (onClick) { el.type = "button"; el.addEventListener("click", onClick); }
+  el.innerHTML = `<div class="li-l"><b></b><span class="sub"></span></div><span class="value"></span>`;
+  el.querySelector("b").textContent = name;
+  el.querySelector(".sub").textContent = sub;
+  const v = el.querySelector(".value");
+  v.textContent = valueText;
+  v.className = "value " + (valueTone || "");
+  if (small) { const sm = document.createElement("small"); sm.textContent = small; v.append(sm); }
+  return el;
+}
+
+function renderPortfolio(p) {
+  const t = p.total;
+  $("pf-asof").textContent = `기준일 ${p.asof}`;
+  const head = shortened(t.total_krw) ? `${krw(t.total_krw, true)}, ` : "";
+  setKpi("pf-krw", krwBig(t.total_krw, true), tone(t.total_krw),
+    `${head}실현 ${krw(t.realized_krw, true)}, 평가 ${krw(t.unrealized_krw, true)}. 넣은 원화 ${krw(t.invested_krw)}, 평가액 ${krw(t.value_krw)}`
+    + (t.simple_return_pct === null ? "" : `, 단순 수익률 ${pct(t.simple_return_pct)}`));
+  $("pf-list").replaceChildren(...p.symbols.map((x) => {
+    const parts = [x.brokers.join(", ")];
+    if (!x.booked) parts.push(x.notes.includes("PRE_WINDOW_NEEDS_HOLD") ? "기간 전 매매만 있어 지금 잔고 줄이 필요해요" : "계산에 들어간 매수가 없어요");
+    else parts.push(`남은 ${num(x.qty_left)}주`, `평가액 ${krw(x.value_krw)}` + (x.weight_pct === null ? "" : `(비중 ${one(x.weight_pct)}%)`));
+    if (x.warnings) parts.push(`입력 경고 ${x.warnings}건`);
+    const go = () => {
+      if (st.sym !== x.symbol) { if (st.saveTimer) save(); resetEvents(); load(x.symbol); }
+      document.querySelector('.tab[data-tab="sum"]').click();
+    };
+    return pfLi(`${x.name} ${x.symbol}`, parts.filter(Boolean).join(", "), x.booked ? krwBig(x.total_krw, true) : "–",
+      x.booked ? tone(x.total_krw) : "na", x.booked && x.simple_return_pct !== null ? pct(x.simple_return_pct) : "", go);
+  }));
+  $("pf-brokers").replaceChildren(...p.brokers.map((b) => pfLi(b.broker_name,
+    `종목 ${b.symbols}개, 평가액 ${krw(b.value_krw)}, 실현 ${krw(b.realized_krw, true)}, 평가 ${krw(b.unrealized_krw, true)}`,
+    krwBig(b.total_krw, true), tone(b.total_krw))));
+  const notes = ["저장한 모든 종목의 매매를 위 기준일로 다시 센 값이에요(종목마다 저장한 기준일과 다를 수 있어요).",
+    "SPY 비교와 연 환산 수익률은 돈이 들어간 때가 종목마다 달라 여기서 더하지 않고 종목 요약에서 봐요."];
+  if (p.symbols.some((x) => x.currency === "USD")) notes.push(`미국 종목 평가액은 ${p.fx_date} 매매기준율로 원화로 바꿨어요.`);
+  if (p.skipped.length) notes.push(`틀린 줄이 있어 뺀 종목: ${p.skipped.map((x) => `${x.name}(${x.message})`).join(", ")}`);
+  $("pf-note").textContent = notes.join(" ");
+  pfState(`계산 ${p.ms}ms. 종목 ${p.symbols.length}개, 증권사 ${p.brokers.length}곳`);
+}
+
 const STATUS = { answered: ["답함", "ok"], unknown: ["모름", "plain"], refused: ["답하지 않음", "plain"], clarify: ["되물음", "warn"] };
 
 function qaState(text, err = false) {
@@ -1075,10 +1210,11 @@ async function boot() {
     st.asof = asof.value;
     fetchRange();
     changed();
+    if (!$("all").hidden) fetchPortfolio();
   });
   window.addEventListener("pagehide", flush);
   // 숨은 탭에서 그린 그림은 폭을 몰라 기본 폭으로 그려지므로, 그림 탭이 보일 때 다시 그림
-  document.addEventListener("tabshown", (e) => { if (e.detail === "chart") drawCharts(); });
+  document.addEventListener("tabshown", (e) => { if (e.detail === "chart") drawCharts(); if (e.detail === "all") fetchPortfolio(); });
   $("qa-form").addEventListener("submit", (e) => { e.preventDefault(); ask($("qa-q").value); });
   for (const b of document.querySelectorAll(".qa-examples .chip")) {
     b.addEventListener("click", () => { $("qa-q").value = b.dataset.q.replace("이 종목", st.symbols.get(st.sym)?.name || st.sym); $("qa-q").focus(); });
@@ -1095,6 +1231,7 @@ async function boot() {
   $("main").hidden = false;
   const first = st.saved.last && st.symbols.has(st.saved.last) ? st.saved.last : DEFAULT_SYMBOL;
   load(first);
+  if (!$("all").hidden) fetchPortfolio();
 }
 
 boot();

@@ -160,6 +160,14 @@ input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-sof
 #k-krw.long { font-size: clamp(34px, 4.2vw, 44px); } #k-krw.longer { font-size: clamp(28px, 3.4vw, 36px); }
 #k-krw.up { color: var(--up-big); } #k-krw.down { color: var(--down-big); } #k-krw.na { color: var(--ts-t3); font-size: 28px; }
 #k-krw-s { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* 전체 탭(11/19): 큰 숫자는 요약의 원화 손익과 같은 모양, 종목 줄은 누르면 그 종목 요약으로 */
+#pf-krw { font-size: clamp(40px, 5vw, 52px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+#pf-krw.long { font-size: clamp(34px, 4.2vw, 44px); } #pf-krw.longer { font-size: clamp(28px, 3.4vw, 36px); }
+#pf-krw.up { color: var(--up-big); } #pf-krw.down { color: var(--down-big); } #pf-krw.na { color: var(--ts-t3); font-size: 28px; }
+#pf-krw-s { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.pf-row { width: 100%; border: 0; border-top: 1px solid var(--line); background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: 0; }
+.pf-row:hover { background: var(--ts-fill); }
+.pf-row .value small { display: block; font-size: 13px; font-weight: 600; text-align: right; }
 .verdict { font-size: 16.5px; line-height: 1.6; color: var(--ink-2); max-width: 70ch; }
 .verdict .n { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .up { color: var(--up); } .down { color: var(--down); } .zero { color: var(--ink-2); } .na { color: var(--ts-t3); font-weight: 700; }
@@ -219,6 +227,8 @@ div.fx-total { padding-top: 10px; border-top: 1px solid var(--line); }
 .avg { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 4px; color: var(--ink-2); }
 .rowmsg { grid-column: 1 / -1; font-size: 13px; color: var(--warn); padding: 0 4px 2px; font-weight: 600; }
 .badrow .rowmsg { color: var(--bad); }
+.rowmsg .addhold { margin-left: 6px; vertical-align: middle; }
+.verdict .addhold { margin-top: 6px; }
 .btn { font: inherit; font-size: 14px; font-weight: 700; border: 0; background: var(--ts-fill); color: var(--ink-2); border-radius: 12px;
   padding: 10px 16px; cursor: pointer; white-space: nowrap; min-height: 42px; }
 .btn:hover { color: var(--ink); }

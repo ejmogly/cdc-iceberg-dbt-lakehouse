@@ -16,6 +16,8 @@ API(127.0.0.1에서만 받고, Host 머리도 127.0.0.1이나 localhost만)
                      기준일이 「오늘」입니다. 답은 ai/qa.py(새 판 f1)이고 모델을 부릅니다(질문당 약 $0.01, 한 번에 하나).
                      돌려주는 것: status, text, numbers, dates_used, warnings, 쓴 도구, 코드가 정한 답인지, 시간, 비용.
                      이미 답을 만드는 중이면 429, 모델 호출 상한에 닿으면 503 BUDGET
+  POST /api/portfolio 전체 탭(11/19 중간 판 의견). {"asof", "account": {종목: [매매 줄]}}. 종목마다 손익 API와 같은 계산
+                     (증권사별, 지금 잔고 포함)을 돌려 원화 손익, 평가액, 비중을 종목별, 증권사별, 전체로 더합니다
   POST /api/events   7번 칸(그때 무슨 일이). {"symbol", "date"}. 그날의 움직임 문장(코드), 검색 판 H1이 고른 기사의 요약과
                      인용(ai/e02_answer.py, 모델 1 ~ 2번), 같은 날 일정(전날 장 마감부터 그날 장 마감 전까지 발표). 같은
                      종목과 날짜는 서버를 띄운 동안 한 번만 부르고 다시 쓰며, 국내 종목은 모델 없이 고정 문구. 한 번에 하나(429)
@@ -321,7 +323,7 @@ class App:
                     if key == "qty":
                         raise BadRequest("BAD_TRADE", f"{n}번 줄의 수량이 없습니다", k)
                     if side == "HOLD" and (key == "price" or (key == "fx_rate" and usd)):
-                        raise BadRequest("BAD_TRADE", f"{n}번 줄(지금 잔고)의 {label}이 없습니다", k)
+                        raise BadRequest("BAD_TRADE", f"{n}번 줄(지금 잔고)의 {label}{'가' if label.endswith('가') else '이'} 없습니다", k)
                     continue
                 try:
                     v = number(v, {"q": "qty", "p": "price", "fx": "fx"}[name])
@@ -565,6 +567,79 @@ class App:
                 "cost_usd": round(sum(c.get("cost_usd") or 0 for c in calls), 4),
                 "seconds": round(time.perf_counter() - t0, 1)}
 
+    def api_portfolio(self, body):
+        """전체 탭. 종목마다 api_pnl과 같은 계산(ai/holdings.run)을 돌려 더합니다. 평가액은 남은 수량 x 기준일(이전 마지막
+        거래일) 종가 x 그날 매매기준율(국내는 1)로, 손익 SQL의 평가와 같은 값을 씁니다. 틀린 줄이 있는 종목은 빼고 까닭을 남깁니다.
+        SPY 비교와 연 환산은 종목마다(돈이 들어간 때가 종목마다 달라 더해서 보이지 않음)."""
+        d = self.data
+        asof = body.get("asof")
+        if not iso_date(asof):
+            raise BadRequest("BAD_DATE", "기준일은 YYYY-MM-DD로 주세요")
+        if not d.calendar[0] <= asof <= d.calendar[-1]:
+            raise BadRequest("OUT_OF_DATA_RANGE", f"기준일은 데이터 기간({d.calendar[0]} ~ {d.calendar[-1]}) 안이어야 합니다")
+        acct = body.get("account")
+        if not isinstance(acct, dict):
+            raise BadRequest("BAD_ACCOUNT", "넣은 매매의 모양이 틀렸습니다")
+        t0 = time.perf_counter()
+        end = _last_on_or_before(d.calendar, asof)
+        fx_day = _last_on_or_before(d.fx_days, end)
+        keys = ("realized_krw", "unrealized_krw", "total_krw", "invested_krw")
+        symbols, skipped, by_broker = [], [], {}
+        for sym, rows in acct.items():
+            if sym not in d.symbols:
+                raise BadRequest("UNKNOWN_SYMBOL", f"넣은 매매에 없는 종목이 있습니다: {sym}")
+            if not isinstance(rows, list):
+                raise BadRequest("BAD_ACCOUNT", f"{d.symbols[sym]['name']}({sym}) 매매의 모양이 틀렸습니다")
+            if not rows:
+                continue
+            try:
+                parsed = self._trades({"trades": rows}, sym)
+                with d.lock:
+                    r = holdings.run(d.engine(), d.world, sym, parsed, asof, d.bench)
+            except BadRequest as e:
+                skipped.append({"symbol": sym, "name": d.symbols[sym]["name"],
+                                "message": re.sub(r"^\d+번 줄(\(지금 잔고\))?의 ", "", e.message)})
+                continue
+            except duckdb.OutOfRangeException:
+                skipped.append({"symbol": sym, "name": d.symbols[sym]["name"], "message": "금액이 계산할 수 있는 범위를 넘었습니다"})
+                continue
+            px_day = _last_on_or_before(d.rows[sym], asof)
+            close = Decimal(str(d.symbols[sym]["rows"][px_day]["close"])) if px_day else None
+            fx = Decimal(str(d.usdkrw[fx_day])) if d.symbols[sym]["currency"] == "USD" else Decimal(1)
+            s = r["summary"] or {}
+            accts = []
+            for a in r["accounts"]:
+                sa = a["summary"]
+                if not sa:
+                    continue
+                value = won(Decimal(str(sa["qty_left"])) * close * fx) if close is not None else 0
+                accts.append({"broker": a["broker"], "broker_name": a["broker_name"], "value_krw": value,
+                              **{k: _num(sa[k]) for k in keys}, "qty_left": _num(sa["qty_left"])})
+                b = by_broker.setdefault(a["broker"], {"broker": a["broker"], "broker_name": a["broker_name"], "symbols": 0,
+                                                       "value_krw": 0, **{k: 0 for k in keys}})
+                b["symbols"] += 1
+                b["value_krw"] += value
+                for k in keys:
+                    b[k] += _num(sa[k])
+            booked = bool(s) and bool(_num(s.get("invested_krw") or 0))
+            row = {"symbol": sym, "name": d.symbols[sym]["name"], "currency": d.symbols[sym]["currency"],
+                   "asof_price_date": px_day, "brokers": [a["broker_name"] for a in r["accounts"]], "booked": booked,
+                   "qty_left": _num(s["qty_left"]) if s else 0, "value_krw": sum(a["value_krw"] for a in accts),
+                   **{k: (_num(s[k]) if s else 0) for k in keys},
+                   "simple_return_pct": _num(s["simple_return_pct"]) if s and s.get("simple_return_pct") is not None else None,
+                   "warnings": len(r["warnings"]), "notes": [n["code"] for n in r["notes"]], "accounts": accts}
+            symbols.append(row)
+        symbols.sort(key=lambda x: (-x["value_krw"], x["symbol"]))
+        total = {k: sum(x[k] for x in symbols) for k in keys + ("value_krw",)}
+        total["simple_return_pct"] = _round(Decimal(total["total_krw"]) / Decimal(total["invested_krw"]) * 100, 2) \
+            if total["invested_krw"] else None
+        for x in symbols:
+            x["weight_pct"] = _round(Decimal(x["value_krw"]) / Decimal(total["value_krw"]) * 100, 2) if total["value_krw"] else None
+        brokers = sorted(by_broker.values(), key=lambda b: (-b["value_krw"], b["broker_name"]))
+        took = time.perf_counter() - t0
+        return {"asof": asof, "fx_date": fx_day, "total": total, "symbols": symbols, "brokers": brokers,
+                "skipped": skipped, "ms": round(took * 1000)}
+
     # ---------- 넣은 매매 저장(설계서 6절 4번) ----------
 
     def _amount(self, symbol, t):
@@ -733,7 +808,7 @@ def make_handler(app, port_holder):
             if not self._host_ok():
                 return
             app.maybe_reload()
-            if self.path not in ("/api/pnl", "/api/ask", "/api/events"):
+            if self.path not in ("/api/pnl", "/api/ask", "/api/events", "/api/portfolio"):
                 return self._send(404, {"error": "NOT_FOUND"})
             if not self._gate():
                 return
@@ -746,7 +821,8 @@ def make_handler(app, port_holder):
             except BadRequest as e:
                 return self._send(400, e.payload())
             try:
-                fn = {"/api/ask": app.api_ask, "/api/events": app.api_events, "/api/pnl": app.api_pnl}[self.path]
+                fn = {"/api/ask": app.api_ask, "/api/events": app.api_events, "/api/pnl": app.api_pnl,
+                      "/api/portfolio": app.api_portfolio}[self.path]
                 return self._send(200, fn(body))
             except BadRequest as e:
                 return self._send(400, e.payload())

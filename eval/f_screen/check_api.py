@@ -8,6 +8,7 @@
       .venv/bin/python eval/f_screen/check_api.py pipeline   파이프라인 상태(깬 원천, 깬 파일)
       .venv/bin/python eval/f_screen/check_api.py edges      입력 경계(잘못된 날짜와 수, 빠진 줄만 있는 매매, Host 머리)
       .venv/bin/python eval/f_screen/check_api.py accounts   증권사별 계좌와 지금 잔고(11/19 중간 판 의견, ai/holdings.py)
+      .venv/bin/python eval/f_screen/check_api.py portfolio  전체 탭(POST /api/portfolio): 종목별 손익 API의 합, 평가액, 비중, 증권사별 합
 
 - 골든: E01 골든 30개(eval/e01_pnl/cases.json)를 골든용 파일(data/generated/screen_golden.duckdb)로 띄운 서버에 넣고
   정답과 맞춥니다. 허용 오차는 E01과 같음(원은 원 단위, 달러는 센트, 연 환산 0.05%p). 경고는 여덟 코드를 한 건씩
@@ -627,6 +628,14 @@ def check_accounts():
         got = sorted(n["code"] for n in r.get("notes", []))
         ok(f"지금 잔고: {name}", c == 200 and got == want and not r["opening"], f"{c} {got}")
 
+    # 4-2. 기간 전 매매만 있고 지금 잔고 줄이 없으면 그 증권사 첫 기간 전 줄에 안내(11/19 중간 판: 장기 보유가 비어 보임)
+    c, r = qq([row("2023-05-01", "BUY", "50", "KIS", price="300", fx_rate="1300"), row("2025-08-01", "SELL", "6", "KIS")])
+    ok("지금 잔고 없음: 기간 전 줄에 지금 잔고 넣기 안내", c == 200
+       and [(n["code"], n["trade_index"], n["broker"]) for n in r.get("notes", [])] == [("PRE_WINDOW_NEEDS_HOLD", 0, "KIS")]
+       and "평균 매입 환율" in r["notes"][0]["message"] and not r["booked"], f"{c} {[n['code'] for n in r.get('notes', [])]}")
+    c, r = qq([row("2023-05-01", "BUY", "50", "KIS", price="300", fx_rate="1300"), hold("44", "300", "KIS", **fx)])
+    ok("지금 잔고 있음: 지금 잔고 넣기 안내 없음", c == 200 and "PRE_WINDOW_NEEDS_HOLD" not in [n["code"] for n in r.get("notes", [])])
+
     # 5. 잘못된 지금 잔고 줄과 증권사
     bad = [("지금 잔고 환율 없음(미국)", [hold("3", "450", "KIS")]),
            ("지금 잔고 둘(같은 증권사)", [hold("3", "450", "KIS", **fx), hold("2", "450", "KIS", **fx)]),
@@ -678,8 +687,81 @@ def check_accounts():
     return {"pass": n, "cases": len(tests), "rows": [{"name": a, "pass": b} for a, b, _ in tests]}
 
 
+def check_portfolio():
+    """전체 탭. 종목마다 손익 API(/api/pnl)를 따로 불러 더한 값과, 화면 데이터 파일에서 따로 읽은 기준일 종가와 매매기준율로 센
+    평가액과 견줍니다. 금액은 출력하지 않습니다."""
+    httpd, _ = serve(screen_data.OUT, 0)
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    asof = "2026-11-11"
+    row = lambda d, side, q, b="", **kw: {"date": d, "side": side, "qty": q, **({"broker": b} if b else {}), **kw}
+    acct = {"QQQ": [row("2025-03-03", "BUY", "3", "TOSS"), row("2025-08-01", "SELL", "1", "TOSS"),
+                    row("2025-06-02", "BUY", "2", "KIS"), {"side": "HOLD", "qty": "11", "price": "410", "fx_rate": "1360", "broker": "KIS"}],
+            "005930": [row("2025-03-04", "BUY", "10"), row("2025-06-02", "BUY", "5", "KAKAOPAY"), row("2025-09-01", "SELL", "2", "KAKAOPAY")],
+            "TSLA": [row("2024-06-03", "BUY", "60", "KIS", price="250.00", fx_rate="1300.00"), row("2025-06-02", "SELL", "30", "KIS")],
+            "SPY": []}
+    tests = []
+
+    def ok(name, cond, got=""):
+        tests.append((name, bool(cond), got))
+
+    c, r = http(base, "/api/portfolio", {"asof": asof, "account": acct})
+    ok("200과 종목 셋(빈 종목은 뺌)", c == 200 and sorted(x["symbol"] for x in r["symbols"]) == ["005930", "QQQ", "TSLA"], f"{c}")
+    keys = ("realized_krw", "unrealized_krw", "total_krw", "invested_krw")
+    each = {}
+    for sym, rows in acct.items():
+        if rows:
+            c2, r2 = http(base, "/api/pnl", {"symbol": sym, "asof": asof, "trades": rows})
+            each[sym] = r2
+    ok("종목 줄 = 그 종목 손익 API", all(all(x[k] == (each[x["symbol"]]["summary"] or {}).get(k, 0) for k in keys)
+                                    for x in r["symbols"]))
+    ok("전체 = 종목 손익 API의 합", all(r["total"][k] == sum((v["summary"] or {}).get(k, 0) for v in each.values()) for k in keys))
+    # 평가액: 화면 데이터 파일에서 따로 읽은 기준일 이전 마지막 종가와 그날(달력에 맞춘 날 이전 마지막) 매매기준율
+    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    end = con.execute("select max(cal_date) from calendar where cal_date <= ?", [asof]).fetchone()[0]
+    fx = con.execute("select rate from fx where rate_date = (select max(rate_date) from fx where rate_date <= ?)", [end]).fetchone()[0]
+    good_value = True
+    for x in r["symbols"]:
+        close = con.execute("select close from prices where symbol = ? and trade_date = (select max(trade_date) from prices "
+                            "where symbol = ? and trade_date <= ?)", [x["symbol"], x["symbol"], asof]).fetchone()[0]
+        rate = fx if x["currency"] == "USD" else 1
+        want = sum(int((Decimal(a["qty_left"]) * close * rate).quantize(Decimal(1), rounding="ROUND_HALF_UP")) for a in x["accounts"])
+        good_value &= x["value_krw"] == want
+    con.close()
+    ok("평가액 = 남은 수량 x 기준일 종가 x 매매기준율(계좌마다 원 단위)", good_value)
+    ok("비중 합 100%(반올림 0.05 안)", abs(sum(x["weight_pct"] or 0 for x in r["symbols"]) - 100) < 0.05)
+    br = {b["broker"]: b for b in r["brokers"]}
+    sums = {}
+    for x in r["symbols"]:
+        for a in x["accounts"]:
+            sb = sums.setdefault(a["broker"], {k: 0 for k in keys})
+            for k in keys:
+                sb[k] += a[k]
+    ok("증권사별 = 계좌들의 합", set(br) == set(sums) and all(br[b][k] == sums[b][k] for b in sums for k in keys), str(sorted(br)))
+    ok("증권사별 합의 합 = 전체", all(sum(b[k] for b in r["brokers"]) == r["total"][k] for k in keys))
+    tsla = next(x for x in r["symbols"] if x["symbol"] == "TSLA")
+    ok("기간 전 매매만 있는 종목: 계산 안 됨과 지금 잔고 안내", not tsla["booked"] and "PRE_WINDOW_NEEDS_HOLD" in tsla["notes"]
+       and tsla["brokers"] == ["한국투자증권"])
+    # 틀린 줄이 있는 종목은 빼고 까닭을 남김(전체가 실패하지 않음), 잘못된 입력은 400
+    c, r = http(base, "/api/portfolio", {"asof": asof, "account": {**acct, "NVDA": [{"side": "HOLD", "qty": "1", "broker": "KIS"}]}})
+    ok("틀린 줄이 있는 종목은 빼고 까닭", c == 200 and [x["symbol"] for x in r["skipped"]] == ["NVDA"]
+       and "평균 단가가 없습니다" in r["skipped"][0]["message"], f"{c} {r.get('skipped')}")
+    for name, body, code in (("기준일 틀림", {"asof": "2026-13-01", "account": acct}, "BAD_DATE"),
+                             ("계좌가 목록", {"asof": asof, "account": []}, "BAD_ACCOUNT"),
+                             ("없는 종목", {"asof": asof, "account": {"NOPE": []}}, "UNKNOWN_SYMBOL")):
+        c, r = http(base, "/api/portfolio", body)
+        ok(f"400: {name}", c == 400 and r.get("error") == code, f"{c} {r.get('error')}")
+    c, r = http(base, "/api/portfolio", {"asof": asof, "account": {}})
+    ok("빈 계좌: 0과 빈 목록", c == 200 and r["symbols"] == [] and r["total"]["total_krw"] == 0 and r["total"]["simple_return_pct"] is None)
+    stop(httpd)
+    n = sum(1 for _, b, _ in tests if b)
+    print(f"전체 탭: {n}/{len(tests)}")
+    for name, b, got in tests:
+        print(f"  {'통과' if b else '실패'}  {name}" + (f": {got}" if not b and got else ""))
+    return {"pass": n, "cases": len(tests), "rows": [{"name": a, "pass": b} for a, b, _ in tests]}
+
+
 CHECKS = {"golden": check_golden, "real": check_real, "latency": check_latency, "pipeline": check_pipeline,
-          "edges": check_edges, "accounts": check_accounts}
+          "edges": check_edges, "accounts": check_accounts, "portfolio": check_portfolio}
 
 
 def passed(k, v):

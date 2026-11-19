@@ -62,3 +62,15 @@ models:
       - name: usdkrw_rate
         data_tests: [not_null]
 
+  - name: mart_account_pnl
+    description: >
+      계좌별 손익 합. 계좌 x 종목 손익(pnl_position)을 계좌로 더하고, 평가액(남은 수량 x 그날 종가 x 원/달러)을
+      계좌, 종목마다 원 단위로 반올림해 더합니다. 화면 전체 탭의 증권사별 줄과 같은 값이어야 합니다
+      (loaders/screen_trades.py --verify).
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - name: total_krw
+        data_tests: [not_null]
+      - name: value_krw
+        data_tests: [not_null]

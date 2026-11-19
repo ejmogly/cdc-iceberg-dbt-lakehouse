@@ -18,6 +18,7 @@
 | [0011](0011-silver-incremental-read.md) | Silver는 Bronze의 새 스냅샷만 읽는다(증분 읽기) | 2026-11-18 | 결정, 확인함 |
 | [0012](0012-executions-order-id-index.md) | 원천 체결 테이블의 order_id에 인덱스를 둔다 | 2026-11-18 | 결정, 확인함 |
 | [0013](0013-screen-accounts-and-transfer-in.md) | 화면 매매를 증권사마다 계좌로 나누고, 데이터 기간 전 보유는 입고 주문으로 넣는다 | 2026-11-19 | 결정, 확인함 |
+| [0014](0014-portfolio-tab-and-account-mart.md) | 전체 탭은 종목마다 같은 계산을 더하고, Gold에는 계좌별 손익 마트를 둔다 | 2026-11-19 | 결정, 확인함 |
 
 ## 다음에 쓸 것
 

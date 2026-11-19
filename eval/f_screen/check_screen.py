@@ -187,8 +187,8 @@ def chrome_dom(url, width=1280):
     return r.stdout
 
 
-def post(port, body):
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/pnl", data=json.dumps(body).encode(),
+def post(port, body, path="/api/pnl"):
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
@@ -234,6 +234,9 @@ ACCOUNT_CASES = [
         {"date": "2025-03-03", "side": "BUY", "qty": "4", "broker": "KIS"},
         {"date": "2025-08-01", "side": "SELL", "qty": "6", "broker": "KIS"},
         {"side": "HOLD", "qty": "48", "price": "420", "fx_rate": "1350", "broker": "KIS"}]},
+    {"id": "A03", "title": "기간 전 매수만 있고 지금 잔고 줄이 없음(지금 잔고 넣기 안내)", "symbol": "QQQ", "asof": "2026-11-12", "rows": [
+        {"date": "2023-05-01", "side": "BUY", "qty": "50", "price": "300", "fx_rate": "1300", "broker": "KIS"},
+        {"date": "2025-08-01", "side": "SELL", "qty": "6", "broker": "KIS"}]},
 ]
 BROKER_NAMES = {"": "증권사 안 고름", "TOSS": "토스증권", "KAKAOPAY": "카카오페이증권", "KIS": "한국투자증권"}
 
@@ -244,6 +247,8 @@ ACCOUNT_MUT = {
     "A02": {"SPY와 차이를 숫자로": lambda h: _span(h, "k-bench", lambda t, x: (t, "+1만원")),
             "지금 잔고 줄 평단 칸 바꿈": lambda h: re.sub(r'(<span class="avg"[^>]*>)첫날 ', lambda x: x.group(1) + "처음 ", h, count=1),
             "SPY 범례 보임": lambda h: re.sub(r'<span id="lg-bench" hidden="">', '<span id="lg-bench">', h, count=1)},
+    "A03": {"줄의 지금 잔고 단추 지움": lambda h: re.sub(r'<button type="button" class="x-ghost sm addhold">[^<]*</button>', "", h, count=1),
+            "요약 안내 문장 바꿈": lambda h: h.replace("데이터 기간 전 매매만 있어 아직 셀 수 없어요.", "장부에 들어간 매수가 없어요.", 1)},
 }
 
 
@@ -274,10 +279,13 @@ def check_account_case(case, port, html=None):
     for n, a in zip(items, api["accounts"]):
         eq(f"{a['broker_name']} 이름", n.find("b")[0].text(), BROKER_NAMES[a["broker"]])
         v = n.find(cls="value")[0].text()
+        none = not a["summary"] or not a["summary"]["invested_krw"]
         eq(f"{a['broker_name']} 남은 주식 수익률", v, fpct(a["holding_return_pct"]) if a["holding_return_pct"] is not None
-           else ("모두 팖" if a["summary"] and a["summary"]["qty_left"] == 0 else "–"))
+           else ("모두 팖" if not none and a["summary"]["qty_left"] == 0 else "–"))
         sub = n.find(cls="sub")[0].text()
-        if a["summary"] and f"남은 {fnum(a['summary']['qty_left'])}주" not in sub:
+        if none:
+            eq(f"{a['broker_name']} 매수 없음 문장", sub, "계산에 들어간 매수가 없어요")
+        elif f"남은 {fnum(a['summary']['qty_left'])}주" not in sub:
             bad.append(f"{a['broker_name']} 남은 수량 없음: {sub!r}")
     # 원화 손익 보조(실현과 평가는 증권사별 합)
     if f"실현 {fkrw(s['realized_krw'], True)}, 평가 {fkrw(s['unrealized_krw'], True)}" not in (text("k-krw-s") or ""):
@@ -295,7 +303,8 @@ def check_account_case(case, port, html=None):
     if api["opening"]:
         eq("SPY와 차이(시작 보유)", text("k-bench"), "세지 않음")
         eq("연 환산(시작 보유)", text("k-irr"), "세지 않음")
-        eq("결론 문장 끝(시작 보유)", (text("verdict") or "").endswith("데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요."), True)
+        eq("SPY 카드 문장(시작 보유)", text("bench-line"), "데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요.")
+        eq("SPY 연 환산(시작 보유)", text("k-birr"), "세지 않음")
         eq("보유 기간 이름(시작 보유)", f"{api['holding'][0]} ~ {api['holding'][1]}", hold.get("보유 기간(데이터 첫날 전부터 ~ 기준일)"))
         eq("SPY 범례 숨김", "hidden" in ids["lg-bench"].attrs, True)
         d = api["daily"][-1]
@@ -316,6 +325,17 @@ def check_account_case(case, port, html=None):
             eq(f"{k + 1}번 줄 평단 칸(첫날 보유)", avg, f"첫날 {fnum(st['qty'])}주, {fprice(st['price'], cur)}" if st else "계산에서 빠짐")
         elif st and not st["excluded"]:
             eq(f"{k + 1}번 줄 평균 단가(그 증권사)", avg, fprice(st["avg_cost_after"], cur) if st["qty_after"] else "남은 수량 없음")
+    # 기간 전 매매만 있고 지금 잔고 줄이 없는 증권사: 그 줄과 요약 결론 문장에 「지금 잔고 줄 넣기」 단추(11/19)
+    need = [n for n in api["notes"] if n["code"] == "PRE_WINDOW_NEEDS_HOLD"]
+    for n in need:
+        row = rows[n["trade_index"]]
+        btns = [b.text() for b in row.walk() if b.tag == "button" and "addhold" in (b.attrs.get("class") or "")]
+        eq(f"{n['trade_index'] + 1}번 줄 지금 잔고 단추", btns, [f"{BROKER_NAMES[n['broker']]} 지금 잔고 줄 넣기"])
+    if need and not api["booked"]:
+        v = text("verdict") or ""
+        eq("요약 안내 문장", v.startswith("데이터 기간 전 매매만 있어 아직 셀 수 없어요."), True)
+        eq("요약 지금 잔고 단추", [b.text() for b in ids["verdict"].find("button")],
+           [f"{BROKER_NAMES[need[0]['broker']]} 지금 잔고 줄 넣기"])
     lis = ids["hold-notes"].find("li")
     eq("계산 안내 수", len(lis), len(api["notes"]))
     for li, n in zip(lis, api["notes"]):
@@ -324,6 +344,80 @@ def check_account_case(case, port, html=None):
     # 가격 그림: 시작 보유는 매수 표시에서 뺌
     live = [x for x in api["steps"] if not x["excluded"] and not x.get("opening")]
     eq("가격 그림 매수 표시 수", len(ids["px"].find(cls="m-buy")), sum(x["side"] == "BUY" for x in live))
+    return api, bad
+
+
+# 전체 탭(11/19 중간 판 의견): 여러 종목을 저장해 두고 #all로 연 화면을 /api/portfolio 값과 대조
+PORTFOLIO_CASE = {"id": "P01", "title": "전체 탭(세 종목, 증권사 넷, 지금 잔고와 기간 전 매매만 있는 종목)", "asof": "2026-11-12", "last": "QQQ",
+                  "symbols": {s: c["rows"] for s, c in (("QQQ", {"rows": [
+                      {"date": "2025-03-03", "side": "BUY", "qty": "3", "broker": "TOSS"},
+                      {"date": "2025-08-01", "side": "SELL", "qty": "1", "broker": "TOSS"},
+                      {"date": "2025-06-02", "side": "BUY", "qty": "2", "broker": "KIS"},
+                      {"side": "HOLD", "qty": "11", "price": "410", "fx_rate": "1360", "broker": "KIS"}]}),
+                      ("005930", {"rows": [{"date": "2025-03-04", "side": "BUY", "qty": "10"},
+                                           {"date": "2025-06-02", "side": "BUY", "qty": "5", "broker": "KAKAOPAY"},
+                                           {"date": "2025-09-01", "side": "SELL", "qty": "2", "broker": "KAKAOPAY"}]}),
+                      ("TSLA", {"rows": [{"date": "2024-06-03", "side": "BUY", "qty": "60", "price": "250.00", "fx_rate": "1300.00",
+                                          "broker": "KIS"}, {"date": "2025-06-02", "side": "SELL", "qty": "30", "broker": "KIS"}]}))}}
+PORTFOLIO_MUT = {
+    "전체 손익 큰 숫자 바꿈": lambda h: _span(h, "pf-krw", lambda t, x: (t, "+1만원")),
+    "종목 줄 하나 지움": lambda h: re.sub(r'(<div id="pf-list"[^>]*>)<button.*?</button>', r"\1", h, count=1, flags=re.S),
+    "증권사 손익 색 뒤집기": lambda h: re.sub(r'(<div id="pf-brokers".*?<span class="value) (up|down)', lambda x: x.group(1) + " " + (
+        "down" if x.group(2) == "up" else "up"), h, count=1, flags=re.S),
+}
+
+
+def check_portfolio_case(port, html=None):
+    c = PORTFOLIO_CASE
+    api = post(port, {"asof": c["asof"], "account": c["symbols"]}, "/api/portfolio")
+    if html is None:
+        TMP.write_text(json.dumps({"symbols": {s: {"asof": c["asof"], "trades": rows} for s, rows in c["symbols"].items()},
+                                   "last": c["last"]}, ensure_ascii=False), encoding="utf-8")
+        html = chrome_dom(f"http://127.0.0.1:{port}/#all")
+    ids = dom(html).ids
+    bad = []
+
+    def text(i):
+        return ids[i].text().strip() if i in ids else None
+
+    def eq(where, got, want):
+        if got != want:
+            bad.append(f"{where}: 화면 {got!r}, 기대 {want!r}")
+
+    def tone_of(node):
+        return next((x for x in (node.attrs.get("class") or "").split() if x in ("up", "down", "zero", "na")), None)
+
+    t = api["total"]
+    if not (text("pf-state") or "").startswith("계산 "):
+        return api, [f"전체 탭이 계산을 마치지 못함: {text('pf-state')!r}"]
+    eq("전체 탭이 보임", "hidden" in ids["all"].attrs, False)
+    eq("전체 원화 손익", text("pf-krw"), fbig(t["total_krw"], True))
+    eq("전체 원화 손익 색", tone_of(ids["pf-krw"]), ftone(t["total_krw"]))
+    head = f"{fkrw(t['total_krw'], True)}, " if abs(t["total_krw"]) >= 1e6 else ""
+    eq("전체 보조", text("pf-krw-s"), f"{head}실현 {fkrw(t['realized_krw'], True)}, 평가 {fkrw(t['unrealized_krw'], True)}. "
+       f"넣은 원화 {fkrw(t['invested_krw'])}, 평가액 {fkrw(t['value_krw'])}"
+       + ("" if t["simple_return_pct"] is None else f", 단순 수익률 {fpct(t['simple_return_pct'])}"))
+    rows = ids["pf-list"].find(cls="li")
+    eq("종목 줄 수", len(rows), len(api["symbols"]))
+    for n, x in zip(rows, api["symbols"]):
+        eq(f"{x['symbol']} 이름", n.find("b")[0].text(), f"{x['name']} {x['symbol']}")
+        v = n.find(cls="value")[0]
+        small = v.find("small")
+        vt = v.text()[: -len(small[0].text())] if small else v.text()
+        eq(f"{x['symbol']} 원화 손익", vt, fbig(x["total_krw"], True) if x["booked"] else "–")
+        eq(f"{x['symbol']} 색", tone_of(v), ftone(x["total_krw"]) if x["booked"] else "na")
+        sub = n.find(cls="sub")[0].text()
+        if x["booked"] and f"평가액 {fkrw(x['value_krw'])}" not in sub:
+            bad.append(f"{x['symbol']} 평가액 없음: {sub!r}")
+        if not x["booked"] and "PRE_WINDOW_NEEDS_HOLD" in x["notes"] and "지금 잔고 줄이 필요해요" not in sub:
+            bad.append(f"{x['symbol']} 지금 잔고 안내 없음: {sub!r}")
+    brs = ids["pf-brokers"].find(cls="li")
+    eq("증권사 줄 수", len(brs), len(api["brokers"]))
+    for n, b in zip(brs, api["brokers"]):
+        eq(f"{b['broker_name']} 이름", n.find("b")[0].text(), b["broker_name"])
+        v = n.find(cls="value")[0]
+        eq(f"{b['broker_name']} 손익", v.text(), fbig(b["total_krw"], True))
+        eq(f"{b['broker_name']} 색", tone_of(v), ftone(b["total_krw"]))
     return api, bad
 
 
@@ -348,7 +442,8 @@ def write_saved(case, trades):
 
 def verdict(api):
     """결론 문장의 기대 글자와 숫자 색(화면 코드를 쓰지 않고 같은 규칙으로 따로 만듦). 요약이 없으면 (None, []).
-    11/18 화면 개편: 원화 손익은 큰 숫자 칸(k-krw)이 맡고, 문장은 손익이 어디서 왔는지와 SPY 비교만(해요체, 금액은 fbig)."""
+    11/18 화면 개편: 원화 손익은 큰 숫자 칸(k-krw)이 맡고, 문장은 손익이 어디서 왔는지(해요체, 금액은 fbig).
+    11/19: SPY 비교는 「SPY와 견주면」 카드로 옮김(bench_line)."""
     s = api["summary"]
     if s is None:
         return None, []
@@ -369,17 +464,26 @@ def verdict(api):
             n(fbig(s[key], True), s[key])
         gap = s["price_effect_krw"] + s["fx_effect_krw"] + s["cross_effect_krw"] - s["total_krw"]
         parts.append(f"으로 나뉘어요(원 단위 반올림으로 셋의 합과 {fkrw(abs(gap))} 차이)." if gap else "으로 나뉘어요.")
-    if api["symbol"] != api["bench"]:
-        d = s["total_minus_bench_krw"]
-        parts.append(" 같은 날 같은 돈을 SPY에 넣었다면 ")
-        n(fbig(s["bench_total_krw"], True), s["bench_total_krw"])
-        if d == 0:
-            parts.append("으로 이 매매와 같아요.")
-        else:
-            parts.append("이라, 이 매매가 ")
-            n(fbig(abs(d)), d)
-            parts.append(" 더 많아요." if d > 0 else " 더 적어요.")
     return "".join(parts).strip(), tones
+
+
+def bench_line(api):
+    """「SPY와 견주면」 카드 문장의 기대 글자와 숫자 색. 카드가 숨으면(요약 없음, 장부에 매수 없음) (None, [])."""
+    s = api["summary"]
+    if s is None or not api["booked"]:
+        return None, []
+    if api["symbol"] == api["bench"]:
+        return "이 종목이 SPY라 견줄 것이 없어요.", []
+    if api.get("opening"):
+        return "데이터 첫날 전부터 가진 주식이 있어 SPY와는 견주지 않아요.", []
+    parts, tones = ["같은 날 같은 돈을 SPY에 넣었다면 ", fbig(s["bench_total_krw"], True)], [ftone(s["bench_total_krw"])]
+    d = s["total_minus_bench_krw"]
+    if d == 0:
+        parts.append("으로 이 매매와 같아요.")
+    else:
+        parts += ["이라, 이 매매가 ", fbig(abs(d)), " 더 많아요." if d > 0 else " 더 적어요."]
+        tones.append(ftone(d))
+    return "".join(parts), tones
 
 
 def check_case(case, port, inputs, html=None):
@@ -442,8 +546,17 @@ def check_case(case, port, inputs, html=None):
         eq("결론 문장", text("verdict"), want_v)
         eq("결론 문장 색", [next((c for c in cls(b) if c in ("up", "down", "zero")), None)
                          for b in ids["verdict"].find("b")], want_tones)
+    # SPY와 견주면 카드(11/19 원화 손익 카드에서 옮김)
+    want_b, want_btones = bench_line(api)
+    eq("SPY 카드 숨김", "hidden" in ids["bench-box"].attrs, want_b is None)
+    if want_b is not None:
+        for kind, _ in violations(text("bench-line") or "", quote_exempt=False):
+            bad.append(f"SPY 문장 금지 표현: {kind}")
+        eq("SPY 문장", text("bench-line"), want_b)
+        eq("SPY 문장 색", [next((c for c in cls(b) if c in ("up", "down", "zero")), None)
+                        for b in ids["bench-line"].find("b")], want_btones)
     if s is None:
-        for k in ("k-krw", "k-local", "k-bench", "k-mdd", "k-irr"):
+        for k in ("k-krw", "k-local", "k-bench", "k-birr", "k-mdd", "k-irr"):
             eq(f"{k}(요약 없음)", text(k), "–")
     else:
         card("원화 손익", "k-krw", fbig(s["total_krw"], True), s["total_krw"])
@@ -475,7 +588,11 @@ def check_case(case, port, inputs, html=None):
             eq("연 환산이 없는 까닭(30일)", "30일" in (text("k-irr-s") or ""), api["irr_short"])
         else:
             card("연 환산", "k-irr", fpct(s["irr_pct"]), s["irr_pct"])
-            eq("SPY 연 환산", text("k-irr-s"), f"SPY {fpct(s['bench_irr_pct'])}")
+            eq("연 환산 보조", text("k-irr-s"), "돈이 들어가고 나온 때를 감안한 한 해 수익률")
+        if s["bench_irr_pct"] is None:
+            eq("SPY 연 환산", text("k-birr"), "계산 못 함")
+        else:
+            card("SPY 연 환산", "k-birr", fpct(s["bench_irr_pct"]), s["bench_irr_pct"])
         hold = {}
         for sp in ids["holding-line"].find("span"):
             b = sp.find("b")
@@ -739,18 +856,27 @@ def mutations(api):
         "다시 열린 수량 바꿈": lambda h: re.sub(r'(data-k="qty"[^>]*value=")(\d+)', lambda x: x.group(1) + x.group(2) + "0",
                                          h, count=1),
         "체결가 머리 단위 바꿈": lambda h: _span(h, "h-price", lambda t, x: (t, "체결가")),
-        "결론 문장 첫 숫자 바꿈": lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*<b[^>]*>)([^<]*)',
-                                           lambda x: x.group(1) + x.group(2).replace("원", "0원", 1), h, count=1),
         "원화 손익 보조 1원 바꿈": lambda h: _span(h, "k-krw-s", lambda t, x: (t, x.replace(
             fkrw(s["realized_krw"], True), fkrw(s["realized_krw"] + 1, True), 1))),
-        "결론 문장 색 뒤집기": lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*)<b class="n (up|down)"',
-                                         lambda x: x.group(1) + '<b class="n ' + ("down" if x.group(2) == "up" else "up") + '"',
-                                         h, count=1),
     }
+    # 결론 문장의 숫자(가격, 환율, 교차 효과)는 미국 종목에만 있음. 국내 종목은 문장 한 줄이라 글자를 바꿔 봄(11/19 SPY 비교를 뺀 뒤)
+    if s["fx_effect_krw"] != 0 or s["cross_effect_krw"] != 0 or api["currency"] != "KRW":
+        m["결론 문장 첫 숫자 바꿈"] = lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*<b[^>]*>)([^<]*)',
+                                               lambda x: x.group(1) + x.group(2).replace("원", "0원", 1), h, count=1)
+        m["결론 문장 색 뒤집기"] = lambda h: re.sub(r'(<p id="verdict"[^>]*>[^<]*)<b class="n (up|down)"',
+                                             lambda x: x.group(1) + '<b class="n ' + ("down" if x.group(2) == "up" else "up") + '"',
+                                             h, count=1)
+    else:
+        m["결론 문장 국내 문구 바꿈"] = lambda h: h.replace("국내 종목이라 환율 효과 없이 모두 가격 효과예요.",
+                                                    "국내 종목이라 모두 가격 효과예요.", 1)
     if api["symbol"] != api["bench"] and s["total_minus_bench_krw"] != 0:  # SPY 자체는 비교 문장이 없음
-        m["결론 문장 많고 적음 뒤집기"] = lambda h: re.sub(
-            r'(<p id="verdict".*?) 더 (많|적)아요\.', lambda x: x.group(1) + (" 더 적" if x.group(2) == "많" else " 더 많") + "아요.",
+        m["SPY 문장 많고 적음 뒤집기"] = lambda h: re.sub(
+            r'(<p id="bench-line".*?) 더 (많|적)아요\.', lambda x: x.group(1) + (" 더 적" if x.group(2) == "많" else " 더 많") + "아요.",
             h, count=1, flags=re.S)
+        m["SPY 문장 색 뒤집기"] = lambda h: re.sub(r'(<p id="bench-line"[^>]*>[^<]*)<b class="n (up|down)"',
+                                            lambda x: x.group(1) + '<b class="n ' + ("down" if x.group(2) == "up" else "up") + '"',
+                                            h, count=1)
+        m["SPY 카드 숨김"] = lambda h: re.sub(r'<section id="bench-box"', '<section hidden="" id="bench-box"', h, count=1)
     if api["sells"]:
         m["매도 표 숨김"] = lambda h: h.replace('<div id="sells-box" class="tablebox">', '<div id="sells-box" class="tablebox" hidden="">', 1)
     if usd:
@@ -783,6 +909,16 @@ def selftest(port):
                 continue
             _, b = check_case(case, port, inputs, h)
             out[f"{cid} {name}"] = bool(b)
+    html = None
+    PC = PORTFOLIO_CASE
+    TMP.write_text(json.dumps({"symbols": {s_: {"asof": PC["asof"], "trades": rows} for s_, rows in PC["symbols"].items()},
+                               "last": PC["last"]}, ensure_ascii=False), encoding="utf-8")
+    html = chrome_dom(f"http://127.0.0.1:{port}/#all")
+    _, bad = check_portfolio_case(port, html)
+    assert not bad, ("P01", bad)
+    for name, fn in PORTFOLIO_MUT.items():
+        h = fn(html)
+        out[f"P01 {name}"] = None if h == html else bool(check_portfolio_case(port, h)[1])
     acases = {c["id"]: c for c in ACCOUNT_CASES}
     for cid, muts in ACCOUNT_MUT.items():
         case = acases[cid]
@@ -848,6 +984,9 @@ def main():
                 _, bad = check_case(c, port, {})
                 extra.append({"id": c["id"], "ok": not bad, "bad": bad})
                 print(f"  {'같음' if not bad else '다름'}  {c['id']} {c['title']}(개발 사례)" + ("".join(f"\n      {b}" for b in bad)))
+            _, bad = check_portfolio_case(port)
+            extra.append({"id": PORTFOLIO_CASE["id"], "ok": not bad, "bad": bad})
+            print(f"  {'같음' if not bad else '다름'}  P01 {PORTFOLIO_CASE['title']}(개발 사례)" + ("".join(f"\n      {b}" for b in bad)))
             for c in ACCOUNT_CASES:
                 _, bad = check_account_case(c, port)
                 extra.append({"id": c["id"], "ok": not bad, "bad": bad})

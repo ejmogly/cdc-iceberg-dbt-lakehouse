@@ -32,6 +32,7 @@ NOTES = {
     "HOLD_USED": "지금 잔고를 데이터 첫날({first})의 보유 {qty}주, 평균 단가 {price}로 바꿔 셌어요(기간 안 매매를 거꾸로 되짚음).",
     "HOLD_EXPLAINED": "지금 잔고가 기간 안 매매로 모두 설명돼 데이터 첫날 전 보유는 없어요.",
     "PRE_WINDOW_COVERED": "데이터 기간 전 줄은 계산에 쓰지 않고, 같은 증권사의 지금 잔고 줄이 대신해요.",
+    "PRE_WINDOW_NEEDS_HOLD": "데이터 기간({first}부터) 전 매매가 있어 그 몫을 셀 수 없어요. 그 증권사 앱 잔고 화면의 수량, 평균 단가{fx}를 「지금 잔고」 줄로 넣으면 기간 전 보유까지 셀 수 있어요.",
     "HOLD_TOO_FEW": "지금 잔고 수량이 기간 안에서 산 수량보다 적어 거꾸로 셀 수 없어요. 지금 잔고나 매매 줄의 증권사를 확인하세요.",
     "HOLD_SOLD_OUT": "기간 안에 한 번 모두 판 적이 있어, 그 앞의 평균 단가를 지금 잔고로 알 수 없어요. 지금 잔고 줄을 계산에서 뺐어요.",
     "HOLD_COST_MISMATCH": "지금 잔고의 평균 단가로 되짚은 원가가 기간 안 매매로 센 원가와 {gap}만큼 달라요(수수료가 들어갔거나 증권사가 평단을 다르게 셀 수 있어요). 기간 안 매매로 센 값을 썼어요.",
@@ -40,7 +41,7 @@ NOTES = {
 }
 # 증권사별 합으로 바꿔 쓰는 요약 칸(평단에 기대는 값). 나머지(SPY, 낙폭, 연 환산 등)는 합친 매매의 값입니다.
 SUMMED = ("realized_local", "unrealized_local", "total_local", "realized_krw", "unrealized_krw", "total_krw",
-          "price_effect_krw", "fx_effect_krw", "cross_effect_krw")
+          "invested_krw", "price_effect_krw", "fx_effect_krw", "cross_effect_krw")
 P4 = Decimal("0.0001")
 
 
@@ -143,6 +144,13 @@ def plan(engine, world, symbol, trades, bench):
             pre = [k for k, t in rows if t["d"] < first]
             if pre and row is not None:
                 g["notes"].append(_note("PRE_WINDOW_COVERED", broker, pre[0]))
+        else:
+            # 기간 전 매매만 있고 지금 잔고 줄이 없으면 그 증권사의 첫 기간 전 줄에 길을 알림(11/19 중간 판: 장기 보유가 비어
+            # 보였는데 화면에 지금 잔고 줄을 넣으라는 안내가 없었음). 화면은 이 안내 옆에 「지금 잔고 줄 넣기」 단추를 둠
+            pre = [k for k, t in rows if t["d"] < first]
+            if pre:
+                fx = ", 평균 매입 환율" if sym["currency"] == "USD" else ""
+                g["notes"].append(_note("PRE_WINDOW_NEEDS_HOLD", broker, pre[0], first=first, fx=fx))
         out.append(g)
     return out
 
@@ -217,8 +225,13 @@ def run(engine, world, symbol, trades, asof, bench):
     if summary and len(groups) > 1:
         parts = [s for _, s, _ in per if s]
         sums = {c: sum(s[c] for s in parts) for c in SUMMED}
-        summary = {**summary, **sums, "combined_total_krw": summary["total_krw"],
-                   "avg_cost_local": None, "avg_buy_fx": None}
+        # 넣은 원화도 계좌 합(계좌마다 원 단위로 반올림한 값이라 합친 계산과 1원 다를 수 있음), 단순 수익률은 그 합으로 다시 셈
+        # (손익 SQL pnl_position과 같이 소수 여섯째 자리로 먼저 맞춘 뒤 둘째 자리)
+        inv = Decimal(str(sums["invested_krw"]))
+        simple = None if not inv else (Decimal(str(sums["total_krw"])) / inv * 100).quantize(
+            Decimal("0.000001"), ROUND_HALF_UP).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        summary = {**summary, **sums, "simple_return_pct": simple, "combined_total_krw": summary["total_krw"],
+                   "combined_invested_krw": summary["invested_krw"], "avg_cost_local": None, "avg_buy_fx": None}
     warnings.sort(key=lambda w: (w["trade_index"], w["code"]))
     steps.sort(key=lambda s: (s["row"][1], s["trade_index"] if not s["opening"] else -1))
     sells.sort(key=lambda s: (s["date"],))

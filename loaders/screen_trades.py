@@ -150,12 +150,22 @@ def read_have(cur):
     return orders, execs, holds
 
 
+_APP = []
+
+
+def screen_app():
+    """계산 서버(ai/screen_server.App)를 화면 데이터 파일로 띄우지 않고 바로 부릅니다(서버 손익과 같은 규칙). 한 번만 엽니다."""
+    if not _APP:
+        from ai.screen_server import App
+        app = App(ROOT / "data" / "generated" / "screen.duckdb")
+        if not app.status["ok"]:
+            sys.exit("화면 데이터 파일의 검사가 실패했습니다. make screen-data를 먼저 돌리세요.")
+        _APP.append(app)
+    return _APP[0]
+
+
 def pnl_from_server():
-    """계산 서버(ai/screen_server.App)를 화면 데이터 파일로 띄우지 않고 바로 부릅니다(서버 손익과 같은 규칙)."""
-    from ai.screen_server import App
-    app = App(ROOT / "data" / "generated" / "screen.duckdb")
-    if not app.status["ok"]:
-        sys.exit("화면 데이터 파일의 검사가 실패했습니다. make screen-data를 먼저 돌리세요.")
+    app = screen_app()
     return lambda symbol, asof, trades: app.api_pnl({"symbol": symbol, "asof": asof, "trades": trades})
 
 
@@ -349,6 +359,22 @@ def verify(trades_path=TRADES):
             g_diff.append(f"{pos}: {', '.join(bad_cols)}")
         else:
             g_same += 1
+    # 화면 전체 탭(/api/portfolio, Gold 기준일로)의 증권사별 줄 = Gold 계좌별 손익 마트(mart_account_pnl). 체결이 있는 계좌만
+    a_keys = ("realized_krw", "unrealized_krw", "total_krw", "invested_krw", "value_krw")
+    want_acct = {}
+    usable_acct = {sym: [t for t in v.get("trades", []) if usable(t, next((r["currency"] for r in instruments() if r["symbol"] == sym), "KRW"))]
+                   for sym, v in saved.get("symbols", {}).items()}
+    pf = screen_app().api_portfolio({"asof": gold_asof, "account": {k: v for k, v in usable_acct.items() if v}})
+    for b in pf["brokers"]:
+        acct = account_of(b["broker"])
+        if any(p.startswith(acct + ":") for p in screen_pos):
+            want_acct[acct] = b
+    gm = {r[0]: dict(zip(("account_id",) + a_keys, r)) for r in _spark_rows(
+        f"select account_id, {', '.join(a_keys)} from lake.gold.mart_account_pnl where {SCREEN_ACCOUNTS}")}
+    a_diff = [f"{a}: {', '.join(k for k in a_keys if Decimal(str(gm[a][k])) != Decimal(str(w[k])))}" if a in gm else f"{a}: 행 없음"
+              for a, w in sorted(want_acct.items())]
+    a_diff = [x for x in a_diff if not x.endswith(": ")]
+    a_diff += [f"{a}: 화면에 없음" for a in gm if a not in want_acct]
     accts = sorted({p.rsplit(":", 1)[0] for p in screen_pos})
     out = {"at": datetime.now(CLOSE["KRX"][0]).isoformat(timespec="seconds"),  # 서울 시각(Airflow 컨테이너는 UTC)
            "account": ", ".join(accts) or ACCOUNT, "positions": len(screen_pos), "positions_without_executions": empty_pos,
@@ -357,6 +383,8 @@ def verify(trades_path=TRADES):
            "pnl_same": same, "pnl_checked": same + len(diff_syms), "pnl_diff_symbols": diff_syms,
            "gold_pnl_asof": gold_asof, "gold_pnl_same": g_same, "gold_pnl_checked": g_same + len(g_diff),
            "gold_pnl_diff": g_diff, "gold_pnl_skipped_asof": g_skip,
+           "gold_account_same": len(want_acct) - len([x for x in a_diff if not x.endswith("화면에 없음")]),
+           "gold_account_checked": len(want_acct), "gold_account_diff": a_diff,
            "path": "원천 주문, 체결, 잔고 → Debezium, Kafka → Flink Bronze → Spark MERGE Silver → dbt fct_execution → dbt pnl_position"}
     if trades_path == TRADES:  # 시험용 매매 파일의 결과는 화면이 보이는 기록에 쓰지 않음
         OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -365,8 +393,10 @@ def verify(trades_path=TRADES):
           f"Gold 손익 마트(pnl_position, 기준일 {gold_asof}) {g_same}/{g_same + len(g_diff)}(계좌, 종목) 칸마다 같음"
           + (f"(기준일이 달라 건너뜀 {len(g_skip)})" if g_skip else "") + (f" 다름: {g_diff}" if g_diff else "")
           + (f"; 체결이 없는 계좌 {len(empty_pos)}곳(모든 줄이 계산에서 빠짐)은 견주지 않음" if empty_pos else "")
+          + f"; Gold 계좌별 마트(mart_account_pnl) {len(want_acct) - len(a_diff)}/{len(want_acct)}계좌 전체 탭과 같음"
+          + (f" 다름: {a_diff}" if a_diff else "")
           + (f" → {OUT.relative_to(ROOT)}" if trades_path == TRADES else "(시험용 매매 파일이라 기록하지 않음)"))
-    return 0 if not bad and not diff_syms and not g_diff else 1
+    return 0 if not bad and not diff_syms and not g_diff and not a_diff else 1
 
 
 def selftest():
