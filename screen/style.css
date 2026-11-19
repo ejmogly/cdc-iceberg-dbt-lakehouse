@@ -69,6 +69,8 @@ button { font: inherit; color: inherit; }
 .sym-code { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ts-t3); }
 .asof-field { flex: 0 1 230px; }
 .asof-field input { min-height: 40px; background: var(--surface); }
+.asof-latest { align-self: flex-start; }
+.asof-latest[hidden] { display: none; }
 .x-people { font-size: 13.5px; color: var(--ts-t3); padding-inline: 4px; }
 /* 설명 시트 여는 단추(이 화면은, 계산법, 이 칸은, 답하는 법): 밑줄 글자 대신 회색 바탕 알약과 i 아이콘(11/19 담당자 「밑줄이 별로」) */
 .x-link { display: inline-flex; align-items: center; gap: 5px; align-self: center; border: 0; background: var(--ts-fill); color: var(--ink-2);

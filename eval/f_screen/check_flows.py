@@ -270,6 +270,28 @@ def run_flows(page, port):
     page.call("Fetch.disable")
     out["틀린 기준일이면 계산하지 않음"] = bad
 
+    # 2-2. 기준일이 데이터 끝날보다 앞이면 「최신 <끝날>로」 단추(데이터 기간을 늘린 뒤 저장한 종목을 열 때, 11/19)
+    bad = []
+    end = page.js("document.getElementById('asof').max")
+    if page.js("!document.getElementById('asof-latest').hidden !== (document.getElementById('asof').value < "
+               f"{json.dumps(end)})"):
+        bad.append("최신 단추가 기준일과 맞지 않음(끝날인데 보이거나 앞인데 안 보임)")
+    type_in(page, "asof", "2026-11-10", "change")
+    page.pump(0.5)
+    label = f"최신 {int(end[5:7])}/{int(end[8:])}로"
+    if not page.js(f"!document.getElementById('asof-latest').hidden && "
+                   f"document.getElementById('asof-latest').textContent === {json.dumps(label)}"):
+        bad.append(f"기준일을 앞으로 옮겨도 「{label}」 단추가 없음")
+    page.wait(CALC_DONE)
+    page.js("document.getElementById('asof-latest').click()")
+    if not page.wait(f"document.getElementById('asof').value === {json.dumps(end)}", 3):
+        bad.append("단추를 눌러도 기준일이 끝날로 가지 않음")
+    if not page.js("document.getElementById('asof-latest').hidden"):
+        bad.append("끝날로 간 뒤에도 단추가 남음")
+    if not page.wait(CALC_DONE):
+        bad.append(f"끝날로 간 뒤 다시 계산하지 않음: {page.js(STATE)!r}")
+    out["기준일이 끝날 앞이면 최신 단추"] = bad
+
     # 3. 큰 금액
     bad = []
     type_in(page, "p1", "7000000")  # 5주 x 700만 달러: 원화로 약 500억 원
@@ -575,6 +597,8 @@ BUGS = [
          "  const my = ++st.seq;\n  st.ctl?.abort();\n  st.ctl = new AbortController();\n  st.notes = null;")]),
     ("틀린 기준일이면 계산하지 않음", "틀린 기준일을 계산에서 막지 않음", [
         ("  if (st.asofErr) errs.unshift(st.asofErr);\n", "")]),
+    ("기준일이 끝날 앞이면 최신 단추", "기준일을 바꿔도 최신 단추를 다시 보지 않음", [
+        ("    st.asof = asof.value;\n    showLatest();\n", "    st.asof = asof.value;\n")]),
     ("큰 금액은 그 줄을 표시함", "서버 400의 줄 번호를 쓰지 않음", [
         ("    if (k !== undefined && map[k] !== undefined) {", "    if (false) {")]),
     ("저장 실패에도 종목이 바뀌고 고친 값이 남음", "저장 실패가 종목 바꾸기를 멈춤", [
@@ -629,7 +653,7 @@ def one_run(static=None):
     old = screen_server.STATIC
     if static:
         screen_server.STATIC = Path(static).resolve()
-    httpd, _ = serve(screen_data.OUT, 0, TMP)
+    httpd, _ = serve(screen_data.eval_db(), 0, TMP)
     proc = prof = None
     try:
         proc, prof, page = chrome()

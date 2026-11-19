@@ -109,7 +109,7 @@ def sample(split):
     rng.shuffle(yes)
     pick = no[:MAX_NO] + yes[:N_SAMPLE - min(len(no), MAX_NO)]
     rng.shuffle(pick)
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     out = []
     for k, (key, r) in enumerate(pick, 1):
         rec = recs[key]
@@ -148,7 +148,7 @@ def selftest(split):
              (f"기사 [{c1[0]}]는 인도량이 예상에 못 미쳤다고 썼고, 같은 날 주가도 내렸다고 전했습니다 [{c1[0]}].", c1, None, False)]
     fake = {"item": rec["item"], "answer": {"text": "(2배 초과가 큰 움직임). " + " ".join(t for t, *_ in cases),
                                             "citations": rec["answer"]["citations"]}, "trace": {**rec["trace"], "version": "selftest"}}
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     ids = rec["trace"]["retrieved"]
     arts = {i: {"title": t, "summary": d or ""} for i, t, d in con.execute(
         f"select id, title, description from news where id in ({','.join('?' * len(ids))})", ids).fetchall()}
@@ -176,7 +176,7 @@ def main():
     recs = [json.loads(l) for l in open(run, encoding="utf-8")]
     todo = [r for r in recs if r["answer"]["status"] == "answered"]
     ids = {a for r in todo for a in r["trace"]["retrieved"]}
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     arts = {i: {"title": t, "summary": d or ""} for i, t, d in con.execute(
         f"select id, title, description from news where id in ({','.join('?' * len(ids))})", list(ids)).fetchall()} if ids else {}
     con.close()

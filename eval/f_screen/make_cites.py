@@ -54,7 +54,7 @@ def main():
         qs = [q for q in qs if q["split"] == split]
     exp = json.loads(EXPECTED.read_text(encoding="utf-8"))
     data = T.real_data()
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     days = [date.fromisoformat(x) for x in data.us_days]
     system = J.PROMPT.read_text(encoding="utf-8")
     out = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}

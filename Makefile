@@ -1,7 +1,7 @@
 # 키와 Docker 없이 도는 확인. CI(.github/workflows/check.yml)도 같은 목표를 씁니다.
 PY ?= .venv/bin/python
 
-.PHONY: setup check check-pnl check-public check-history screen-data screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh source-migrate
+.PHONY: setup check check-pnl check-public check-history screen-data screen-eval-data window-extend screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh source-migrate
 
 setup:
 	python3 -m venv .venv
@@ -35,6 +35,16 @@ check-history:
 # VM, 원천 DB, Spark(--profile spark)가 떠 있고 Silver MERGE와 dbt build를 먼저 돌려야 함
 screen-data:
 	$(PY) -m ai.screen_data export
+
+# 평가용 화면 파일(screen_eval.duckdb, 정답을 고정한 때의 2년치)을 첫 구간 원본에서 다시 만들고 내용 지문을 대조.
+# 평가 시험(check_api, check_screen 등)은 이 파일을 엶. 화면은 loaders/window.json의 구간을 모두 담은 screen.duckdb
+screen-eval-data:
+	$(PY) -m ai.screen_data freeze
+
+# 화면 데이터 기간을 늘림: 새 원본 구간(앞 구간 끝날부터 어제까지, END=YYYY-MM-DD로 바꿈)을 받아 원천에 넣고 loaders/window.json에 더함.
+# 키(.env)와 VM, 원천 DB가 필요. 그 뒤 make lake-refresh. 할 일만 보려면 .venv/bin/python loaders/extend_window.py --plan
+window-extend:
+	$(PY) loaders/extend_window.py $(if $(END),--end $(END))
 
 # 화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN)로 옮김(VM 필요). 그 뒤 Silver MERGE, dbt build, trades-verify
 trades-to-source:

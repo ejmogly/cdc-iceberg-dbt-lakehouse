@@ -37,7 +37,7 @@ def main():
     split = arg("--split", "dev")
     items = [r for r in json.loads(DATES.read_text(encoding="utf-8"))["items"]
              if r["split"] == split and r["set"] == "big_move"]
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     days = [r[0] for r in con.execute("select distinct trade_date from prices p join instruments i using (symbol) "
                                       "where i.currency = 'USD' order by 1").fetchall()]
     rows, text = [], {}

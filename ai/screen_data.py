@@ -5,6 +5,8 @@
                                                        같되, 내용이 같고 검사가 통과하면 지금 파일을 그대로 둠(Airflow)
       .venv/bin/python -m ai.screen_data golden        E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)
       .venv/bin/python -m ai.screen_data status [파일]  저장한 검사 결과와 지문 대조
+      .venv/bin/python -m ai.screen_data freeze        평가용 파일(screen_eval.duckdb)을 첫 구간 원본에서 다시 만들고
+                                                       고정한 내용 지문과 대조(평가 시험은 이 파일을 엶, eval_db())
       .venv/bin/python -m ai.screen_data --selftest    일부러 깬 데이터를 잡는지(행 지우기, 환율 하루 빼기, 종가 바꾸기,
                                                        내보낸 뒤 파일 고치기). VM 없이 원본을 Gold와 원천 대신 씀
 
@@ -17,6 +19,8 @@
 - 검사 결과는 파일의 checks 테이블에, 내용의 지문은 meta에 둡니다. 서버는 열 때 지문을 다시 셉니다.
   검사가 하나라도 실패하거나 지문이 다르면 화면은 숫자 대신 실패 항목을 보입니다.
 - 가격 값은 출력하지 않습니다(재배포 금지). 행 수, 날짜, 개수만 냅니다.
+- 데이터 기간은 받은 원본의 구간 목록(loaders/window.json)으로 늘립니다. 평가는 정답을 고정한 때의 얼린 파일(EVAL)을 쓰고,
+  내보낼 때 EVAL_END까지의 값이 그 파일과 같은지(늦게 나온 행을 더한 것만 허용) 대조합니다(docs/decisions/0015).
 """
 import argparse
 import csv
@@ -40,8 +44,12 @@ RAW = ROOT / "data" / "raw"
 GEN = ROOT / "data" / "generated"
 OUT = GEN / "screen.duckdb"
 GOLDEN_OUT = GEN / "screen_golden.duckdb"
-START, END = "2024-11-13", "2026-11-12"
-TAG = START.replace("-", "") + "_" + END.replace("-", "")
+WINDOW_FILE = ROOT / "loaders" / "window.json"
+# 평가(잠근 정답과 견주는 시험)가 쓰는 얼린 화면 파일. 정답을 고정한 때의 데이터(2024-11-13 ~ 2026-11-12)와 내용이 같아야 합니다.
+# 지문은 내용 테이블(시세, 환율, 달력, 기사, 일정, 종목)의 sha256이라 값 자체는 담지 않습니다(docs/decisions/0015).
+EVAL = GEN / "screen_eval.duckdb"
+EVAL_END = "2026-11-12"
+EVAL_DIGEST = "2acfe7cf2008cb9829c56a8d5155aa0d43a2fe79ac48f0ec4dcc060fc484bf66"
 ET = ZoneInfo("America/New_York")
 Q4 = Decimal("0.0001")
 REAL_BENCH = "SPY"
@@ -64,6 +72,27 @@ CONTENT = [("instruments", "symbol"), ("prices", "symbol, trade_date"), ("fx", "
            ("calendar", "cal_date"), ("news", "id"), ("events", "id")]
 
 
+def read_window(path=WINDOW_FILE):
+    """받은 원본의 구간 목록(loaders/window.json)을 [(시작, 끝)]으로 돌려줍니다. 화면 데이터 기간은 첫 구간의 시작부터
+    마지막 구간의 끝까지입니다. 구간의 원본 파일 이름은 적재기의 --start, --end 그대로입니다(kr_<종목>_<시작>_<끝>.json 등).
+    뒤 구간은 앞 구간의 끝 다음 날보다 늦게 시작할 수 없고(빈 날 없음), 끝은 앞 구간보다 늦어야 합니다.
+    겹치는 날은 원본끼리 값이 같아야 하고, 내보낼 때 검사합니다(늦게 나온 미국 종가를 받으려고 하루 겹쳐 받음)."""
+    from datetime import date, timedelta
+    parts = [(p["start"], p["end"]) for p in json.loads(path.read_text(encoding="utf-8"))["parts"]]
+    for i, (s, e) in enumerate(parts):
+        a, b = date.fromisoformat(s), date.fromisoformat(e)
+        if a > b:
+            raise ValueError(f"{path.name} {i + 1}번 구간의 시작이 끝보다 늦습니다")
+        if i and (a > date.fromisoformat(parts[i - 1][1]) + timedelta(days=1) or b <= date.fromisoformat(parts[i - 1][1])):
+            raise ValueError(f"{path.name} {i + 1}번 구간이 앞 구간에 이어지지 않습니다(빈 날이 있거나 끝이 늘지 않음)")
+    return parts
+
+
+PARTS = read_window()
+START, END = PARTS[0][0], PARTS[-1][1]
+TAGS = [s.replace("-", "") + "_" + e.replace("-", "") for s, e in PARTS]
+
+
 # ---------- 읽기 ----------
 
 def instruments():
@@ -80,28 +109,44 @@ def _et_date(ms):
     return datetime.fromtimestamp(ms / 1000, timezone.utc).astimezone(ET).date()
 
 
-def read_raw(insts):
-    """받은 원본에서 시세(시가, 고가, 저가, 종가, 거래량), 수정 종가, 환율을 읽습니다. 키는 (종목, date)."""
-    prices, adj = {}, {}
-    for it in insts:
-        sym = it["symbol"]
-        if it["market"] == "KRX":
-            for r in json.loads((RAW / "daily_prices" / f"kr_{sym}_{TAG}.json").read_text(encoding="utf-8")):
-                d = datetime.strptime(r["basDt"], "%Y%m%d").date()
-                prices[(sym, d)] = (_q(r["mkp"]), _q(r["hipr"]), _q(r["lopr"]), _q(r["clpr"]), int(r["trqu"]))
-            continue
-        for kind in ("false", "true"):
-            path = RAW / "daily_prices" / f"us_{sym}_{TAG}_adj{kind}.json"
-            for r in json.loads(path.read_text(encoding="utf-8"))["results"]:
-                d = _et_date(r["t"])
-                if kind == "false":
-                    v = int(Decimal(str(r["v"])).to_integral_value())
-                    prices[(sym, d)] = (_q(r["o"]), _q(r["h"]), _q(r["l"]), _q(r["c"]), v)
-                else:
-                    adj[(sym, d)] = _q(r["c"])
-    payload = json.loads((RAW / "fx_rates" / f"USDKRW_{TAG}.json").read_text(encoding="utf-8"))
-    rows = payload if isinstance(payload, list) else payload["StatisticSearch"]["row"]
-    fx = {datetime.strptime(r["TIME"], "%Y%m%d").date(): _q(r["DATA_VALUE"]) for r in rows}
+def read_raw(insts, tags=None, overlap=None):
+    """받은 원본에서 시세(시가, 고가, 저가, 종가, 거래량), 수정 종가, 환율을 읽습니다. 키는 (종목, date).
+    구간(tags, 기본은 loaders/window.json의 모든 구간)을 차례로 읽어 합칩니다. overlap(dict)을 주면 두 구간에 함께 있는
+    값의 수(same)와 값이 다른 키(diff)를 담습니다. 다른 값은 앞 구간의 값을 남깁니다(내보내기 검사가 실패함)."""
+    prices, adj, fx = {}, {}, {}
+    stat = overlap if overlap is not None else {}
+    stat.update(same=0, diff=[])
+
+    def put(table, key, value, label):
+        if key in table:
+            if table[key] == value:
+                stat["same"] += 1
+            else:
+                stat["diff"].append((label, key))
+            return
+        table[key] = value
+
+    for tag in tags or TAGS:
+        for it in insts:
+            sym = it["symbol"]
+            if it["market"] == "KRX":
+                for r in json.loads((RAW / "daily_prices" / f"kr_{sym}_{tag}.json").read_text(encoding="utf-8")):
+                    d = datetime.strptime(r["basDt"], "%Y%m%d").date()
+                    put(prices, (sym, d), (_q(r["mkp"]), _q(r["hipr"]), _q(r["lopr"]), _q(r["clpr"]), int(r["trqu"])), "시세")
+                continue
+            for kind in ("false", "true"):
+                path = RAW / "daily_prices" / f"us_{sym}_{tag}_adj{kind}.json"
+                for r in json.loads(path.read_text(encoding="utf-8")).get("results") or []:
+                    d = _et_date(r["t"])
+                    if kind == "false":
+                        v = int(Decimal(str(r["v"])).to_integral_value())
+                        put(prices, (sym, d), (_q(r["o"]), _q(r["h"]), _q(r["l"]), _q(r["c"]), v), "시세")
+                    else:
+                        put(adj, (sym, d), _q(r["c"]), "수정 종가")
+        payload = json.loads((RAW / "fx_rates" / f"USDKRW_{tag}.json").read_text(encoding="utf-8"))
+        rows = payload if isinstance(payload, list) else payload["StatisticSearch"]["row"]
+        for r in rows:
+            put(fx, datetime.strptime(r["TIME"], "%Y%m%d").date(), _q(r["DATA_VALUE"]), "환율")
     return prices, adj, fx
 
 
@@ -180,16 +225,21 @@ def read_gold():
     return prices, fx, snaps
 
 
-def read_news():
-    """data/raw/의 2년 전체 기사(E02 기준). 원천 DB에 넣지 않습니다(설계서 6절 6번)."""
-    payload = json.loads((RAW / "news_massive" / f"ALL_{TAG}.json").read_text(encoding="utf-8"))
+def read_news(tags=None):
+    """data/raw/의 전체 기사(E02 기준). 원천 DB에 넣지 않습니다(설계서 6절 6번). 구간마다 읽고, 같은 기사는
+    앞 구간의 것을 남깁니다(두 구간에 걸친 날은 늦게 색인된 기사만 더해짐)."""
     out = {}
-    for page in payload["pages"]:
-        for n in page["results"]:
-            out[n["id"]] = {"id": n["id"], "published_utc": n["published_utc"].replace("T", " ").rstrip("Z"),
-                            "title": n.get("title"), "description": n.get("description"),
-                            "publisher": (n.get("publisher") or {}).get("name"), "tickers": n.get("tickers") or [],
-                            "url": n.get("article_url")}
+    for tag in tags or TAGS:
+        payload = json.loads((RAW / "news_massive" / f"ALL_{tag}.json").read_text(encoding="utf-8"))
+        part = {}  # 한 구간 안에서는 전처럼 뒤에 나온 것을 남김
+        for page in payload["pages"]:
+            for n in page.get("results") or []:
+                part[n["id"]] = {"id": n["id"], "published_utc": n["published_utc"].replace("T", " ").rstrip("Z"),
+                                 "title": n.get("title"), "description": n.get("description"),
+                                 "publisher": (n.get("publisher") or {}).get("name"), "tickers": n.get("tickers") or [],
+                                 "url": n.get("article_url")}
+        for k, v in part.items():
+            out.setdefault(k, v)
     return list(out.values())
 
 
@@ -232,10 +282,12 @@ def _market_gaps(prices, insts):
     return gaps
 
 
-def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, golden=golden_sql, source=None, snaps=None):
+def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, golden=golden_sql, source=None, snaps=None,
+               overlap=None, frozen=None):
     """10번 칸의 검사. (이름, 통과, 보일 값, 실패 때 내용) 목록을 돌려줍니다. 가격 값은 내용에 넣지 않습니다.
     src_prices, src_fx는 화면에 들어갈 값(Gold 마트)입니다. source=(원천 시세, 원천 환율)을 주면 레이크 경로 대조를 앞에 더하고,
-    snaps를 주면 Gold 마트의 마지막 스냅샷을 보입니다."""
+    snaps를 주면 Gold 마트의 마지막 스냅샷을 보입니다. overlap(read_raw가 채움)을 주면 원본 구간끼리 겹치는 날을,
+    frozen=(시세, 환율)(평가용 파일)을 주면 EVAL_END까지의 값이 평가용 파일과 같은지(늦게 나온 행을 더한 것만 허용) 봅니다."""
     out = []
     add = lambda name, ok, value, detail="": out.append((name, ok, value, detail))
     syms = [it["symbol"] for it in insts]
@@ -334,6 +386,29 @@ def check_real(insts, src_prices, src_fx, outside, raw_prices, raw_adj, raw_fx, 
 
     add("원천의 데이터 기간 밖 행", True, f"{outside}행", "내보내지 않음" if outside else "")
 
+    if overlap is not None:
+        diff = overlap["diff"]
+        add("원본 구간이 겹치는 날(같은 값)", not diff, f"{overlap['same']:,}개 같음" + (f", {len(diff)}개 다름" if diff else ""),
+            "; ".join(f"{label} {' '.join(map(str, k)) if isinstance(k, tuple) else k} 구간끼리 다름" for label, k in diff[:3]))
+    if frozen is not None:
+        from datetime import date
+        cut = date.fromisoformat(EVAL_END)
+        f_prices, f_fx = frozen
+        bad, added, same = [], 0, 0
+        for mine, theirs, label in ((src_prices, f_prices, "시세"), (src_fx, f_fx, "환율")):
+            keys = {k for k in mine if (k[1] if isinstance(k, tuple) else k) <= cut}
+            for k in sorted(set(theirs) - keys):
+                bad.append(f"{label} {' '.join(map(str, k)) if isinstance(k, tuple) else k} 빠짐")
+            for k in sorted(keys):
+                if k not in theirs:
+                    added += 1
+                elif mine[k] != theirs[k]:
+                    bad.append(f"{label} {' '.join(map(str, k)) if isinstance(k, tuple) else k} 값 다름")
+                else:
+                    same += 1
+        add(f"평가용 파일과 같은 날({EVAL_END}까지)", not bad, f"{same:,}개 같음, 더한 행 {added}" + (f", {len(bad)}건 다름" if bad else ""),
+            "; ".join(bad[:3]) or ("평가용 파일에 없던 행(늦게 나온 종가)" if added else ""))
+
     ok, got = golden()
     add("손익 SQL 골든", ok, got, "" if ok else "eval/e01_pnl/check_sql.py가 실패")
     return out
@@ -396,7 +471,8 @@ def _finish(con, tmp, path, meta, checks):
     tmp.replace(path)
 
 
-def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((), False), source_label=None):
+def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((), False), source_label=None,
+               window=None):
     con, tmp = _create(path)
     events, fred = events
     try:
@@ -409,7 +485,8 @@ def write_real(path, insts, src_prices, src_fx, raw_adj, news, checks, events=((
         con.close()
         tmp.unlink(missing_ok=True)
         raise
-    meta = {"kind": "real", "bench": REAL_BENCH, "window_start": START, "window_end": END,
+    start, end = window or (START, END)
+    meta = {"kind": "real", "bench": REAL_BENCH, "window_start": start, "window_end": end,
             "source": source_label or "받은 원본(자체 시험). 수정 종가와 기사는 data/raw/",
             "rows_prices": len(src_prices), "rows_fx": len(src_fx), "rows_news": len(news),
             "rows_events": len(events), "events_fred": fred}
@@ -444,13 +521,64 @@ def export_if_changed(path=OUT):
     return path, True
 
 
+def read_frozen(path=EVAL):
+    """평가용 파일의 시세와 환율(검사 모양). 파일이 없으면 None(대조를 건너뜀, 새로 받은 저장소)."""
+    if not Path(path).exists():
+        return None
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        prices = {(s, d): (_q(o), _q(h), _q(l), _q(c), int(v)) for s, d, o, h, l, c, v in con.execute(
+            "select symbol, trade_date, open, high, low, close, volume from prices").fetchall()}
+        fx = {d: _q(r) for d, r in con.execute("select rate_date, rate from fx").fetchall()}
+    finally:
+        con.close()
+    return prices, fx
+
+
+def eval_db():
+    """평가 시험이 여는 화면 파일(얼린 사본). 없거나 내용 지문이 고정한 값과 다르면 멈춥니다(조용히 늘린 파일을 쓰지 않게)."""
+    if not EVAL.exists():
+        sys.exit(f"{EVAL.relative_to(ROOT)}가 없습니다. .venv/bin/python -m ai.screen_data freeze 로 첫 구간 원본에서 다시 만듭니다")
+    global _EVAL_OK
+    if not _EVAL_OK:
+        got = content_digest(EVAL)
+        if got != EVAL_DIGEST:
+            sys.exit(f"{EVAL.relative_to(ROOT)}의 내용이 정답을 고정한 때와 다릅니다(지문 {got[:12]}, 기대 {EVAL_DIGEST[:12]})")
+        _EVAL_OK = True
+    return EVAL
+
+
+_EVAL_OK = False
+
+
+def freeze(path=EVAL):
+    """평가용 파일을 첫 구간 원본(data/raw/, 2024-11-13 ~ 2026-11-12)에서 다시 만들고 지문을 대조합니다.
+    내보낸 화면 파일은 Gold와 원본을 한 행씩 대조해 같았으므로, 원본으로 만든 내용이 그때의 화면 파일과 같아야 합니다."""
+    insts = instruments()
+    tag = TAGS[0]
+    if PARTS[0][1] != EVAL_END:
+        sys.exit(f"loaders/window.json의 첫 구간이 {EVAL_END}에 끝나지 않습니다")
+    raw_prices, raw_adj, raw_fx = read_raw(insts, [tag])
+    checks = check_real(insts, raw_prices, raw_fx, 0, raw_prices, raw_adj, raw_fx)
+    new = path.with_name(path.stem + ".new.duckdb")
+    write_real(new, insts, raw_prices, raw_fx, raw_adj, read_news([tag]), checks, read_events(),
+               source_label="평가용(첫 구간 원본에서 다시 만듦)", window=(PARTS[0][0], EVAL_END))
+    got = content_digest(new)
+    if got != EVAL_DIGEST:  # 지금 평가용 파일은 건드리지 않고, 새 파일은 살펴보도록 남김
+        sys.exit(f"내용 지문이 다릅니다: {got[:12]} (기대 {EVAL_DIGEST[:12]}). {new.relative_to(ROOT)}를 남겼습니다")
+    new.replace(path)
+    print(f"내용 지문 같음: {got[:12]}")
+    return path
+
+
 def export(path=OUT):
     insts = instruments()
     gold_prices, gold_fx, snaps = read_gold()
     db_prices, db_fx, outside = read_source()
-    raw_prices, raw_adj, raw_fx = read_raw(insts)
+    overlap = {}
+    raw_prices, raw_adj, raw_fx = read_raw(insts, overlap=overlap)
     checks = check_real(insts, gold_prices, gold_fx, outside, raw_prices, raw_adj, raw_fx,
-                        source=(db_prices, db_fx), snaps=snaps)
+                        source=(db_prices, db_fx), snaps=snaps, overlap=overlap, frozen=read_frozen())
     label = (f"Gold 마트 {GOLD_PRICES}, {GOLD_FX}(원천 PostgreSQL → Debezium, Kafka → Flink Bronze → Spark Silver → dbt Gold). "
              "수정 종가와 기사는 data/raw/")
     write_real(path, insts, gold_prices, gold_fx, raw_adj, read_news(), checks, read_events(), source_label=label)
@@ -545,9 +673,10 @@ def selftest():
     rng = random.Random(20261116)
     results = []
 
-    def run(name, prices, fx, want):
+    def run(name, prices, fx, want, **kw):
         checks = check_real(insts, prices, fx, 0, raw_prices, raw_adj, raw_fx, golden=no_golden,
-                            source=(raw_prices, raw_fx), snaps={"mart_symbol_daily": ["1", "자체 시험"], "mart_fx_daily": ["2", "자체 시험"]})
+                            source=(raw_prices, raw_fx), snaps={"mart_symbol_daily": ["1", "자체 시험"], "mart_fx_daily": ["2", "자체 시험"]},
+                            **kw)
         failed = [c[0] for c in checks if not c[1]]
         ok = failed == want
         results.append((name, ok, failed))
@@ -579,6 +708,27 @@ def selftest():
                         source=(db, dict(raw_fx)), snaps={"mart_symbol_daily": ["1", "자체 시험"], "mart_fx_daily": ["2", "자체 시험"]})
     failed = [c[0] for c in checks if not c[1]]
     results.append(("원천만 바뀌고 Gold는 그대로", failed == [LP], failed))
+
+    # 원본 구간(loaders/window.json)과 평가용 파일 대조. 평가용 파일은 EVAL_END까지의 원본으로 꾸밉니다
+    from datetime import date
+    cut = date.fromisoformat(EVAL_END)
+    old_keys = sorted(k for k in keys if k[1] <= cut)
+    f_prices = {k: raw_prices[k] for k in old_keys}
+    f_fx = {d: r for d, r in raw_fx.items() if d <= cut}
+    OV, FZ = "원본 구간이 겹치는 날(같은 값)", f"평가용 파일과 같은 날({EVAL_END}까지)"
+    run("구간과 평가용 파일 그대로", dict(raw_prices), dict(raw_fx), [], overlap={"same": 3, "diff": []},
+        frozen=(f_prices, f_fx))
+    k = rng.choice(old_keys)
+    run("겹치는 날 원본끼리 다름", dict(raw_prices), dict(raw_fx), [OV], overlap={"same": 2, "diff": [("시세", k)]})
+    changed = dict(f_prices)
+    o, h, l, c, v = changed[k]
+    changed[k] = (o, h, l, (c * Decimal("1.01")).quantize(Q4), v)
+    run("평가용 파일 때의 종가가 바뀜", dict(raw_prices), dict(raw_fx), [FZ], frozen=(changed, f_fx))
+    fewer = dict(f_prices)
+    del fewer[k]
+    d = rng.choice(sorted(f_fx))
+    run("평가용 파일에 없던 행을 더함(늦게 나온 종가)", dict(raw_prices), dict(raw_fx), [],
+        frozen=(fewer, {x: r for x, r in f_fx.items() if x != d}))
 
     tampers = [("내보낸 뒤 행 지우기",
                 "delete from prices where (symbol, trade_date) in (select symbol, trade_date from prices limit 1)"),
@@ -619,7 +769,7 @@ def _print_status(st):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", nargs="?", choices=["export", "golden", "status"])
+    ap.add_argument("cmd", nargs="?", choices=["export", "golden", "status", "freeze"])
     ap.add_argument("path", nargs="?")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--if-changed", action="store_true", help="export: 내용이 같고 검사가 통과하면 지금 파일을 그대로 둠")
@@ -637,6 +787,8 @@ if __name__ == "__main__":
         st = status(golden(Path(a.path) if a.path else GOLDEN_OUT))
     elif a.cmd == "status":
         st = status(Path(a.path) if a.path else OUT)
+    elif a.cmd == "freeze":
+        st = status(freeze())
     else:
         sys.exit(__doc__)
     _print_status(st)

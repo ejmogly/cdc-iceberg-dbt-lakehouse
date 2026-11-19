@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "eval" / "e04_agent"))
 
 from ai import qa  # noqa: E402
+from ai import screen_data  # noqa: E402
 from ai import tools as T  # noqa: E402
 
 import score  # noqa: E402
@@ -59,7 +60,7 @@ def run(ts, question, outputs):
 
 
 def main():
-    data = T.real_data()
+    data = T.real_data(screen_data.eval_db())
     ts = T.Toolset(data, TODAY, ACCOUNT)
     empty = T.Toolset(data, TODAY, {"id": "screen", "trades": {}})
     sells_only = T.Toolset(data, TODAY, {"id": "screen", "trades": {"SPY": [{"d": "2025-03-04", "side": "SELL", "q": 1}]}})

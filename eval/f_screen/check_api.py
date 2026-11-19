@@ -192,7 +192,7 @@ def fill_expected(world, symbol, code, d):
 
 
 def check_real():
-    db = screen_data.OUT
+    db = screen_data.eval_db()
     httpd, _ = serve(db, 0)
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     cases = json.loads((HERE / "cases_real.json").read_text(encoding="utf-8"))
@@ -248,7 +248,7 @@ def latency_case():
 
 
 def check_latency(n=200):
-    httpd, _ = serve(screen_data.OUT, 0)
+    httpd, _ = serve(screen_data.eval_db(), 0)
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     body = latency_case()
     code, first = http(base, "/api/pnl", body)
@@ -315,12 +315,12 @@ def check_pipeline():
         for i, (name, sql) in enumerate(breaks.items()):
             # 깨는 경우마다 다른 파일에 씁니다.
             db = Path(tmp) / f"file_{i}.duckdb"
-            shutil.copy(screen_data.OUT, db)
+            shutil.copy(screen_data.eval_db(), db)
             con = duckdb.connect(str(db))
             con.execute(sql)
             con.close()
             out.append(_gated(db, "내보낸 뒤 " + name, "내보낸 뒤 바뀌지 않음(지문)"))
-    httpd, _ = serve(screen_data.OUT, 0)
+    httpd, _ = serve(screen_data.eval_db(), 0)
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     _, st = http(base, "/api/status")
     p_code, _ = http(base, "/api/pnl", latency_case())
@@ -349,7 +349,7 @@ def check_reload():
     with tempfile.TemporaryDirectory() as tmp:
         db, bad, good, junk = (Path(tmp) / n for n in ("screen.duckdb", "bad.duckdb", "good.duckdb", "junk.duckdb"))
         for p in (db, bad, good):
-            shutil.copy(screen_data.OUT, p)
+            shutil.copy(screen_data.eval_db(), p)
         con = duckdb.connect(str(bad))
         con.execute("update prices set close = close * 1.01 where symbol = 'SPY' and trade_date = "
                     "(select max(trade_date) - 20 from prices where symbol = 'SPY')")
@@ -380,7 +380,7 @@ def check_reload():
 
 def check_edges():
     """입력 경계. 잘못된 입력은 연결을 끊지 않고 400과 맞는 코드, 빠진 줄만 있으면 보유 기간과 큰 움직임이 없음."""
-    httpd, _ = serve(screen_data.OUT, 0)
+    httpd, _ = serve(screen_data.eval_db(), 0)
     port = httpd.server_address[1]
     base = f"http://127.0.0.1:{port}"
     buy = lambda d, q=1, **kw: {"date": d, "side": "BUY", "qty": q, **kw}
@@ -513,7 +513,7 @@ def check_edges():
     # 깨진 저장 파일: 읽기와 저장 모두 500으로 알리고 파일을 덮어쓰지 않음
     broken = SAFE / "f_screen" / "check_api_broken_trades.json"
     broken.write_text('{"symbols": ', encoding="utf-8")
-    httpd, _ = serve(screen_data.OUT, 0, broken)
+    httpd, _ = serve(screen_data.eval_db(), 0, broken)
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     c, r = http(base, "/api/trades")
     req = urllib.request.Request(base + "/api/trades", method="PUT", headers={"Content-Type": "application/json"},
@@ -541,7 +541,7 @@ def check_accounts():
     - 지금 잔고: 거꾸로 되짚은 데이터 첫날 보유(손으로 센 값), 앞으로 다시 세면 지금 잔고로 돌아옴, 안내 코드
     - 잘못된 지금 잔고 줄과 증권사는 400, 묻고 답하기에는 시작 보유를 합친 줄로 넘김, 저장 파일에 증권사가 남음"""
     tmp = GEN / "check_accounts_trades.json"
-    httpd, _ = serve(screen_data.OUT, 0, trades=tmp)
+    httpd, _ = serve(screen_data.eval_db(), 0, trades=tmp)
     port = httpd.server_address[1]
     base = f"http://127.0.0.1:{port}"
     pnl = lambda trades, sym="005930", asof="2026-11-11": http(base, "/api/pnl", {"symbol": sym, "asof": asof, "trades": trades})
@@ -690,7 +690,7 @@ def check_accounts():
 def check_portfolio():
     """전체 탭. 종목마다 손익 API(/api/pnl)를 따로 불러 더한 값과, 화면 데이터 파일에서 따로 읽은 기준일 종가와 매매기준율로 센
     평가액과 견줍니다. 금액은 출력하지 않습니다."""
-    httpd, _ = serve(screen_data.OUT, 0)
+    httpd, _ = serve(screen_data.eval_db(), 0)
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     asof = "2026-11-11"
     row = lambda d, side, q, b="", **kw: {"date": d, "side": side, "qty": q, **({"broker": b} if b else {}), **kw}
@@ -716,7 +716,7 @@ def check_portfolio():
                                     for x in r["symbols"]))
     ok("전체 = 종목 손익 API의 합", all(r["total"][k] == sum((v["summary"] or {}).get(k, 0) for v in each.values()) for k in keys))
     # 평가액: 화면 데이터 파일에서 따로 읽은 기준일 이전 마지막 종가와 그날(달력에 맞춘 날 이전 마지막) 매매기준율
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     end = con.execute("select max(cal_date) from calendar where cal_date <= ?", [asof]).fetchone()[0]
     fx = con.execute("select rate from fx where rate_date = (select max(rate_date) from fx where rate_date <= ?)", [end]).fetchone()[0]
     good_value = True

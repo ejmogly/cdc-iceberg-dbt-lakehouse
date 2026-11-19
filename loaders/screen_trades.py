@@ -337,17 +337,31 @@ def verify(trades_path=TRADES):
             same += 1
         else:
             diff_syms.append(pos)
-    # Gold 손익 마트(dbt/models/pnl, 손익 SQL의 Spark 판)가 화면 손익과 칸마다 같은지. 기준일이 같은 종목만 견줍니다
+    # Gold 손익 마트(dbt/models/pnl, 손익 SQL의 Spark 판)가 화면 손익과 칸마다 같은지. Gold의 기준일은 데이터 끝날이라,
+    # 저장한 기준일이 다르면 화면 쪽을 Gold 기준일로 다시 셉니다(데이터 기간을 늘린 11/19부터). 두 기준일 사이에 매매가 있어
+    # 장부에 드는 줄이 달라지면(원천에 넣은 체결과 달라짐) 견주지 않고 따로 셉니다
     gold_asof = _spark_rows("select max(cal_date) from lake.gold.pnl_calendar")[0][0]
     cols = ("position_id",) + PNL_EXACT + PNL_NEAR
     gp = {r[0]: dict(zip(cols, r)) for r in _spark_rows(
         f"select {', '.join(cols)} from lake.gold.pnl_position "
         f"where position_id like '{ACCOUNT}:%' or position_id like '{ACCOUNT}-%'")}
+    currency = {r["symbol"]: r["currency"] for r in instruments()}
+    at_gold, g_again = {}, 0
     g_same, g_diff, g_skip = 0, [], []
     for pos, (symbol, s_) in sorted(screen_pos.items()):
-        if saved["symbols"][symbol]["asof"] != gold_asof:
-            g_skip.append(pos)
-            continue
+        v = saved["symbols"][symbol]
+        if v["asof"] != gold_asof:
+            if symbol not in at_gold:
+                r2 = pnl(symbol, gold_asof, [t for t in v.get("trades", []) if usable(t, currency[symbol])])
+                key = lambda r: [(s["trade_index"], s["excluded"], bool(s.get("opening"))) for s in r["steps"]]
+                at_gold[symbol] = r2 if key(r2) == key(results[symbol]) else None
+            r2 = at_gold[symbol]
+            mine = r2 and next((a.get("summary") for a in (r2.get("accounts") or [{"broker": "", "summary": r2.get("summary")}])
+                                if f"{account_of(a['broker'])}:{symbol}" == pos), None)
+            if not mine:
+                g_skip.append(pos)
+                continue
+            s_, g_again = mine, g_again + 1
         g = gp.get(pos)
         dec = lambda v: None if v in (None, "", "NULL") else Decimal(str(v))
         bad_cols = [] if g else ["행 없음"]
@@ -382,7 +396,7 @@ def verify(trades_path=TRADES):
            "executions_gold": len(gold), "executions_ok": not bad, "problems": bad[:10],
            "pnl_same": same, "pnl_checked": same + len(diff_syms), "pnl_diff_symbols": diff_syms,
            "gold_pnl_asof": gold_asof, "gold_pnl_same": g_same, "gold_pnl_checked": g_same + len(g_diff),
-           "gold_pnl_diff": g_diff, "gold_pnl_skipped_asof": g_skip,
+           "gold_pnl_diff": g_diff, "gold_pnl_skipped_asof": g_skip, "gold_pnl_recomputed_at_gold_asof": g_again,
            "gold_account_same": len(want_acct) - len([x for x in a_diff if not x.endswith("화면에 없음")]),
            "gold_account_checked": len(want_acct), "gold_account_diff": a_diff,
            "path": "원천 주문, 체결, 잔고 → Debezium, Kafka → Flink Bronze → Spark MERGE Silver → dbt fct_execution → dbt pnl_position"}
@@ -391,7 +405,8 @@ def verify(trades_path=TRADES):
     print(f"Gold 체결 {len(gold)}건 / 화면 매매에서 만든 체결 {len(execs)}건, {'같음' if not bad else f'{len(bad)}건 다름'}; "
           f"Gold 체결로 다시 센 손익 {same}/{same + len(diff_syms)}(계좌, 종목) 같음; "
           f"Gold 손익 마트(pnl_position, 기준일 {gold_asof}) {g_same}/{g_same + len(g_diff)}(계좌, 종목) 칸마다 같음"
-          + (f"(기준일이 달라 건너뜀 {len(g_skip)})" if g_skip else "") + (f" 다름: {g_diff}" if g_diff else "")
+          + (f"(화면을 Gold 기준일로 다시 셈 {g_again})" if g_again else "")
+          + (f"(두 기준일 사이 매매로 장부가 달라 건너뜀 {len(g_skip)})" if g_skip else "") + (f" 다름: {g_diff}" if g_diff else "")
           + (f"; 체결이 없는 계좌 {len(empty_pos)}곳(모든 줄이 계산에서 빠짐)은 견주지 않음" if empty_pos else "")
           + f"; Gold 계좌별 마트(mart_account_pnl) {len(want_acct) - len(a_diff)}/{len(want_acct)}계좌 전체 탭과 같음"
           + (f" 다름: {a_diff}" if a_diff else "")

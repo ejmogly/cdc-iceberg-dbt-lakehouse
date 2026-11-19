@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "eval" / "e04_agent"))
 
 from ai import agent, llm, qa  # noqa: E402
+from ai import screen_data  # noqa: E402
 from ai import tools as T  # noqa: E402
 
 import score  # noqa: E402
@@ -97,7 +98,7 @@ def main():
     account = {"id": "screen", "trades": acct["trades"]}
     stamp = time.strftime("%Y%m%d-%H%M%S")
     name = f"{VARIANT}_{split}{'_part' if arg('--ids') else ''}_{stamp}"
-    data = T.real_data()
+    data = T.real_data(screen_data.eval_db())
     try:
         boot, _ = llm.boot_seconds(kind="real")
         with ThreadPoolExecutor(WORKERS) as pool:

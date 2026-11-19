@@ -116,7 +116,7 @@ def main():
             sys.exit("확인용은 마지막 판 하나로 --final, 전체를 한 번만 돌립니다")
         if list(RUNS.glob(f"{VARIANT}_confirm_*.jsonl")):
             sys.exit("확인용 기록이 이미 있습니다. 다시 돌리지 않습니다")
-    con = duckdb.connect(str(screen_data.OUT), read_only=True)
+    con = duckdb.connect(str(screen_data.eval_db()), read_only=True)
     days = [r[0] for r in con.execute("select distinct trade_date from prices p join instruments i using (symbol) "
                                       "where i.currency = 'USD' order by 1").fetchall()]
     rows_by = {}

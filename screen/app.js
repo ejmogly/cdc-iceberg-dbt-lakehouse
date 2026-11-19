@@ -1125,6 +1125,16 @@ function flush() {
 
 // ---------- 종목과 기준일 ----------
 
+function showLatest() {
+  const b = $("asof-latest"), end = st.calendar?.[1];
+  const show = Boolean(end && st.asof && st.asof < end);
+  b.hidden = !show;
+  if (show) {
+    b.textContent = `최신 ${Number(end.slice(5, 7))}/${Number(end.slice(8))}로`;
+    b.title = `데이터가 ${end}까지 있어요. 기준일을 그날로 옮깁니다`;
+  }
+}
+
 function load(sym) {
   st.sym = sym;
   st.seq++;
@@ -1147,6 +1157,7 @@ function load(sym) {
   $("sym").value = sym;
   document.dispatchEvent(new CustomEvent("symshown", { detail: sym }));  // 종목 고르기 단추의 이름을 맞춤(ui.js)
   $("asof").value = st.asof;
+  showLatest();
   renderRows();
   st.res = null;
   showResult("none");
@@ -1208,9 +1219,16 @@ async function boot() {
     st.asofErr = null;
     asof.removeAttribute("aria-invalid");
     st.asof = asof.value;
+    showLatest();
     fetchRange();
     changed();
     if (!$("all").hidden) fetchPortfolio();
+  });
+  // 저장한 기준일이 데이터 끝날보다 앞이면(데이터 기간을 늘린 뒤 등) 끝날로 옮기는 단추. 저장한 기준일은 고르기 전까지 그대로 둠
+  $("asof-latest").addEventListener("click", () => {
+    asof.value = st.calendar[1];
+    asof.dispatchEvent(new Event("change"));
+    asof.focus();
   });
   window.addEventListener("pagehide", flush);
   // 숨은 탭에서 그린 그림은 폭을 몰라 기본 폭으로 그려지므로, 그림 탭이 보일 때 다시 그림

@@ -224,7 +224,7 @@ def future_test(app, rows):
 def main():
     exp = json.loads(EXPECTED.read_text(encoding="utf-8"))
     rows = exp["rows"]
-    httpd, _ = serve(screen_data.OUT, 0, None)
+    httpd, _ = serve(screen_data.eval_db(), 0, None)
     port = httpd.server_address[1]
     try:
         results, worst, ms = [], 0.0, []
@@ -402,7 +402,7 @@ def selftest():
     # 서버: 쉬는 날에 다음 거래일을 고르는 누수를 모든 날짜 대조가 잡는지
     old_pick = screen_server.bisect_right
     screen_server.bisect_right = leaky_pick
-    httpd, _ = serve(screen_data.OUT, 0, None)
+    httpd, _ = serve(screen_data.eval_db(), 0, None)
     try:
         swept = sweep(httpd.app)
     finally:
@@ -427,7 +427,7 @@ def selftest():
             assert src.count(a) == 1, f"심지 못함({name}): {a!r}"
             f.write_text(src.replace(a, b), encoding="utf-8")
             screen_server.STATIC = (Path(d) / "screen").resolve()
-            httpd, _ = serve(screen_data.OUT, 0, None)
+            httpd, _ = serve(screen_data.eval_db(), 0, None)
             try:
                 got = screen_pass(httpd.server_address[1], pick)
             finally:

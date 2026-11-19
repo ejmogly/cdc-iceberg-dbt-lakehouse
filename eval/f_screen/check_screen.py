@@ -959,7 +959,7 @@ def main():
         print("Chrome이 없어 화면 대조를 하지 못했습니다(실패로 셈)")
         return 1
     TMP.parent.mkdir(parents=True, exist_ok=True)
-    httpd, _ = serve(screen_data.OUT, 0, TMP)
+    httpd, _ = serve(screen_data.eval_db(), 0, TMP)
     port = httpd.server_address[1]
     try:
         if a.selftest:
