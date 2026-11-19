@@ -20,7 +20,9 @@ from pathlib import Path
 import truststore
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW = ROOT / "data" / "raw"
+# 받은 원본을 두고 읽는 곳. 화면 데이터 기간을 늘릴 때는 loaders/extend_window.py가 LOADER_RAW_DIR=data/raw/window로 바꿉니다
+# (첫 구간 원본과 섞이지 않게, docs/decisions/0016). 상대 경로는 저장소 루트 기준입니다
+RAW = ROOT / os.environ.get("LOADER_RAW_DIR", "data/raw")
 USER_AGENT = "cdc-iceberg-dbt-lakehouse-loader/0.1"
 _TLS = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 

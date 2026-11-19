@@ -1,7 +1,7 @@
 # 키와 Docker 없이 도는 확인. CI(.github/workflows/check.yml)도 같은 목표를 씁니다.
 PY ?= .venv/bin/python
 
-.PHONY: setup check check-pnl check-public check-history screen-data screen-eval-data window-extend screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh source-migrate
+.PHONY: setup check check-pnl check-public check-history screen-data screen-eval-data window-fetch window-load window-extend lake-auto-on lake-auto-off screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh lake-refresh-test source-migrate
 
 setup:
 	python3 -m venv .venv
@@ -37,14 +37,32 @@ screen-data:
 	$(PY) -m ai.screen_data export
 
 # 평가용 화면 파일(screen_eval.duckdb, 정답을 고정한 때의 2년치)을 첫 구간 원본에서 다시 만들고 내용 지문을 대조.
-# 평가 시험(check_api, check_screen 등)은 이 파일을 엶. 화면은 loaders/window.json의 구간을 모두 담은 screen.duckdb
+# 평가 시험(check_api, check_screen 등)은 이 파일을 엶. 화면은 구간 목록(data/generated/window.json)의 구간을 모두 담은 screen.duckdb
 screen-eval-data:
 	$(PY) -m ai.screen_data freeze
 
-# 화면 데이터 기간을 늘림: 새 원본 구간(앞 구간 끝날부터 어제까지, END=YYYY-MM-DD로 바꿈)을 받아 원천에 넣고 loaders/window.json에 더함.
-# 키(.env)와 VM, 원천 DB가 필요. 그 뒤 make lake-refresh. 할 일만 보려면 .venv/bin/python loaders/extend_window.py --plan
-window-extend:
-	$(PY) loaders/extend_window.py $(if $(END),--end $(END))
+# 화면 데이터 기간 늘리기(docs/decisions/0016). 받기는 Mac, 처리는 Airflow DAG window_extend.
+# window-fetch: 국내 시세가 나온 마지막 거래일까지(END=YYYY-MM-DD로 앞당김) 새 구간 원본을 data/raw/window/에 받고 next.json을 적음.
+#   키(.env)만 필요하고 레이크는 꺼져 있어도 됨. 할 일만 보려면 .venv/bin/python loaders/extend_window.py fetch --plan
+# window-load: 받아 둔 원본이 있으면 window_extend를 지금 한 번(확인, 원천 적재, Bronze 기다림, 구간 더하기, 새로 고침, 화면 확인).
+#   레이크와 Bronze 작업이 떠 있어야 함. lakehouse_refresh가 꺼져 있으면 새로 고침을 건너뛰므로 그때는 make lake-refresh-test
+# window-extend: 둘을 차례로
+window-fetch:
+	$(PY) loaders/extend_window.py fetch $(if $(END),--end $(END))
+
+window-load:
+	@rc=0; $(PY) loaders/extend_window.py pending || rc=$$?; \
+	if [ $$rc -eq 0 ]; then docker compose exec -T airflow airflow dags test window_extend; \
+	elif [ $$rc -ne 99 ]; then exit $$rc; fi
+
+window-extend: window-fetch window-load
+
+# Airflow DAG 두 개(lakehouse_refresh 30분마다, window_extend 매일 14:40)를 켜거나 끔. 레이크를 켜 둔 동안만 돎
+lake-auto-on:
+	docker compose exec -T airflow bash -c 'airflow dags unpause lakehouse_refresh && airflow dags unpause window_extend'
+
+lake-auto-off:
+	docker compose exec -T airflow bash -c 'airflow dags pause window_extend && airflow dags pause lakehouse_refresh'
 
 # 화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN)로 옮김(VM 필요). 그 뒤 Silver MERGE, dbt build, trades-verify
 trades-to-source:
@@ -58,6 +76,10 @@ trades-verify:
 # docker compose --profile flink --profile spark --profile airflow up -d 와 Bronze 작업이 떠 있어야 함. DAG 멈춤은 airflow dags unpause로 풂
 lake-refresh:
 	docker compose exec -T airflow airflow dags trigger lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
+
+# 같되, DAG가 꺼져 있어도 이 자리에서 끝까지 돌림(airflow dags test, 로그가 바로 보임)
+lake-refresh-test:
+	docker compose exec -T airflow airflow dags test lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
 
 # E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)
 screen-golden:

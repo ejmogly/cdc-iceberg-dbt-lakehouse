@@ -18,6 +18,7 @@ Bronze는 Flink가 계속 쌓으므로 이 DAG에 없습니다. 태스크는 모
 Airflow는 실패한 태스크를 다시 불러 줄 뿐이고, 다시 불렸을 때 답이 같은지는 각 작업이 지킵니다
 (MERGE의 버전 가드, plan 먼저 progress 나중, 적재기의 값 비교, docs/guide/06-incremental-and-backfill.md 13절).
 시험용 매매 파일은 수동 실행의 설정 {"trades": "data/generated/f_screen/<파일>.json"}으로 넣습니다(data/generated/ 아래만).
+데이터 기간을 늘린 뒤에는 DAG window_extend가 이 DAG를 window_extend__<그 실행> 이름으로 부릅니다(docs/decisions/0016).
 """
 from datetime import datetime, timedelta
 

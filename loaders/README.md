@@ -48,10 +48,18 @@ python3 -m venv .venv
 
 ## 화면 데이터 기간 늘리기
 
-화면 데이터 기간은 받은 원본 구간 목록 [`window.json`](window.json)을 이어 붙인 것입니다(첫 구간은 평가 기준 2년치, [결정 기록 0015](../docs/decisions/0015-extend-data-window-keep-eval-frozen.md)). `make window-extend`(또는 `extend_window.py --end YYYY-MM-DD`)가 앞 구간의 끝날부터 하루 겹쳐 새 구간의 시세, 환율, 기사를 받고, 원천에 넣고, 구간을 더합니다. 그 뒤 `make lake-refresh`가 Gold를 거쳐 화면 파일을 새로 내보냅니다. 평가 시험은 얼린 파일을 써서 바뀌지 않습니다.
+화면 데이터 기간은 받은 원본 구간 목록(`data/generated/window.json`, git 밖)을 이어 붙인 것입니다. 목록이 없으면 첫 구간(평가 기준 2년치)만 씁니다([결정 기록 0015](../docs/decisions/0015-extend-data-window-keep-eval-frozen.md)). 받기는 Mac이, 받은 원본의 처리는 Airflow DAG `window_extend`가 합니다([결정 기록 0016](../docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)).
+
+| 순서 | 어디서 | 하는 일 |
+|---|---|---|
+| `make window-fetch` | Mac(키, 인터넷) | 국내 시세가 나온 마지막 거래일을 묻고, 구간 끝부터 그날까지 원본 38개를 `data/raw/window/`에 받은 뒤 `next.json`(구간과 지문)을 적음 |
+| `make window-load` | Airflow | 받아 둔 것이 있으면 `window_extend`를 한 번: 지문과 겹치는 날 확인, 원천 적재, Bronze 기다림, 구간 더하기, `lakehouse_refresh`, 화면 확인 |
+| `make window-extend` | 둘 다 | 위 둘을 차례로 |
 
 - 하루 겹치는 까닭: 미국 종가는 미국 장 마감 뒤(서울 아침)에 나와, 받을 때 끝날의 종가가 아직 없을 수 있습니다. 겹친 날은 원본끼리 값이 같아야 합니다.
-- 구간 파일은 Airflow 컨테이너에도 붙는 `loaders/`에 둡니다(`data/`는 `raw`와 `generated`만 붙음).
+- 끝날은 「어제」가 아니라 국내 시세가 나온 마지막 거래일입니다. 국내 시세는 다음 영업일 오후 1시 뒤에 나와, 주말에 어제를 끝날로 받으면 금요일 국내 시세가 빠집니다.
+- 받기가 Mac인 까닭: HTTPS를 검사하는 프록시가 있는 네트워크에서는 컨테이너가 API의 인증서를 믿지 못할 수 있고, 키는 `.env`에만 둡니다. 컨테이너는 `data/raw/`를 읽기만 합니다.
+- 적재기의 원본 폴더는 환경 변수 `LOADER_RAW_DIR`(기본 `data/raw`)로 바꿉니다. 늘린 구간은 `data/raw/window`입니다.
 
 ## 관심도
 

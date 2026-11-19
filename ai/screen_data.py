@@ -19,8 +19,10 @@
 - 검사 결과는 파일의 checks 테이블에, 내용의 지문은 meta에 둡니다. 서버는 열 때 지문을 다시 셉니다.
   검사가 하나라도 실패하거나 지문이 다르면 화면은 숫자 대신 실패 항목을 보입니다.
 - 가격 값은 출력하지 않습니다(재배포 금지). 행 수, 날짜, 개수만 냅니다.
-- 데이터 기간은 받은 원본의 구간 목록(loaders/window.json)으로 늘립니다. 평가는 정답을 고정한 때의 얼린 파일(EVAL)을 쓰고,
-  내보낼 때 EVAL_END까지의 값이 그 파일과 같은지(늦게 나온 행을 더한 것만 허용) 대조합니다(docs/decisions/0015).
+- 데이터 기간은 받은 원본의 구간 목록(data/generated/window.json, git 밖)으로 늘립니다. 목록이 없으면 첫 구간(평가 기준 2년치)만
+  씁니다. 첫 구간 원본은 data/raw/에, 늘린 구간 원본은 data/raw/window/에 있습니다(Mac이 받고 Airflow window_extend가 더함,
+  docs/decisions/0016). 평가는 정답을 고정한 때의 얼린 파일(EVAL)을 쓰고, 내보낼 때 EVAL_END까지의 값이 그 파일과 같은지
+  (늦게 나온 행을 더한 것만 허용) 대조합니다(docs/decisions/0015).
 """
 import argparse
 import csv
@@ -44,12 +46,17 @@ RAW = ROOT / "data" / "raw"
 GEN = ROOT / "data" / "generated"
 OUT = GEN / "screen.duckdb"
 GOLDEN_OUT = GEN / "screen_golden.duckdb"
-WINDOW_FILE = ROOT / "loaders" / "window.json"
+# 늘린 구간의 원본(Mac의 loaders/extend_window.py fetch가 받음)과 구간 목록(Airflow window_extend의 add_part가 적음).
+# Airflow 컨테이너에는 data/raw/가 읽기 전용, data/generated/가 쓰기로 붙습니다(docs/decisions/0016)
+RAW_WINDOW = RAW / "window"
+WINDOW_FILE = GEN / "window.json"
 # 평가(잠근 정답과 견주는 시험)가 쓰는 얼린 화면 파일. 정답을 고정한 때의 데이터(2024-11-13 ~ 2026-11-12)와 내용이 같아야 합니다.
 # 지문은 내용 테이블(시세, 환율, 달력, 기사, 일정, 종목)의 sha256이라 값 자체는 담지 않습니다(docs/decisions/0015).
 EVAL = GEN / "screen_eval.duckdb"
 EVAL_END = "2026-11-12"
 EVAL_DIGEST = "2acfe7cf2008cb9829c56a8d5155aa0d43a2fe79ac48f0ec4dcc060fc484bf66"
+BASE = ("2024-11-13", EVAL_END)   # 첫 구간(평가 기준 2년치, 원본 지문은 eval/f_screen/lock.json). 구간 목록이 없으면 이것만
+BASE_TAG = BASE[0].replace("-", "") + "_" + BASE[1].replace("-", "")
 ET = ZoneInfo("America/New_York")
 Q4 = Decimal("0.0001")
 REAL_BENCH = "SPY"
@@ -73,12 +80,17 @@ CONTENT = [("instruments", "symbol"), ("prices", "symbol, trade_date"), ("fx", "
 
 
 def read_window(path=WINDOW_FILE):
-    """받은 원본의 구간 목록(loaders/window.json)을 [(시작, 끝)]으로 돌려줍니다. 화면 데이터 기간은 첫 구간의 시작부터
-    마지막 구간의 끝까지입니다. 구간의 원본 파일 이름은 적재기의 --start, --end 그대로입니다(kr_<종목>_<시작>_<끝>.json 등).
-    뒤 구간은 앞 구간의 끝 다음 날보다 늦게 시작할 수 없고(빈 날 없음), 끝은 앞 구간보다 늦어야 합니다.
-    겹치는 날은 원본끼리 값이 같아야 하고, 내보낼 때 검사합니다(늦게 나온 미국 종가를 받으려고 하루 겹쳐 받음)."""
+    """받은 원본의 구간 목록(data/generated/window.json)을 [(시작, 끝)]으로 돌려줍니다. 목록 파일이 없으면 첫 구간만입니다.
+    화면 데이터 기간은 첫 구간의 시작부터 마지막 구간의 끝까지입니다. 구간의 원본 파일 이름은 적재기의 --start, --end
+    그대로입니다(kr_<종목>_<시작>_<끝>.json 등). 첫 구간은 BASE여야 하고, 뒤 구간은 앞 구간의 끝 다음 날보다 늦게 시작할 수
+    없고(빈 날 없음), 끝은 앞 구간보다 늦어야 합니다. 겹치는 날은 원본끼리 값이 같아야 하고, 늘릴 때와 내보낼 때 검사합니다
+    (늦게 나온 미국 종가를 받으려고 하루 겹쳐 받음)."""
     from datetime import date, timedelta
+    if not path.exists():
+        return [BASE]
     parts = [(p["start"], p["end"]) for p in json.loads(path.read_text(encoding="utf-8"))["parts"]]
+    if not parts or parts[0] != BASE:
+        raise ValueError(f"{path.name}의 첫 구간이 평가 기준 {BASE[0]} ~ {BASE[1]}가 아닙니다")
     for i, (s, e) in enumerate(parts):
         a, b = date.fromisoformat(s), date.fromisoformat(e)
         if a > b:
@@ -91,6 +103,11 @@ def read_window(path=WINDOW_FILE):
 PARTS = read_window()
 START, END = PARTS[0][0], PARTS[-1][1]
 TAGS = [s.replace("-", "") + "_" + e.replace("-", "") for s, e in PARTS]
+
+
+def raw_dir(tag):
+    """구간의 원본 폴더. 첫 구간은 data/raw/, 늘린 구간은 data/raw/window/입니다."""
+    return RAW if tag == BASE_TAG else RAW_WINDOW
 
 
 # ---------- 읽기 ----------
@@ -111,7 +128,7 @@ def _et_date(ms):
 
 def read_raw(insts, tags=None, overlap=None):
     """받은 원본에서 시세(시가, 고가, 저가, 종가, 거래량), 수정 종가, 환율을 읽습니다. 키는 (종목, date).
-    구간(tags, 기본은 loaders/window.json의 모든 구간)을 차례로 읽어 합칩니다. overlap(dict)을 주면 두 구간에 함께 있는
+    구간(tags, 기본은 구간 목록의 모든 구간)을 차례로 읽어 합칩니다. overlap(dict)을 주면 두 구간에 함께 있는
     값의 수(same)와 값이 다른 키(diff)를 담습니다. 다른 값은 앞 구간의 값을 남깁니다(내보내기 검사가 실패함)."""
     prices, adj, fx = {}, {}, {}
     stat = overlap if overlap is not None else {}
@@ -127,15 +144,16 @@ def read_raw(insts, tags=None, overlap=None):
         table[key] = value
 
     for tag in tags or TAGS:
+        base = raw_dir(tag)
         for it in insts:
             sym = it["symbol"]
             if it["market"] == "KRX":
-                for r in json.loads((RAW / "daily_prices" / f"kr_{sym}_{tag}.json").read_text(encoding="utf-8")):
+                for r in json.loads((base / "daily_prices" / f"kr_{sym}_{tag}.json").read_text(encoding="utf-8")):
                     d = datetime.strptime(r["basDt"], "%Y%m%d").date()
                     put(prices, (sym, d), (_q(r["mkp"]), _q(r["hipr"]), _q(r["lopr"]), _q(r["clpr"]), int(r["trqu"])), "시세")
                 continue
             for kind in ("false", "true"):
-                path = RAW / "daily_prices" / f"us_{sym}_{tag}_adj{kind}.json"
+                path = base / "daily_prices" / f"us_{sym}_{tag}_adj{kind}.json"
                 for r in json.loads(path.read_text(encoding="utf-8")).get("results") or []:
                     d = _et_date(r["t"])
                     if kind == "false":
@@ -143,7 +161,7 @@ def read_raw(insts, tags=None, overlap=None):
                         put(prices, (sym, d), (_q(r["o"]), _q(r["h"]), _q(r["l"]), _q(r["c"]), v), "시세")
                     else:
                         put(adj, (sym, d), _q(r["c"]), "수정 종가")
-        payload = json.loads((RAW / "fx_rates" / f"USDKRW_{tag}.json").read_text(encoding="utf-8"))
+        payload = json.loads((base / "fx_rates" / f"USDKRW_{tag}.json").read_text(encoding="utf-8"))
         rows = payload if isinstance(payload, list) else payload["StatisticSearch"]["row"]
         for r in rows:
             put(fx, datetime.strptime(r["TIME"], "%Y%m%d").date(), _q(r["DATA_VALUE"]), "환율")
@@ -230,7 +248,7 @@ def read_news(tags=None):
     앞 구간의 것을 남깁니다(두 구간에 걸친 날은 늦게 색인된 기사만 더해짐)."""
     out = {}
     for tag in tags or TAGS:
-        payload = json.loads((RAW / "news_massive" / f"ALL_{tag}.json").read_text(encoding="utf-8"))
+        payload = json.loads((raw_dir(tag) / "news_massive" / f"ALL_{tag}.json").read_text(encoding="utf-8"))
         part = {}  # 한 구간 안에서는 전처럼 뒤에 나온 것을 남김
         for page in payload["pages"]:
             for n in page.get("results") or []:
@@ -555,14 +573,12 @@ def freeze(path=EVAL):
     """평가용 파일을 첫 구간 원본(data/raw/, 2024-11-13 ~ 2026-11-12)에서 다시 만들고 지문을 대조합니다.
     내보낸 화면 파일은 Gold와 원본을 한 행씩 대조해 같았으므로, 원본으로 만든 내용이 그때의 화면 파일과 같아야 합니다."""
     insts = instruments()
-    tag = TAGS[0]
-    if PARTS[0][1] != EVAL_END:
-        sys.exit(f"loaders/window.json의 첫 구간이 {EVAL_END}에 끝나지 않습니다")
+    tag = BASE_TAG
     raw_prices, raw_adj, raw_fx = read_raw(insts, [tag])
     checks = check_real(insts, raw_prices, raw_fx, 0, raw_prices, raw_adj, raw_fx)
     new = path.with_name(path.stem + ".new.duckdb")
     write_real(new, insts, raw_prices, raw_fx, raw_adj, read_news([tag]), checks, read_events(),
-               source_label="평가용(첫 구간 원본에서 다시 만듦)", window=(PARTS[0][0], EVAL_END))
+               source_label="평가용(첫 구간 원본에서 다시 만듦)", window=BASE)
     got = content_digest(new)
     if got != EVAL_DIGEST:  # 지금 평가용 파일은 건드리지 않고, 새 파일은 살펴보도록 남김
         sys.exit(f"내용 지문이 다릅니다: {got[:12]} (기대 {EVAL_DIGEST[:12]}). {new.relative_to(ROOT)}를 남겼습니다")
@@ -709,7 +725,7 @@ def selftest():
     failed = [c[0] for c in checks if not c[1]]
     results.append(("원천만 바뀌고 Gold는 그대로", failed == [LP], failed))
 
-    # 원본 구간(loaders/window.json)과 평가용 파일 대조. 평가용 파일은 EVAL_END까지의 원본으로 꾸밉니다
+    # 원본 구간(구간 목록)과 평가용 파일 대조. 평가용 파일은 EVAL_END까지의 원본으로 꾸밉니다
     from datetime import date
     cut = date.fromisoformat(EVAL_END)
     old_keys = sorted(k for k in keys if k[1] <= cut)
