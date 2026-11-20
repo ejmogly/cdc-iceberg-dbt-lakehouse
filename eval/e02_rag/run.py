@@ -12,7 +12,7 @@
 - 인과 표현(규칙): 모델이 쓴 부분의 채점기 규칙 위반 문장 수(판정 모델 쪽은 judge_answers.py).
 - 모름 응답: 근거를 뺀 날에 「찾지 못했습니다」.
 - 평범한 날: 「크게 움직인 날은 아닙니다」라고 밝힘(지어낸 사건이 없는지는 근거 충실도에서 봄).
-- recall@5(잠정): 관련 표시(labels_{split}.json)의 판정 모델 표시로 셈. 사람 표본과 카파 0.7을 넘기 전에는 잠정입니다.
+- recall@5(참고값): 관련 표시(labels_{split}.json)의 판정 모델 표시로 셈. 사람 표본은 11/20에 빼기로 해 사람 확인을 거치지 않은 값입니다(E02 4절).
 - 지연(빈 호출 기동 시간 x 호출 수를 뺌), 질문당 비용.
 
 기록(답 글, 기사 제목)은 data/generated/e02/runs/(git 제외)입니다.
@@ -83,7 +83,7 @@ def score(item, ans, trace, days):
 
 
 def recall(rows, split, pool):
-    """판마다 큰 움직임 날의 recall@5(판정 모델 표시, 잠정). 관련 기사가 0건인 날은 따로 셈."""
+    """판마다 큰 움직임 날의 recall@5(판정 모델 표시, 사람 확인 없는 참고값). 관련 기사가 0건인 날은 따로 셈."""
     path = HERE / f"labels_{split}.json"
     if not path.exists():
         return None
@@ -178,7 +178,7 @@ def main():
                      ("p95_s", "p95(초)"), ("cost_per_q", "질문당 비용($)")]:
         print(f"| {label} | " + " | ".join(str(summary['by_version'][v][k]) for v in versions) + " |")
     if rec:
-        print("| recall@5(판정 모델, 잠정) | " + " | ".join(f"{rec[v]['recall_at_5']}({rec[v]['days']}일)" for v in versions)
+        print("| recall@5(판정 모델, 참고값) | " + " | ".join(f"{rec[v]['recall_at_5']}({rec[v]['days']}일)" for v in versions)
               + " |")
         print(f"관련 기사가 하나도 없는 큰 움직임 날: {rec[versions[0]]['no_relevant']}")
     print(f"기동 {boot:.1f}초. 기록 {(RUNS / name).relative_to(ROOT)}.jsonl, 장부 누적 ${cost:.2f}, {calls}번")

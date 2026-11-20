@@ -72,5 +72,9 @@
   "data/raw/news_massive/ALL_20241113_20261112.json": "2f94bd0cd353f8d98becd5a5e339d5f90d3271583629243586c1b1d9a3f66a3c"
  },
  "check": "python3 eval/f_screen/lock.py --verify",
- "history": []
+ "history": [],
+ "cites_sha256": {
+  "data/generated/f_screen/expected_cites.json": "becf4ab883019fd617c993407631f8920dfe485ec664219ef86d10cfd55eb175"
+ },
+ "cites_locked_at": "2026-11-20T10:05:23+09:00"
 }

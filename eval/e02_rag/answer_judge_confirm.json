@@ -1,0 +1,132 @@
+{
+ "note": "E02 답 문장의 판정(근거 충실도, 인과 표현). 문장 글은 git 제외 파일.",
+ "run": "data/generated/e02/runs/e02w3_confirm_20261120-102426.jsonl",
+ "judge_prompt": "e02_judge_ans_v1.txt",
+ "judge_model": "claude-sonnet-5-5",
+ "items": {
+  "E02-01:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-10:h1": [
+   {
+    "s": 1,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     5
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-17:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-18:h1": [
+   {
+    "s": 1,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-20:h1": [
+   {
+    "s": 1,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ],
+  "E02-31:h1": [
+   {
+    "s": 1,
+    "cites": [
+     2
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 2,
+    "cites": [
+     4
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 3,
+    "cites": [
+     3
+    ],
+    "supported": true,
+    "causal": false
+   },
+   {
+    "s": 4,
+    "cites": [
+     1
+    ],
+    "supported": true,
+    "causal": false
+   }
+  ]
+ }
+}

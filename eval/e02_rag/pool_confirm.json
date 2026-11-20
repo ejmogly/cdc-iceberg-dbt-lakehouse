@@ -1,0 +1,329 @@
+{
+ "note": "E02 관련 표시 풀(기준선과 판마다 상위 5건의 합). 기사 번호만 둠(제목과 요약은 git 제외 파일).",
+ "versions": [
+  "baseline",
+  "h1"
+ ],
+ "k": 5,
+ "split": "confirm",
+ "items": [
+  {
+   "id": "E02-01",
+   "date": "2025-02-21",
+   "symbol": "SPY",
+   "asset_group": "미국 주식",
+   "window": [
+    "2025-02-20T16:00:00-05:00",
+    "2025-02-24T09:30:00-05:00"
+   ],
+   "window_articles": 561,
+   "tagged": 6,
+   "ranks": {
+    "baseline": [
+     "76101e3749bb9afd36797265c17ed8f9eed4375ba52c7118ba9dae3fd3013504",
+     "7c31b680500994277c698ea77364aa074e2c2524a5998bb29b025c7a671c0c16",
+     "df7e5218ea36a23a79cb0d59d40f30924eee9fb21034e95de350a3fb5989e7d7",
+     "2051b6fe692826106fcdaa0e337a495b6a909563100b533fa07f1951977b97dc",
+     "86e7b855a973904c6b5a7e5e479b49fe965d7ecbfd08872016a4f44f18884cab"
+    ],
+    "h1": [
+     "ed23d8dd11bc1f1d3a52bbf090e8fef6bd1847b7f2fb19e3cc0141f8f8776299",
+     "86e7b855a973904c6b5a7e5e479b49fe965d7ecbfd08872016a4f44f18884cab",
+     "2b92876c9b49c1f405627cddfa7549268d20271746051252bd13ba00d1e258b7",
+     "bc2e8fa7f4989dde0004465e39c463d94b61a7be82fad7de23c88c7051342870",
+     "101881179cbfc4b2694e34553909172ae91650860a8d7d9caee6ebd93fdeaa35"
+    ]
+   },
+   "pool": [
+    "76101e3749bb9afd36797265c17ed8f9eed4375ba52c7118ba9dae3fd3013504",
+    "7c31b680500994277c698ea77364aa074e2c2524a5998bb29b025c7a671c0c16",
+    "df7e5218ea36a23a79cb0d59d40f30924eee9fb21034e95de350a3fb5989e7d7",
+    "2051b6fe692826106fcdaa0e337a495b6a909563100b533fa07f1951977b97dc",
+    "86e7b855a973904c6b5a7e5e479b49fe965d7ecbfd08872016a4f44f18884cab",
+    "ed23d8dd11bc1f1d3a52bbf090e8fef6bd1847b7f2fb19e3cc0141f8f8776299",
+    "2b92876c9b49c1f405627cddfa7549268d20271746051252bd13ba00d1e258b7",
+    "bc2e8fa7f4989dde0004465e39c463d94b61a7be82fad7de23c88c7051342870",
+    "101881179cbfc4b2694e34553909172ae91650860a8d7d9caee6ebd93fdeaa35"
+   ]
+  },
+  {
+   "id": "E02-02",
+   "date": "2025-04-03",
+   "symbol": "EEM",
+   "asset_group": "미국 밖",
+   "window": [
+    "2025-04-02T16:00:00-04:00",
+    "2025-04-04T09:30:00-04:00"
+   ],
+   "window_articles": 306,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "9e2ef83caf30e00d380ccd2d0c7f922eb3ab57137ba51f381f60b596823d87fa",
+     "dbd22fe3e66506022e9976600e8ba29dd7b383b663c699824e9679336ea11e9f",
+     "8fe08caa008ba7eaffa1bb73715653de7f608535f139405125903fca62eea712",
+     "81b44779c2f3623ca27ed93ab8e698e09ea1e27275a9d11c5db95b24a33ebaa2",
+     "9f9c58226349b93485c4f8a796b03d103d74f74336db646644f7223e9734d123"
+    ]
+   },
+   "pool": [
+    "9e2ef83caf30e00d380ccd2d0c7f922eb3ab57137ba51f381f60b596823d87fa",
+    "dbd22fe3e66506022e9976600e8ba29dd7b383b663c699824e9679336ea11e9f",
+    "8fe08caa008ba7eaffa1bb73715653de7f608535f139405125903fca62eea712",
+    "81b44779c2f3623ca27ed93ab8e698e09ea1e27275a9d11c5db95b24a33ebaa2",
+    "9f9c58226349b93485c4f8a796b03d103d74f74336db646644f7223e9734d123"
+   ]
+  },
+  {
+   "id": "E02-05",
+   "date": "2025-06-23",
+   "symbol": "USO",
+   "asset_group": "원자재",
+   "window": [
+    "2025-06-20T16:00:00-04:00",
+    "2025-06-24T09:30:00-04:00"
+   ],
+   "window_articles": 314,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "d80265d807c82e444473ae27245583376f4543f41221a5df5b52c27614692127",
+     "632b7627ca8d5a52a3977c982f9de5463bd9e47a733a873dc34d0a6ff50b6761",
+     "00f07862ffbbf50f870e76615487fbabced98fccf0b39cae06b3771e85a25ecb",
+     "9dbb16162dcb860feee4dd261e611a34e23cd75b9a35342df4acac263b47295a",
+     "5994aa10a859482ad73dffc7fa4d398c74970a716c404f44f9f22737703204fd"
+    ]
+   },
+   "pool": [
+    "d80265d807c82e444473ae27245583376f4543f41221a5df5b52c27614692127",
+    "632b7627ca8d5a52a3977c982f9de5463bd9e47a733a873dc34d0a6ff50b6761",
+    "00f07862ffbbf50f870e76615487fbabced98fccf0b39cae06b3771e85a25ecb",
+    "9dbb16162dcb860feee4dd261e611a34e23cd75b9a35342df4acac263b47295a",
+    "5994aa10a859482ad73dffc7fa4d398c74970a716c404f44f9f22737703204fd"
+   ]
+  },
+  {
+   "id": "E02-10",
+   "date": "2025-10-14",
+   "symbol": "NVDA",
+   "asset_group": "미국 개별 기업",
+   "window": [
+    "2025-10-13T16:00:00-04:00",
+    "2025-10-15T09:30:00-04:00"
+   ],
+   "window_articles": 363,
+   "tagged": 41,
+   "ranks": {
+    "baseline": [
+     "5fa019a9f69f91c4c7e2bfa41f4dbb41874245ed22ae3e2a94b6409b30d49160",
+     "ffad550b70961f7222696ebf83733448285f8e629adf67cc379344ee6c793305",
+     "37033fff49c9deddc3f70eb4089a12e049412496bbb8d59ab6c50e37eb098026",
+     "a22bf0af6b06ae7f4428f8436edf6ee68966e096bfbdc2de30326a52a8ffd1a3",
+     "50828b6055ae7525b8f6fe7eac5c33cce5bdb8e87dc4a8b85c0b28ee9c7b6f49"
+    ],
+    "h1": [
+     "51c93ff0335c597f2176325746147b875617b9299dbf8b2a9223a35fea420744",
+     "691ef3d4c208f623c7ec000d42068997e11dececba6778c858eca867e26e0022",
+     "ed96537b22542385828f33a2cb5cc3a7e5aef4028d6a3e4008327e2a7d6cfbad",
+     "3b1a76cf6e4dc4d9a910cd88ab79d91d906989210b3febafbf4a69f5d21011a9",
+     "d4ef0fde5a77191cb3399b0bfe03c3ebb5db10a0a8c4b61a5c464afbd02d046e"
+    ]
+   },
+   "pool": [
+    "5fa019a9f69f91c4c7e2bfa41f4dbb41874245ed22ae3e2a94b6409b30d49160",
+    "ffad550b70961f7222696ebf83733448285f8e629adf67cc379344ee6c793305",
+    "37033fff49c9deddc3f70eb4089a12e049412496bbb8d59ab6c50e37eb098026",
+    "a22bf0af6b06ae7f4428f8436edf6ee68966e096bfbdc2de30326a52a8ffd1a3",
+    "50828b6055ae7525b8f6fe7eac5c33cce5bdb8e87dc4a8b85c0b28ee9c7b6f49",
+    "51c93ff0335c597f2176325746147b875617b9299dbf8b2a9223a35fea420744",
+    "691ef3d4c208f623c7ec000d42068997e11dececba6778c858eca867e26e0022",
+    "ed96537b22542385828f33a2cb5cc3a7e5aef4028d6a3e4008327e2a7d6cfbad",
+    "3b1a76cf6e4dc4d9a910cd88ab79d91d906989210b3febafbf4a69f5d21011a9",
+    "d4ef0fde5a77191cb3399b0bfe03c3ebb5db10a0a8c4b61a5c464afbd02d046e"
+   ]
+  },
+  {
+   "id": "E02-12",
+   "date": "2025-12-01",
+   "symbol": "HYG",
+   "asset_group": "금리와 신용",
+   "window": [
+    "2025-11-28T13:00:00-05:00",
+    "2025-12-02T09:30:00-05:00"
+   ],
+   "window_articles": 484,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "7c930a7ac82750f27801c573833ccdb49b04ee326a96390fa64bd09b2bf33abc",
+     "40de899e5d56a51401f8b15477da941d14308e1ff7dd6a172fd49df3725e6d38",
+     "a32c34b04722c90f4dd68fba512d86b4a5487b270b37773bdd9ac35e93ead386",
+     "38e5a13cce57243014b150c6e7a0ecf14e696fcac1b605c75579fe0540bfab34",
+     "a22f2244ed1a1b642579d8330337ca4b64f8cc51f40d013e894b8901477af34a"
+    ]
+   },
+   "pool": [
+    "7c930a7ac82750f27801c573833ccdb49b04ee326a96390fa64bd09b2bf33abc",
+    "40de899e5d56a51401f8b15477da941d14308e1ff7dd6a172fd49df3725e6d38",
+    "a32c34b04722c90f4dd68fba512d86b4a5487b270b37773bdd9ac35e93ead386",
+    "38e5a13cce57243014b150c6e7a0ecf14e696fcac1b605c75579fe0540bfab34",
+    "a22f2244ed1a1b642579d8330337ca4b64f8cc51f40d013e894b8901477af34a"
+   ]
+  },
+  {
+   "id": "E02-17",
+   "date": "2026-04-30",
+   "symbol": "GOOGL",
+   "asset_group": "미국 개별 기업",
+   "window": [
+    "2026-04-29T16:00:00-04:00",
+    "2026-05-01T09:30:00-04:00"
+   ],
+   "window_articles": 401,
+   "tagged": 39,
+   "ranks": {
+    "baseline": [
+     "547e262729fe66bf7c51fc4313ef238e6255f3cc9dc105504ff6fe435bb11109",
+     "cedfe4b5fc0130f0037eab045d4ac349aa4722bd6099f37eaf6e72f9e94fc125",
+     "8ae3b72eb605315ea8ad28f656bf5b05eba1b0372d414c1eb764f57c5f93dfb0",
+     "34ab972d1d6bb2d3e6a65fcc0c95fb08a2427bf1ef5ec1bfd9247d7783e82cc2",
+     "0d8d7022c31630b3aafd48418d503f390d27aa2f01fa8f6bc38791b28b977bfc"
+    ],
+    "h1": [
+     "1257168892f4dac64633e7e97105bfe905ac85cbbdc9321496d57f620b6e62df",
+     "77b9275708e5114ffe4ceea69411c1190d1ec8443dde3da03a062d7eeb278194",
+     "fabfba5747f69d5dd379974cb274535cde64ce082833c367415db0a538c82d72",
+     "b0d118d40c8b2d6d81191180cfee7d7b7c2367f09e637473e9550adc2a6c717f",
+     "9bc306745ecc504318dd08c93eefc1cd4f8eec4ae3f0339385568a86c0d228ba"
+    ]
+   },
+   "pool": [
+    "547e262729fe66bf7c51fc4313ef238e6255f3cc9dc105504ff6fe435bb11109",
+    "cedfe4b5fc0130f0037eab045d4ac349aa4722bd6099f37eaf6e72f9e94fc125",
+    "8ae3b72eb605315ea8ad28f656bf5b05eba1b0372d414c1eb764f57c5f93dfb0",
+    "34ab972d1d6bb2d3e6a65fcc0c95fb08a2427bf1ef5ec1bfd9247d7783e82cc2",
+    "0d8d7022c31630b3aafd48418d503f390d27aa2f01fa8f6bc38791b28b977bfc",
+    "1257168892f4dac64633e7e97105bfe905ac85cbbdc9321496d57f620b6e62df",
+    "77b9275708e5114ffe4ceea69411c1190d1ec8443dde3da03a062d7eeb278194",
+    "fabfba5747f69d5dd379974cb274535cde64ce082833c367415db0a538c82d72",
+    "b0d118d40c8b2d6d81191180cfee7d7b7c2367f09e637473e9550adc2a6c717f",
+    "9bc306745ecc504318dd08c93eefc1cd4f8eec4ae3f0339385568a86c0d228ba"
+   ]
+  },
+  {
+   "id": "E02-18",
+   "date": "2026-06-02",
+   "symbol": "IBIT",
+   "asset_group": "가상자산",
+   "window": [
+    "2026-06-01T16:00:00-04:00",
+    "2026-06-03T09:30:00-04:00"
+   ],
+   "window_articles": 438,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "6c92b8625be5d8b38e94c8a46091f909d44f369f860efab35542af7c61adb766",
+     "25c89e62863097388fa65b241a9bb032f9c9f76d5a7ef7a3ee5e3a3ced9329ac",
+     "ce5d990457f3b2c9c68c89d2d240e0ab45412cd460b5675d85cda97e96cbdf0a",
+     "73bb04344533386870328380c8eb92e37b108ef10d99c5dca2d827b279a0a356",
+     "c89ab6503ba3d144082fcad145eaded1d33a07d0407bc09bc21d251205f311ca"
+    ]
+   },
+   "pool": [
+    "6c92b8625be5d8b38e94c8a46091f909d44f369f860efab35542af7c61adb766",
+    "25c89e62863097388fa65b241a9bb032f9c9f76d5a7ef7a3ee5e3a3ced9329ac",
+    "ce5d990457f3b2c9c68c89d2d240e0ab45412cd460b5675d85cda97e96cbdf0a",
+    "73bb04344533386870328380c8eb92e37b108ef10d99c5dca2d827b279a0a356",
+    "c89ab6503ba3d144082fcad145eaded1d33a07d0407bc09bc21d251205f311ca"
+   ]
+  },
+  {
+   "id": "E02-20",
+   "date": "2026-07-13",
+   "symbol": "USO",
+   "asset_group": "원자재",
+   "window": [
+    "2026-07-10T16:00:00-04:00",
+    "2026-07-14T09:30:00-04:00"
+   ],
+   "window_articles": 423,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "b3e142234a31c00e3b71a4ea59a53fec3cef6046037f8db8571c5709db7d166f",
+     "25808ccc32e6d706cd56e28ea69b3c01f8798c381efb9615a76c972eb428e240",
+     "1bfe92c03e865a0412fc8bb4edabd0c3a0c8827e2ba490374a0806588fe96090",
+     "68f085394254ae765dffcdde4199e45819dad4e5da5697b70703489575a0a54c",
+     "01525ce2ff47116d9956be155be759811755b2e5eff9e299eebf21c13224bdfd"
+    ]
+   },
+   "pool": [
+    "b3e142234a31c00e3b71a4ea59a53fec3cef6046037f8db8571c5709db7d166f",
+    "25808ccc32e6d706cd56e28ea69b3c01f8798c381efb9615a76c972eb428e240",
+    "1bfe92c03e865a0412fc8bb4edabd0c3a0c8827e2ba490374a0806588fe96090",
+    "68f085394254ae765dffcdde4199e45819dad4e5da5697b70703489575a0a54c",
+    "01525ce2ff47116d9956be155be759811755b2e5eff9e299eebf21c13224bdfd"
+   ]
+  },
+  {
+   "id": "E02-21",
+   "date": "2026-07-30",
+   "symbol": "UUP",
+   "asset_group": "통화",
+   "window": [
+    "2026-07-29T16:00:00-04:00",
+    "2026-07-31T09:30:00-04:00"
+   ],
+   "window_articles": 296,
+   "tagged": 0,
+   "ranks": {
+    "baseline": [],
+    "h1": [
+     "271da102d14e4d41675fdeb912e69142e39ead8f46d0c690435871407ad531e8",
+     "342eb9e89268da4989afb960ae3286e522fb81bcb76b150e37b24a3dc2d8adbd"
+    ]
+   },
+   "pool": [
+    "271da102d14e4d41675fdeb912e69142e39ead8f46d0c690435871407ad531e8",
+    "342eb9e89268da4989afb960ae3286e522fb81bcb76b150e37b24a3dc2d8adbd"
+   ]
+  },
+  {
+   "id": "E02-24",
+   "date": "2026-11-09",
+   "symbol": "IWM",
+   "asset_group": "미국 주식",
+   "window": [
+    "2026-11-06T16:00:00-05:00",
+    "2026-11-10T09:30:00-05:00"
+   ],
+   "window_articles": 1263,
+   "tagged": 1,
+   "ranks": {
+    "baseline": [
+     "e6f1cfb89adbda1cebe88670b456c859a6e4dc27985818ea4e1c49660db3bcc8"
+    ],
+    "h1": [
+     "3cb4f1b24061b049838195b6e6198c964eedd08db02ad9f0eb47184e6eb0c48d",
+     "92e1a75c1a33f4b7518d2c7fa772063a5cde381cf05f65d01faa6c437cd927d7",
+     "e6f1cfb89adbda1cebe88670b456c859a6e4dc27985818ea4e1c49660db3bcc8",
+     "398df20b642ec1179339c7d191175ab07f2b6d81d4f43951cea48b67d8f6846f",
+     "f141d8b2a3f4b208934c1ff6198c7a19aa065b548dce67fe94e468722d814557"
+    ]
+   },
+   "pool": [
+    "e6f1cfb89adbda1cebe88670b456c859a6e4dc27985818ea4e1c49660db3bcc8",
+    "3cb4f1b24061b049838195b6e6198c964eedd08db02ad9f0eb47184e6eb0c48d",
+    "92e1a75c1a33f4b7518d2c7fa772063a5cde381cf05f65d01faa6c437cd927d7",
+    "398df20b642ec1179339c7d191175ab07f2b6d81d4f43951cea48b67d8f6846f",
+    "f141d8b2a3f4b208934c1ff6198c7a19aa065b548dce67fe94e468722d814557"
+   ]
+  }
+ ]
+}
