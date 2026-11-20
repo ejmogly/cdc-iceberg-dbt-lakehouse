@@ -26,7 +26,7 @@
 
 - `make window-fetch`(Mac 받기), `make window-load`(받아 둔 것이 있으면 `airflow dags test window_extend`), `make window-extend`(둘을 차례로), `make lake-auto-on`과 `lake-auto-off`(두 DAG 켜고 끄기), `make lake-refresh-test`를 더했습니다.
 - 두 DAG는 켜 둡니다(담당자 「켜 둬」, 11/19). 켜짐 상태는 Airflow 메타 DB에 남아, 레이크를 켠 동안만 `lakehouse_refresh`가 30분마다, `window_extend`가 매일 14:40에 돕니다(레이크를 켜면 지난 마지막 회차가 한 번 바로 돎). 11/20에 `make lake-auto-on`으로 켰고, 레이크를 꺼도 켜짐 상태는 남습니다. 단 `window_extend`는 시작일이 11/19라 첫 회차가 11/20 14:40이어서, 11/20 13:12에 켰을 때는 바로 돈 회차가 없었습니다(`lakehouse_refresh`는 바로 한 번 돎).
-- Mac 받기를 매일 돌릴지(launchd)는 담당자가 정합니다. 정하기 전에는 손으로 `make window-fetch`를 돌립니다.
+- Mac 받기는 평일 14:30에 launchd가 `scripts/window_fetch_daily.sh`로 돌립니다(11/20 담당자 「launchd로 평일 14:30」). 기록은 `data/generated/logs/window_fetch.log`(git 밖)에 덧붙이고, 실패하면 macOS 알림을 띄웁니다. plist에는 Mac의 경로가 들어가 저장소에 두지 않습니다. 받기는 늘 구간 끝부터 국내 시세가 나온 마지막 날까지 받으므로, 레이크를 며칠 꺼 두어도 빠지는 날이 없고 다음에 켤 때 `window_extend`가 한 번에 처리합니다.
 - 받기 단계는 Airflow 화면에 보이지 않습니다(Mac의 출력에 남음). Airflow 화면에서는 `wait_raw`가 기다리거나 건너뛴 것으로 보입니다.
 - 남는 경합: 원천 적재와 구간 더하기 사이(몇 초)에 30분 새로 고침이 끼고, 겹치는 날에 늦게 온 미국 종가가 있으면 그 새로 고침의 내보내기가 실패할 수 있습니다. 내보내기가 실패하면 화면 파일은 그대로이고, 1분 뒤 재시도에서 통과합니다(해석).
 - 평가는 0015대로 얼린 파일을 쓰므로 바뀌지 않습니다.
@@ -67,5 +67,6 @@
 | 화면 파일 | 기간 끝 11/19, 검사 모두 통과(14:42 내보냄). 평가 파일은 기간 끝 11/12 그대로 |
 | 같은 시간의 30분 새로 고침 | 13:12 ~ 14:32 네 번 모두 성공(위 「남는 경합」은 일어나지 않음) |
 | 잠금(`eval/f_screen/lock.py --verify`) | 평가 기준 22/22, 정답 3/3, 원본 38/38, 인용 정답 1/1 |
+| launchd 받기(등록 뒤 `launchctl kickstart`로 한 번) | 셸 환경 변수 없이도 국내 끝날을 물음, 「새로 받을 날이 없습니다」, 종료 코드 0, 기록 파일에 시작과 끝 |
 
-남은 확인: 없습니다. Mac 받기를 매일 돌릴지(launchd)는 위 영향대로 담당자가 정합니다.
+남은 확인: 없습니다.

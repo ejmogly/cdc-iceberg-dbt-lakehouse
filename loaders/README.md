@@ -60,6 +60,7 @@ python3 -m venv .venv
 - 끝날은 「어제」가 아니라 국내 시세가 나온 마지막 거래일입니다. 국내 시세는 다음 영업일 오후 1시 뒤에 나와, 주말에 어제를 끝날로 받으면 금요일 국내 시세가 빠집니다.
 - 받기가 Mac인 까닭: HTTPS를 검사하는 프록시가 있는 네트워크에서는 컨테이너가 API의 인증서를 믿지 못할 수 있고, 키는 `.env`에만 둡니다. 컨테이너는 `data/raw/`를 읽기만 합니다.
 - 적재기의 원본 폴더는 환경 변수 `LOADER_RAW_DIR`(기본 `data/raw`)로 바꿉니다. 늘린 구간은 `data/raw/window`입니다.
+- 매일 받기: 평일 14:30에 Mac의 launchd가 [`scripts/window_fetch_daily.sh`](../scripts/window_fetch_daily.sh)를 부릅니다(`~/Library/LaunchAgents`에 plist를 두고 `launchctl bootstrap gui/$(id -u) <plist>`). 기록은 `data/generated/logs/window_fetch.log`, 실패하면 macOS 알림입니다. 받기는 늘 구간 끝부터 받으므로 레이크가 꺼져 있던 날도 빠지지 않습니다.
 
 ## 관심도
 
