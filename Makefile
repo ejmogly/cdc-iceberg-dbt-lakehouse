@@ -3,8 +3,12 @@ PY ?= .venv/bin/python
 
 .PHONY: setup check check-pnl check-public check-history screen-data screen-eval-data window-fetch window-load window-extend lake-auto-on lake-auto-off screen-golden screen screen-example check-screen trades-to-source trades-verify check-pnl-spark lake-refresh lake-refresh-test source-migrate
 
+PYTHON ?= python3
+
+# 패키지(duckdb 2.0 등)가 Python 3.11 이상을 요구합니다. 다른 이름의 파이썬은 make setup PYTHON=python3.14
 setup:
-	python3 -m venv .venv
+	@$(PYTHON) -c 'import sys; v = sys.version_info; sys.exit(0 if v >= (3, 11) else f"Python 3.11 이상이 필요합니다(지금 {v.major}.{v.minor}). 예: make setup PYTHON=python3.14")'
+	$(PYTHON) -m venv .venv
 	.venv/bin/pip install -r loaders/requirements.txt
 
 # 이미 떠 있는 원천 DB에 infra/postgres/migrate/의 SQL을 번호 순서로(여러 번 돌려도 같음). 새 DB는 init/이 같은 일을 함
@@ -77,8 +81,13 @@ trades-verify:
 lake-refresh:
 	docker compose exec -T airflow airflow dags trigger lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
 
-# 같되, DAG가 꺼져 있어도 이 자리에서 끝까지 돌림(airflow dags test, 로그가 바로 보임)
+# 같되, DAG가 꺼져 있을 때 이 자리에서 끝까지 돌림(airflow dags test, 로그가 바로 보임). dags test는 max_active_runs를 지키지 않아
+# 예약 실행과 겹치면 두 Silver MERGE가 한 Spark 세션의 같은 임시 뷰 이름을 써서 구간이 빠질 수 있으므로, DAG가 켜져 있으면 멈춤
 lake-refresh-test:
+	@paused=$$(docker compose exec -T airflow airflow dags list -o plain 2>/dev/null | awk '$$1 == "lakehouse_refresh" {print $$NF}'); \
+	if [ "$$paused" != "True" ]; then \
+	  echo "lakehouse_refresh가 켜져 있어(is_paused=$$paused) 예약 실행과 겹칠 수 있습니다. 켜진 동안에는 make lake-refresh(한 번에 하나만 돎)를 쓰고, 이 시험은 make lake-auto-off 뒤에 돌립니다"; \
+	  exit 1; fi
 	docker compose exec -T airflow airflow dags test lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
 
 # E01 골든의 가짜 시세로 같은 구조의 파일(골든 대조용)

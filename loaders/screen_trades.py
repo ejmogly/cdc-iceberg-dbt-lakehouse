@@ -151,17 +151,25 @@ def read_have(cur):
 
 
 _APP = []
+SCREEN_DB = ROOT / "data" / "generated" / "screen.duckdb"
+
+
+class ScreenFileFailed(Exception):
+    """화면 데이터 파일이 없거나 검사가 실패해 계산 서버의 손익을 쓸 수 없음."""
 
 
 def screen_app():
     """계산 서버(ai/screen_server.App)를 화면 데이터 파일로 띄우지 않고 바로 부릅니다(서버 손익과 같은 규칙). 한 번만 엽니다."""
     if not _APP:
         from ai.screen_server import App
-        app = App(ROOT / "data" / "generated" / "screen.duckdb")
+        app = App(SCREEN_DB)
         if not app.status["ok"]:
-            sys.exit("화면 데이터 파일의 검사가 실패했습니다. make screen-data를 먼저 돌리세요.")
+            raise ScreenFileFailed(f"화면 데이터 파일({SCREEN_DB.name})이 없거나 검사가 실패했습니다")
         _APP.append(app)
     return _APP[0]
+
+
+NO_CHANGES = {"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}
 
 
 def pnl_from_server():
@@ -180,10 +188,18 @@ def sync(dry_run, trades_path=TRADES):
     from common import connect, load_env
     if not trades_path.exists():
         print(f"매매 파일이 없어 옮길 것이 없습니다({trades_path.name})")
-        print(json.dumps(changes_of({"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}, None)))
+        print(json.dumps(changes_of(NO_CHANGES, None)))
         return 0
     saved = json.loads(trades_path.read_text(encoding="utf-8"))
-    orders, execs, holds, _ = plan_rows(saved, pnl_from_server(), instruments())
+    try:
+        pnl = pnl_from_server()
+    except ScreenFileFailed as e:
+        # 여기서 멈추면 뒤 태스크(Silver, dbt, 화면 내보내기)가 돌지 못해 화면 파일을 고칠 길이 없습니다(11/20 독립 검토).
+        # 이번에는 원천에 쓰지 않고 넘어가, 뒤 태스크가 화면 파일을 다시 만들면 다음 실행에서 옮깁니다.
+        print(f"{e}. 이번 실행은 원천에 쓰지 않고 넘어갑니다(뒤 태스크가 화면 파일을 다시 만든 뒤 다음 실행에서 옮김)")
+        print(json.dumps(changes_of(NO_CHANGES, None)))
+        return 0
+    orders, execs, holds, _ = plan_rows(saved, pnl, instruments())
     now = datetime.now(timezone.utc)
     with connect(load_env()) as conn, conn.cursor() as cur:
         # 이번에 쓰는 행의 CDC 이벤트는 모두 이 위치 뒤의 LSN을 가집니다(Bronze 기다리기의 기준)
@@ -291,6 +307,9 @@ def wait_bronze(changes_json):
 def verify(trades_path=TRADES):
     """Gold fct_execution(화면 계좌 A-SCREEN, A-SCREEN-<증권사>)을 화면 매매에서 만든 체결과 견주고, Gold 체결만으로 다시 센
     손익과 Gold 손익 마트(pnl_position)를 화면의 계좌(증권사)별 손익과 견줍니다. 단위는 「계좌:종목」(position_id)입니다."""
+    if not trades_path.exists():  # sync와 같게: 화면에서 매매를 저장하기 전이거나 새로 받은 저장소
+        print(f"매매 파일이 없어 대조할 매매가 없습니다({trades_path.name})")
+        return 0
     from ai.screen_data import _spark_rows
     saved = json.loads(trades_path.read_text(encoding="utf-8"))
     pnl = pnl_from_server()
@@ -492,6 +511,28 @@ def selftest():
     checks.append(("바꾼 것이 없으면 기다리지 않음", wait_bronze(json.dumps(changes_of(
         {"주문": ([], [], []), "체결": ([], [], []), "잔고": ([], [], [])}, None))) == 0))
     checks.append(("키 목록을 받지 못하면 오류(아직이 아님)", wait_bronze("None") == 2 and wait_bronze("") == 2))
+    import contextlib
+    import io
+    import tempfile
+    global SCREEN_DB
+    keep = SCREEN_DB
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            SCREEN_DB = Path(td) / "none.duckdb"  # 화면 파일이 없음 = 검사 실패와 같은 길
+            _APP.clear()
+            tp = Path(td) / "trades.json"
+            tp.write_text(json.dumps({"symbols": {}}), encoding="utf-8")
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = sync(True, tp)
+                rc_v = verify(Path(td) / "missing.json")
+            last = json.loads(buf.getvalue().strip().splitlines()[-2])
+            checks.append(("화면 파일 검사가 실패해도 멈추지 않고 바꾼 것 없음으로 넘어감(뒤 태스크가 화면 파일을 다시 만듦)",
+                           rc == 0 and last["orders"] == [] and last["executions"] == []))
+            checks.append(("매매 파일이 없으면 대조할 것이 없어 통과", rc_v == 0))
+        finally:
+            SCREEN_DB = keep
+            _APP.clear()
     for name, ok in checks:
         print(f"  {'통과' if ok else '실패'}  {name}")
     good = all(ok for _, ok in checks)
@@ -516,5 +557,8 @@ if __name__ == "__main__":
     if a.wait_bronze is not None:
         sys.exit(wait_bronze(a.wait_bronze))
     if a.verify:
-        sys.exit(verify(a.trades))
+        try:
+            sys.exit(verify(a.trades))
+        except ScreenFileFailed as e:  # 대조는 화면 손익이 있어야 하므로 실패로 남김(다음 실행의 sync는 멈추지 않음)
+            sys.exit(f"{e}. make screen-data로 다시 내보낸 뒤 대조합니다")
     sys.exit(sync(a.dry_run, a.trades))

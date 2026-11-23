@@ -49,6 +49,8 @@ GOLDEN_OUT = GEN / "screen_golden.duckdb"
 # 늘린 구간의 원본(Mac의 loaders/extend_window.py fetch가 받음)과 구간 목록(Airflow window_extend의 add_part가 적음).
 # Airflow 컨테이너에는 data/raw/가 읽기 전용, data/generated/가 쓰기로 붙습니다(docs/decisions/0016)
 RAW_WINDOW = RAW / "window"
+EVENTS_FILE = RAW / "schedule" / "events_20241113_20261231.json"
+SKIP = 99  # Airflow BashOperator가 「건너뜀」으로 보는 종료 코드(skip_on_exit_code 기본값)
 WINDOW_FILE = GEN / "window.json"
 # 평가(잠근 정답과 견주는 시험)가 쓰는 얼린 화면 파일. 정답을 고정한 때의 데이터(2024-11-13 ~ 2026-11-12)와 내용이 같아야 합니다.
 # 지문은 내용 테이블(시세, 환율, 달력, 기사, 일정, 종목)의 sha256이라 값 자체는 담지 않습니다(docs/decisions/0015).
@@ -168,6 +170,23 @@ def read_raw(insts, tags=None, overlap=None):
     return prices, adj, fx
 
 
+def missing_raw(insts=None):
+    """내보내기가 꼭 읽는 받은 원본(구간 목록의 모든 구간의 시세, 수정 종가, 환율, 기사와 일정 정리본) 가운데 없는 파일.
+    새로 받은 저장소에는 원본이 없습니다(재배포 금지, data/README.md)."""
+    need = []
+    for tag in TAGS:
+        base = raw_dir(tag)
+        for it in insts or instruments():
+            sym = it["symbol"]
+            if it["market"] == "KRX":
+                need.append(base / "daily_prices" / f"kr_{sym}_{tag}.json")
+            else:
+                need += [base / "daily_prices" / f"us_{sym}_{tag}_adj{k}.json" for k in ("false", "true")]
+        need += [base / "fx_rates" / f"USDKRW_{tag}.json", base / "news_massive" / f"ALL_{tag}.json"]
+    need.append(EVENTS_FILE)
+    return [p for p in need if not p.exists()]
+
+
 def read_source():
     """원천 PostgreSQL의 시세와 환율(데이터 기간 안)과 기간 밖 행 수. VM과 원천 DB가 떠 있어야 합니다."""
     sys.path.insert(0, str(ROOT / "loaders"))
@@ -264,7 +283,7 @@ def read_news(tags=None):
 def read_events():
     """data/raw/schedule/의 일정 정리본(loaders/schedule_events.py가 만듦). 원천 DB에 넣지 않습니다(기사와 같은 길).
     (일정 목록, FRED 일정을 받았는지). 정리본이 없으면 멈춥니다(일정 없이 7번 칸이 조용히 비지 않게)."""
-    path = RAW / "schedule" / "events_20241113_20261231.json"
+    path = EVENTS_FILE
     if not path.exists():
         sys.exit(f"{path.relative_to(ROOT)}가 없습니다. 먼저 python loaders/schedule_events.py")
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -793,6 +812,11 @@ if __name__ == "__main__":
     if a.selftest:
         sys.exit(selftest())
     if a.cmd == "export" and a.if_changed:
+        miss = missing_raw()
+        if miss:  # 새로 받은 저장소: DAG의 앞 태스크(Silver, dbt)는 돌고 화면 파일만 건너뜀
+            print(f"받은 원본이 없어 화면 파일 내보내기를 건너뜁니다(없는 파일 {len(miss)}개, 예: "
+                  f"{miss[0].relative_to(ROOT)}). 원본 받기는 loaders/README.md")
+            sys.exit(SKIP)
         path, changed = export_if_changed(Path(a.path) if a.path else OUT)
         st = status(path)
         print("화면 파일을 새로 씀" if changed else

@@ -2,11 +2,12 @@
 Silver, Gold, 화면 파일까지 새로 만듭니다(11/19, docs/decisions/0016).
 
 받기는 이 DAG에 없습니다. HTTPS를 검사하는 프록시가 있는 네트워크에서는 컨테이너가 시세 API의 인증서를 믿지 못할 수 있고,
-키는 Mac의 .env에만 둡니다.
-Mac의 loaders/extend_window.py fetch(매일 14:30, 또는 make window-fetch)가 data/raw/window/에 원본 38개를 받고 다 받은 뒤에
-next.json(구간과 파일 지문)을 적으면, 이 DAG가 그것을 기다렸다가 처리합니다. 컨테이너는 원본을 읽기만 합니다.
-  wait_raw       next.json에 구간 끝 뒤의 새 원본이 적힐 때까지 5분마다 봄(BashSensor, reschedule라 기다리는 동안 자리를 비움).
-                 3시간 안에 오지 않으면 건너뜀(soft_fail, 주말과 휴장일에는 새 원본이 없음)
+키는 호스트의 .env에만 둡니다.
+호스트의 loaders/extend_window.py fetch(평일 14:30 launchd, 또는 make window-fetch)가 data/raw/window/에 원본 38개를 받고
+다 받은 뒤에 next.json(구간과 파일 지문)을 적으면, 이 DAG가 그것을 기다렸다가 처리합니다. 컨테이너는 원본을 읽기만 합니다.
+  wait_raw       next.json에 구간 끝 뒤의 새 원본이 적힐 때까지 5분마다 봄(PythonSensor, reschedule라 기다리는 동안 자리를 비움).
+                 3시간 안에 오지 않으면 건너뜀(soft_fail, 주말과 휴장일에는 새 원본이 없음). 원본과 구간 목록이 맞지 않거나
+                 스크립트 오류면 바로 실패(raw_ready)
   check_raw      파일 지문이 next.json과 같은지(받는 중이거나 바뀐 파일), 국내 끝날, 앞 구간과 겹치는 날의 값이 같은지.
                  마지막 줄 「시작 끝」이 XCom으로 감
   load_source    같은 원본으로 원천 시세(국내, 미국)와 환율을 넣음(--from-raw). 값이 같은 행은 고치지 않아 CDC 이벤트가 없음.
@@ -57,6 +58,21 @@ class RefreshIfOn(TriggerDagRunOperator):
             self.log.info("%s 실행 %s가 이미 있어 그대로 둡니다", self.trigger_dag_id, self.trigger_run_id)
 
 
+def raw_ready():
+    """호스트가 받은 새 원본이 있으면 True, 아직이면 False(센서가 5분 뒤 다시 봄). pending의 그 밖의 종료 코드(앞뒤가 안 맞음 2,
+    스크립트 오류 1)는 바로 실패합니다. AirflowFailException이 아니라 일반 예외로 내는 까닭: soft_fail은 시간 초과와
+    AirflowFailException을 「건너뜀」으로 바꿉니다(Airflow 2.10.5 BaseSensorOperator.execute). 전의 BashSensor는 99가 아닌 코드를
+    AirflowFailException으로 내서 오류까지 건너뜀이 되고 DAG 실행은 성공으로 끝났습니다(11/20 독립 검토). 일반 예외는 그대로 실패입니다."""
+    import subprocess
+    p = subprocess.run(["bash", "-c", f"{EW} pending"], capture_output=True, text=True)
+    print((p.stdout + p.stderr).strip())
+    if p.returncode == 0:
+        return True
+    if p.returncode == 99:
+        return False
+    raise RuntimeError(f"pending 종료 코드 {p.returncode}: 받아 둔 원본과 구간 목록이 맞지 않거나 스크립트 오류입니다")
+
+
 def refresh_done(run_id):
     """부른 lakehouse_refresh 실행이 끝났으면 True, 실패했으면 바로 실패, 아직이면 False(센서가 다시 봄)."""
     from airflow.models import DagRun
@@ -82,14 +98,13 @@ with DAG(
     default_args={"retries": 1, "retry_delay": timedelta(minutes=1)},
     tags=["cdc", "screen", "window"],
 ) as dag:
-    wait_raw = BashSensor(
+    wait_raw = PythonSensor(
         task_id="wait_raw",
-        bash_command=f"{EW} pending",
-        retry_exit_code=99,          # 99 = 아직(다시 봄). 2 = 앞뒤가 안 맞음(바로 실패)
+        python_callable=raw_ready,
         poke_interval=300,
         timeout=3 * 60 * 60,
         mode="reschedule",
-        soft_fail=True,
+        soft_fail=True,              # 시간 초과(3시간 안에 새 원본 없음)만 건너뜀. 오류는 raw_ready가 일반 예외로 실패
         retries=0,
     )
 

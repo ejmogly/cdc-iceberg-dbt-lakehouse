@@ -54,45 +54,89 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 
 숫자는 측정 조건(기기, VM 자원, 버전, 데이터 규모)과 함께 [docs/reports/](docs/reports/README.md)에 남깁니다.
 
+## 준비물
+
+| 무엇 | 조건 |
+|---|---|
+| Python | 3.11 이상(3.14로 확인). macOS 기본 `python3`(3.9)로는 패키지가 깔리지 않습니다 |
+| 도구 | git, make, curl |
+| 컨테이너 | Docker 엔진과 Compose v2(`docker compose version`이 나와야 함) |
+| 자원 | 이 저장소는 Colima VM(CPU 6, 메모리 12GB, 디스크 60GB)으로 확인했습니다. 기본 구성은 약 2GB, Airflow까지 모두 띄우면 컨테이너 메모리 합이 약 5.7GiB입니다 |
+| CPU | Apple Silicon(arm64)에서만 확인했습니다. amd64는 확인하지 않았습니다 |
+| 키 | 실제 시세와 기사를 받을 때만 필요합니다([`data/README.md`](data/README.md)). 아래 「API 키 없이 해 보기」와 시나리오 실행에는 필요 없습니다 |
+
+macOS에서 Colima를 쓸 때는 Compose를 Docker 플러그인으로 찾게 한 줄을 넣습니다. Colima는 기본으로 홈 폴더만 VM에 붙이므로 저장소는 홈 폴더 아래에 둡니다.
+
+```bash
+brew install colima docker docker-compose
+mkdir -p ~/.docker
+# ~/.docker/config.json에 아래 한 줄을 넣음(파일이 이미 있으면 그 안에 합침)
+#   "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]
+colima start --cpu 6 --memory 12 --disk 60
+docker compose version     # 버전이 나오면 됨
+```
+
 ## API 키 없이 해 보기
 
 시세는 재배포할 수 없어 저장소에 없습니다. 아래는 가짜 시세로 돌아가므로 API 키도 Docker도 필요 없습니다.
 
 ```bash
-make setup    # .venv와 패키지
+make setup    # .venv와 패키지(Python 3.11 이상)
 make check    # 손익 골든 30개, 공개 전 검사
+```
+
+화면도 가짜 시세(E01 골든 사례의 종목 3개)로 띄울 수 있습니다. 브라우저로 http://127.0.0.1:8765/ 를 엽니다.
+
+```bash
+make screen-golden
+.venv/bin/python -m ai.screen_server \
+  --db data/generated/screen_golden.duckdb --trades ""
 ```
 
 ## 전체 실행
 
-준비물은 Docker 엔진입니다. 이 저장소는 Colima VM(CPU 6, 메모리 12GB)으로 확인했습니다. 기본 구성은 약 2GB, Airflow까지 모두 띄우면 컨테이너 메모리 합이 약 5.7GB입니다.
-
 **1. 기본 구성(원천과 CDC)**
 
 ```bash
-cp .env.example .env       # 비밀번호를 바꿈
-docker compose up -d       # PostgreSQL, Kafka, Connect, Kafka UI
-infra/connect/register.sh  # 커넥터 등록
+cp .env.example .env            # 비밀번호를 바꿈
+docker compose up -d --wait     # PostgreSQL, Kafka, Connect, Kafka UI(첫 빌드는 몇 분)
+infra/connect/register.sh       # 커넥터 등록, 마지막 줄이 RUNNING이면 됨
 ```
 
-원천 테이블은 처음 띄울 때 `infra/postgres/init/`에서 만들어집니다. 볼륨이 이미 있으면 [데이터 준비 10절](docs/ai/data-prep.md)의 명령으로 시세, 환율 테이블을 만듭니다. 변경 시나리오는 [`infra/postgres/scenario/`](infra/postgres/scenario/README.md)의 파일을 차례로 돌립니다(가이드 03의 11-9). 시세와 환율 적재기는 [`loaders/`](loaders/README.md)에 있고, 키는 각자 발급합니다([`data/README.md`](data/README.md)).
+원천 테이블은 처음 띄울 때 `infra/postgres/init/`에서 만들어집니다. 볼륨이 이미 있으면 `make source-migrate`와 [데이터 준비 10절](docs/ai/data-prep.md)의 명령으로 맞춥니다.
+
+변경 시나리오는 [`infra/postgres/scenario/`](infra/postgres/scenario/README.md)의 01 ~ 06을 한 번씩 차례로 돌립니다(07 ~ 09는 증분 실험용이라 여기서는 돌리지 않음). 아래 기대값은 01 ~ 06을 한 번만 돌린 경우입니다.
+
+```bash
+Q() { docker compose exec -T postgres \
+  psql -X -v ON_ERROR_STOP=1 -U app \
+  -d source_db < "$1"; }
+for f in infra/postgres/scenario/0[1-6]-*.sql; do
+  Q "$f"; done
+Q infra/postgres/scenario/check.sql
+```
+
+끝나면 원천에 주문 2행, 체결 2행, 잔고 0행이 남고, Kafka 토픽에는 주문 6, 체결 2, 잔고 3개의 메시지가 갑니다(Kafka UI). `Q`의 사용자와 DB 이름은 `.env`의 `POSTGRES_USER`, `POSTGRES_DB`입니다. 주말에 돌리면 체결 시각을 직전 금요일로 당깁니다(dbt의 주말 거래일 테스트 때문). 시세와 환율 적재기는 [`loaders/`](loaders/README.md)에 있고, 키는 각자 발급합니다([`data/README.md`](data/README.md)).
 
 **2. 레이크(Bronze, Silver, Gold)**
 
 ```bash
-docker compose --profile flink --profile spark up -d
+docker compose --profile flink --profile spark \
+  up -d --wait
 infra/flink/submit-bronze.sh          # Kafka → Bronze
-infra/spark/silver.sh                 # Bronze → Silver MERGE
-infra/spark/check-silver.sh           # 기대값, 다시 넣기 검증
-docker compose --profile spark run --rm dbt build
 ```
 
-켜졌는지는 한 줄 조회로 봅니다. 시나리오 여섯 단계 뒤라면 Bronze 주문은 6행, Silver 유효 잔고는 0행입니다.
+Bronze의 첫 commit은 작업을 보낸 뒤 10 ~ 20초 안에 생깁니다. Bronze 주문이 6행인 것을 본 뒤에 Silver로 넘어갑니다(비어 있을 때 돌리면 빈 Silver가 생겨 다음 검증이 실패함).
 
 ```bash
 infra/spark/sql.sh -e "SELECT count(*) FROM lake.bronze.orders"
+infra/spark/silver.sh                 # Bronze → Silver MERGE
+infra/spark/check-silver.sh           # 기대값, 다시 넣기 검증
+docker compose --profile spark run --rm dbt build
 infra/spark/sql.sh -e "SELECT count(*) FROM lake.silver.holdings WHERE NOT is_deleted"
 ```
+
+시나리오 여섯 단계 뒤라면 Silver 유효 잔고는 0행입니다.
 
 **3. 증분 Gold와 주기 실행(선택)**
 
@@ -100,12 +144,22 @@ infra/spark/sql.sh -e "SELECT count(*) FROM lake.silver.holdings WHERE NOT is_de
 docker compose --profile spark run --rm \
   --entrypoint python dbt \
   /workspace/sql/gold_incremental/run.py --compare
-docker compose --profile spark --profile airflow up -d
+docker compose --profile spark --profile airflow \
+  up -d --wait
 docker compose exec airflow \
   airflow dags unpause lakehouse_refresh
 ```
 
-DAG는 멈춘 상태로 만들어집니다. 데이터 기간 늘리기 DAG(`window_extend`)까지 함께 켜고 끄려면 `make lake-auto-on`, `make lake-auto-off`입니다([0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)). 화면의 사용자는 `admin`이고, 비밀번호는 컨테이너가 처음 뜰 때 컨테이너 안의 파일(`/opt/airflow/standalone_admin_password.txt`)에 만들어집니다. 저장소나 채팅에 옮기지 않습니다.
+DAG는 멈춘 상태로 만들어집니다. 데이터 기간 늘리기 DAG(`window_extend`)까지 함께 켜고 끄려면 `make lake-auto-on`, `make lake-auto-off`입니다([0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)). 이 DAG는 호스트에서 받은 새 원본(`make window-fetch`, 키 필요)이 있을 때만 일하고, 없으면 3시간 기다린 뒤 건너뜁니다.
+
+받은 원본(`data/raw/`)이 없는 저장소에서는 `lakehouse_refresh`의 화면 파일 내보내기와 화면 매매 대조가 「건너뜀」으로 끝나고, Silver, dbt, 증분 Gold는 그대로 돕니다.
+
+Airflow 화면(http://localhost:18082)의 사용자는 `admin`입니다. 비밀번호는 컨테이너가 처음 뜰 때 만들어집니다.
+
+```bash
+docker compose exec airflow \
+  cat /opt/airflow/standalone_admin_password.txt
+```
 
 | 서비스 | 주소 |
 |---|---|
@@ -122,22 +176,14 @@ DAG는 멈춘 상태로 만들어집니다. 데이터 기간 늘리기 DAG(`wind
 **끄기**
 
 ```bash
-docker compose exec airflow \
-  airflow dags pause lakehouse_refresh
+make lake-auto-off           # Airflow를 켰을 때만(두 DAG 멈춤)
 infra/flink/stop-bronze.sh   # savepoint를 남기고 멈춤
 docker compose --profile flink --profile spark \
   --profile airflow stop
+colima stop                  # Colima를 쓸 때
 ```
 
 `stop-bronze.sh`가 찍은 savepoint 경로를 다음에 `infra/flink/submit-bronze.sh <경로>`로 주면 그 자리에서 이어서 읽습니다. 볼륨은 남아 다음에 이어집니다. `docker compose down -v`는 원천, 카탈로그, 레이크 데이터까지 모두 지우니 처음부터 다시 만들 때만 씁니다.
-
-macOS에서 Colima를 쓸 때:
-
-```bash
-brew install colima docker docker-compose
-colima start --cpu 6 --memory 12 --disk 60
-colima stop                # 다 쓴 뒤
-```
 
 ## 문서 길잡이
 

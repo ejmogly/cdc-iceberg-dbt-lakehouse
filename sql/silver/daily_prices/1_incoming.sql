@@ -73,15 +73,6 @@ FROM (
   HAVING count(DISTINCT payload) > 1
 );
 
-SELECT assert_true(count(*) = 0,
-  'daily_prices: 삭제가 아닌 변경에 가격이나 거래량이 없거나, 저가와 고가 범위가 맞지 않습니다') AS check_required
-FROM daily_prices_changes
-WHERE NOT is_deleted
-  AND (open_price IS NULL OR high_price IS NULL OR low_price IS NULL
-       OR close_price IS NULL OR volume IS NULL
-       OR low_price > high_price
-       OR close_price NOT BETWEEN low_price AND high_price);
-
 CREATE OR REPLACE TEMPORARY VIEW incoming_daily_prices AS
 SELECT
   symbol, trade_date, open_price, high_price, low_price, close_price, volume,
@@ -95,3 +86,14 @@ FROM (
   FROM daily_prices_changes
 )
 WHERE rn = 1;
+
+-- 값 검사는 키마다 고른 최신 후보에 겁니다. 모든 변경에 걸면, 범위 밖 행이 한 번 들어온 뒤 원천을 고쳐도(u 이벤트)
+-- 나쁜 c 이벤트가 같은 구간에 남아 계속 멈춥니다(11/20 독립 검토). 원천에는 범위 CHECK가 없어 시세만 이 검사가 막습니다.
+SELECT assert_true(count(*) = 0,
+  'daily_prices: 삭제가 아닌 최신 값에 가격이나 거래량이 없거나, 저가와 고가 범위가 맞지 않습니다') AS check_required
+FROM incoming_daily_prices
+WHERE NOT is_deleted
+  AND (open_price IS NULL OR high_price IS NULL OR low_price IS NULL
+       OR close_price IS NULL OR volume IS NULL
+       OR low_price > high_price
+       OR close_price NOT BETWEEN low_price AND high_price);

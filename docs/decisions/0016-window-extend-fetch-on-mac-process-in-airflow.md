@@ -17,7 +17,7 @@
 1. **받기는 Mac**: `loaders/extend_window.py fetch`가 국내 시세가 나온 마지막 거래일을 한 번 묻고(호출 1번), 지금 구간 끝부터 그날까지 원본 38개(국내 2, 미국 17 x 두 판, 환율 1, 기사 1)를 `data/raw/window/`에 받습니다. 다 받고 국내 끝날을 확인한 뒤에 마지막으로 `data/raw/window/next.json`(구간과 파일 sha256)을 적습니다. 레이크가 꺼져 있어도 됩니다.
 2. **끝날은 국내 시세가 나온 마지막 거래일**: 「어제」가 아닙니다. 그날까지의 미국 종가는 늘 먼저 나와 있고(미국 장 마감이 서울 아침), 혹시 늦은 값은 다음 구간이 그 끝날부터 하루 겹쳐 받아 채웁니다.
 3. **처리는 Airflow DAG `window_extend`**(매일 14:40, 멈춘 채 만들어짐, 태스크 여덟):
-   `wait_raw`(새 `next.json`을 5분마다 봄, reschedule, 3시간 안에 없으면 건너뜀) → `check_raw`(지문, 국내 끝날, 앞 구간과 겹치는 날의 값) → `load_source`(같은 원본으로 원천 적재 셋, 바뀐 행 수와 lsn 기준점) → `wait_bronze`(바뀐 행이 Bronze에 닿을 때까지) → `add_part`(구간 목록에 더함) → `refresh_lake`(`lakehouse_refresh`를 부름) → `wait_refresh`(그 실행이 끝날 때까지, reschedule) → `confirm`(화면 파일의 기간 끝과 검사).
+   `wait_raw`(새 `next.json`을 5분마다 봄, reschedule, 3시간 안에 없으면 건너뜀, 오류면 실패) → `check_raw`(지문, 국내 끝날, 앞 구간과 겹치는 날의 값) → `load_source`(같은 원본으로 원천 적재 셋, 바뀐 행 수와 lsn 기준점) → `wait_bronze`(바뀐 행이 Bronze에 닿을 때까지) → `add_part`(구간 목록에 더함) → `refresh_lake`(`lakehouse_refresh`를 부름) → `wait_refresh`(그 실행이 끝날 때까지, reschedule) → `confirm`(화면 파일의 기간 끝과 검사).
 4. **구간 목록은 `data/generated/window.json`(git 밖)**: 컨테이너가 쓸 수 있는 곳입니다. 목록이 없으면 첫 구간(평가 기준 2년치, 코드의 `BASE`)만 쓰고, 첫 구간이 `BASE`가 아니면 거절합니다. `loaders/window.json`은 지웁니다(가리키는 원본이 git 밖에만 있어, 새로 받은 저장소에서는 맞지 않던 파일).
 5. **늘린 구간 원본은 `data/raw/window/`**: 잠근 첫 구간 원본(`data/raw/`)과 섞이지 않게, 적재기의 원본 폴더를 `LOADER_RAW_DIR`로 바꿉니다. 컨테이너는 둘 다 읽기만 합니다.
 6. **부른 실행의 이름을 고정**: `refresh_lake`는 `window_extend__<이 실행>`이라는 이름으로 부르고, 같은 이름이 있으면 새로 만들지 않습니다. `lakehouse_refresh`가 꺼져 있으면 건너뛰고(`make lake-refresh-test`로 따로), 기다림은 reschedule 센서가 합니다(SequentialExecutor의 한 자리를 비워 줌).
@@ -28,7 +28,8 @@
 - 두 DAG는 켜 둡니다(담당자 「켜 둬」, 11/19). 켜짐 상태는 Airflow 메타 DB에 남아, 레이크를 켠 동안만 `lakehouse_refresh`가 30분마다, `window_extend`가 매일 14:40에 돕니다(레이크를 켜면 지난 마지막 회차가 한 번 바로 돎). 11/20에 `make lake-auto-on`으로 켰고, 레이크를 꺼도 켜짐 상태는 남습니다. 단 `window_extend`는 시작일이 11/19라 첫 회차가 11/20 14:40이어서, 11/20 13:12에 켰을 때는 바로 돈 회차가 없었습니다(`lakehouse_refresh`는 바로 한 번 돎).
 - Mac 받기는 평일 14:30에 launchd가 `scripts/window_fetch_daily.sh`로 돌립니다(11/20 담당자 「launchd로 평일 14:30」). 기록은 `data/generated/logs/window_fetch.log`(git 밖)에 덧붙이고, 실패하면 macOS 알림을 띄웁니다. plist에는 Mac의 경로가 들어가 저장소에 두지 않습니다. 받기는 늘 구간 끝부터 국내 시세가 나온 마지막 날까지 받으므로, 레이크를 며칠 꺼 두어도 빠지는 날이 없고 다음에 켤 때 `window_extend`가 한 번에 처리합니다.
 - 받기 단계는 Airflow 화면에 보이지 않습니다(Mac의 출력에 남음). Airflow 화면에서는 `wait_raw`가 기다리거나 건너뛴 것으로 보입니다.
-- 남는 경합: 원천 적재와 구간 더하기 사이(몇 초)에 30분 새로 고침이 끼고, 겹치는 날에 늦게 온 미국 종가가 있으면 그 새로 고침의 내보내기가 실패할 수 있습니다. 내보내기가 실패하면 화면 파일은 그대로이고, 1분 뒤 재시도에서 통과합니다(해석).
+- 남는 경합: 원천 적재와 구간 더하기 사이(몇 초)에 30분 새로 고침이 끼면, 그 새로 고침의 Gold에는 새 날이 없는데 구간 목록에는 있어 화면 파일 검사가 실패할 수 있습니다. 처음에는 「화면 파일은 그대로이고 재시도에서 통과」로 적었으나 틀렸습니다(2026-11-20 독립 검토). 검사에 실패한 새 파일로도 바꿔 쓰고(화면이 실패 항목을 보이게), 재시도는 같은 Gold를 읽어 다시 실패합니다. 그리고 다음 실행의 첫 태스크 `trades_to_source`가 화면 파일 검사 실패에서 멈춰 고칠 길이 없었습니다. 2026-11-24에 `trades_to_source`가 그때 원천에 쓰지 않고 넘어가게 고쳐, 다음 실행의 Silver, dbt, 내보내기가 화면 파일을 다시 만듭니다.
+- 받기를 기다리는 `wait_raw`는 처음에 BashSensor와 `soft_fail`이었는데, Airflow 2.10.5에서 `soft_fail`은 시간 초과뿐 아니라 BashSensor가 99가 아닌 종료 코드에 내는 `AirflowFailException`까지 「건너뜀」으로 바꿔, 받은 원본과 구간 목록이 맞지 않아도 DAG가 성공으로 끝났습니다(2026-11-20 독립 검토). 2026-11-24에 PythonSensor(`raw_ready`)로 바꿔, 시간 초과만 건너뛰고 오류는 일반 예외로 실패하게 했습니다.
 - 평가는 0015대로 얼린 파일을 쓰므로 바뀌지 않습니다.
 
 ## 검토한 다른 방법
