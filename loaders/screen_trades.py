@@ -45,6 +45,9 @@ ORDER_BASE, EXEC_OFFSET = 900_000_000, 100_000_000
 OPEN_BASE = 899_000_000  # 시작 보유(입고) 주문. 체결 번호도 매매 체결보다 작아 손익 장부(체결 번호 순)의 맨 앞
 TRADES = ROOT / "data" / "generated" / "f_screen" / "screen_trades.json"
 OUT = ROOT / "data" / "generated" / "f_screen" / "trades_lake.json"
+# sync가 화면 파일 검사 실패로 옮기기를 건너뛴 실행 표시. 같은 실행의 verify는 대조하지 않고 건너뜀(옛 원천과 새 매매 파일을
+# 견주면 「다름」 기록이 남음, 2026-11-24 재검토). 다음 sync가 원천에 쓰면 지웁니다.
+SKIP_MARK = ROOT / "data" / "generated" / "f_screen" / "trades_sync_skipped"
 CLOSE = {"KRX": (ZoneInfo("Asia/Seoul"), time(15, 30)), "US": (ZoneInfo("America/New_York"), time(16, 0))}
 Q4 = Decimal("0.0001")
 
@@ -183,10 +186,19 @@ def changes_of(plan, lsn_from):
     return {"lsn_from": lsn_from, "orders": keys["주문"], "executions": keys["체결"], "holdings": keys["잔고"]}
 
 
+def is_default(trades_path):
+    """기본 저장 파일인지. 파일이 없어도 되는 것은 기본 파일뿐입니다(화면에서 매매를 저장하기 전이거나 새로 받은 저장소).
+    --trades로 지정한 시험 파일이 없으면 경로가 틀린 것이라 실패로 끝냅니다(2026-11-24 재검토)."""
+    return Path(trades_path).resolve() == TRADES.resolve()
+
+
 def sync(dry_run, trades_path=TRADES):
     """원천에 씁니다. 마지막 줄에 바꾼 행의 키를 JSON 한 줄로 찍습니다(Airflow가 XCom으로 받아 wait_bronze에 넘김)."""
     from common import connect, load_env
     if not trades_path.exists():
+        if not is_default(trades_path):
+            print(f"지정한 매매 파일이 없습니다: {trades_path}")
+            return 1
         print(f"매매 파일이 없어 옮길 것이 없습니다({trades_path.name})")
         print(json.dumps(changes_of(NO_CHANGES, None)))
         return 0
@@ -197,6 +209,9 @@ def sync(dry_run, trades_path=TRADES):
         # 여기서 멈추면 뒤 태스크(Silver, dbt, 화면 내보내기)가 돌지 못해 화면 파일을 고칠 길이 없습니다(11/20 독립 검토).
         # 이번에는 원천에 쓰지 않고 넘어가, 뒤 태스크가 화면 파일을 다시 만들면 다음 실행에서 옮깁니다.
         print(f"{e}. 이번 실행은 원천에 쓰지 않고 넘어갑니다(뒤 태스크가 화면 파일을 다시 만든 뒤 다음 실행에서 옮김)")
+        if not dry_run:
+            SKIP_MARK.parent.mkdir(parents=True, exist_ok=True)
+            SKIP_MARK.write_text(datetime.now(timezone.utc).isoformat() + "\n", encoding="utf-8")
         print(json.dumps(changes_of(NO_CHANGES, None)))
         return 0
     orders, execs, holds, _ = plan_rows(saved, pnl, instruments())
@@ -253,6 +268,7 @@ def sync(dry_run, trades_path=TRADES):
         conn.commit()
     accts = sorted({o["account_id"] for o in orders.values()} | {h["account_id"] for h in holds.values()})
     print(f"원천에 씀(계좌 {', '.join(accts) or ACCOUNT}). 매매 파일 {trades_path.name}, sha256 {file_sha(trades_path)[:12]}")
+    SKIP_MARK.unlink(missing_ok=True)
     print(json.dumps(changes_of(plan, lsn_from)))
     return 0
 
@@ -307,7 +323,13 @@ def wait_bronze(changes_json):
 def verify(trades_path=TRADES):
     """Gold fct_execution(화면 계좌 A-SCREEN, A-SCREEN-<증권사>)을 화면 매매에서 만든 체결과 견주고, Gold 체결만으로 다시 센
     손익과 Gold 손익 마트(pnl_position)를 화면의 계좌(증권사)별 손익과 견줍니다. 단위는 「계좌:종목」(position_id)입니다."""
-    if not trades_path.exists():  # sync와 같게: 화면에서 매매를 저장하기 전이거나 새로 받은 저장소
+    if SKIP_MARK.exists():
+        print("이번 실행은 화면 파일 검사 실패로 옮기기를 건너뛰어 대조하지 않습니다(다음 실행에서 옮긴 뒤 대조)")
+        return 99  # Airflow BashOperator가 건너뜀으로 봄
+    if not trades_path.exists():  # sync와 같게: 기본 파일만 없어도 됨
+        if not is_default(trades_path):
+            print(f"지정한 매매 파일이 없습니다: {trades_path}")
+            return 1
         print(f"매매 파일이 없어 대조할 매매가 없습니다({trades_path.name})")
         return 0
     from ai.screen_data import _spark_rows
@@ -514,24 +536,33 @@ def selftest():
     import contextlib
     import io
     import tempfile
-    global SCREEN_DB
-    keep = SCREEN_DB
+    global SCREEN_DB, TRADES, SKIP_MARK
+    keep = SCREEN_DB, TRADES, SKIP_MARK
     with tempfile.TemporaryDirectory() as td:
         try:
             SCREEN_DB = Path(td) / "none.duckdb"  # 화면 파일이 없음 = 검사 실패와 같은 길
+            TRADES, SKIP_MARK = Path(td) / "default.json", Path(td) / "skipped"
             _APP.clear()
             tp = Path(td) / "trades.json"
             tp.write_text(json.dumps({"symbols": {}}), encoding="utf-8")
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                rc = sync(True, tp)
-                rc_v = verify(Path(td) / "missing.json")
-            last = json.loads(buf.getvalue().strip().splitlines()[-2])
+                rc = sync(False, tp)       # 원천 DB에 닿기 전에 화면 파일 검사에서 넘어감
+                marked = SKIP_MARK.exists()
+                rc_skip = verify(tp)       # 같은 실행의 대조는 건너뜀(99)
+                SKIP_MARK.unlink(missing_ok=True)
+                rc_default = verify(TRADES)              # 기본 파일이 없음 → 통과
+                rc_named = verify(Path(td) / "typo.json")  # 지정한 파일이 없음 → 실패
+                rc_named_sync = sync(True, Path(td) / "typo.json")
+            json_lines = [x for x in buf.getvalue().splitlines() if x.startswith("{")]
+            last = json.loads(json_lines[0])
             checks.append(("화면 파일 검사가 실패해도 멈추지 않고 바꾼 것 없음으로 넘어감(뒤 태스크가 화면 파일을 다시 만듦)",
                            rc == 0 and last["orders"] == [] and last["executions"] == []))
-            checks.append(("매매 파일이 없으면 대조할 것이 없어 통과", rc_v == 0))
+            checks.append(("옮기기를 건너뛴 실행의 대조는 건너뜀(99, 다름 기록을 남기지 않음)", marked and rc_skip == 99))
+            checks.append(("기본 매매 파일이 없으면 대조할 것이 없어 통과", rc_default == 0))
+            checks.append(("지정한 매매 파일이 없으면 옮기기와 대조 모두 실패", rc_named == 1 and rc_named_sync == 1))
         finally:
-            SCREEN_DB = keep
+            SCREEN_DB, TRADES, SKIP_MARK = keep
             _APP.clear()
     for name, ok in checks:
         print(f"  {'통과' if ok else '실패'}  {name}")

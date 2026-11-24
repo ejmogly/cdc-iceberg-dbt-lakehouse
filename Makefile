@@ -56,7 +56,10 @@ window-fetch:
 
 window-load:
 	@rc=0; $(PY) loaders/extend_window.py pending || rc=$$?; \
-	if [ $$rc -eq 0 ]; then docker compose exec -T airflow airflow dags test window_extend; \
+	if [ $$rc -eq 0 ]; then \
+	  paused=$$(docker compose exec -T airflow airflow dags list -o plain 2>/dev/null | awk '$$1 == "window_extend" {print $$NF}'); \
+	  if [ "$$paused" != "True" ]; then echo "window_extend가 켜져 있거나(예약 실행과 겹침) 확인하지 못했습니다. 켜진 동안에는 다음 예약 실행(14:40)이 받아 둔 원본을 처리합니다"; exit 1; fi; \
+	  docker compose exec -T airflow airflow dags test window_extend; \
 	elif [ $$rc -ne 99 ]; then exit $$rc; fi
 
 window-extend: window-fetch window-load
@@ -85,8 +88,9 @@ lake-refresh:
 # 예약 실행과 겹치면 두 Silver MERGE가 한 Spark 세션의 같은 임시 뷰 이름을 써서 구간이 빠질 수 있으므로, DAG가 켜져 있으면 멈춤
 lake-refresh-test:
 	@paused=$$(docker compose exec -T airflow airflow dags list -o plain 2>/dev/null | awk '$$1 == "lakehouse_refresh" {print $$NF}'); \
+	if [ -z "$$paused" ]; then echo "lakehouse_refresh가 켜져 있는지 확인하지 못했습니다(Airflow가 꺼져 있거나 dags list 실패)"; exit 1; fi; \
 	if [ "$$paused" != "True" ]; then \
-	  echo "lakehouse_refresh가 켜져 있어(is_paused=$$paused) 예약 실행과 겹칠 수 있습니다. 켜진 동안에는 make lake-refresh(한 번에 하나만 돎)를 쓰고, 이 시험은 make lake-auto-off 뒤에 돌립니다"; \
+	  echo "lakehouse_refresh가 켜져 있어 예약 실행과 겹칠 수 있습니다. 켜진 동안에는 make lake-refresh(한 번에 하나만 돎)를 쓰고, 이 시험은 make lake-auto-off 뒤에 돌립니다"; \
 	  exit 1; fi
 	docker compose exec -T airflow airflow dags test lakehouse_refresh $(if $(TRADES),--conf '{"trades": "$(TRADES)"}')
 

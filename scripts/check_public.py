@@ -34,6 +34,7 @@ SHAPES = [("이메일", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z
                                 r"|\bAKIA[0-9A-Z]{16}\b|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),]
 EMAIL_OK = re.compile(r"@(?:example\.(?:com|org)|users\.noreply\.github\.com|anthropic\.com)$")  # 예시와 공개용 주소
 SKIPPED = []
+WORD_SURVEY = "\uc2e4\uce21"  # 문서 규칙에서 쓰지 않는 낱말(글자 그대로 적으면 이 파일이 걸림)
 DOT_RE = re.compile("[\u00b7\u318d\u2022\u2219]")
 PATH_RE = re.compile(r"/(?:Users|home)/[A-Za-z0-9._-]+")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -181,6 +182,8 @@ def scan_files(words, keys):
             hits += [(name, no, kind, label) for kind, label in check_line(line, words, keys)]
             if DOT_RE.search(line) and not (path.suffix == ".jsonl" and "/runs/" in name):  # 실행 기록은 모델 답 그대로(증거)
                 hits.append((name, no, "가운뎃점", "쉼표나 '와/과'로"))
+            if WORD_SURVEY in line:  # 문서 규칙에서 쓰지 않는 낱말. 「잰 값」, 「재 본」으로
+                hits.append((name, no, "낱말", "「잰 값」이나 「재 본」으로"))
             if path.suffix != ".md":
                 continue
             if FENCE_RE.match(line):

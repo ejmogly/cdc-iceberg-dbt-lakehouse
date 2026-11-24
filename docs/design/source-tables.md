@@ -90,4 +90,4 @@ AI 트랙이 쓰는 원천 테이블(환율, 뉴스, 관심도)은 [`docs/ai/dat
 | 수정 시각 증분(`updated_at` 이후만) | 전량 매도로 사라진 잔고 행을 못 잡습니다. 두 번 조회 사이의 중간 변경도 사라집니다 |
 | 로그 기반 CDC | 삭제와 중간 변경을 모두 받습니다. 대신 replication slot, Kafka, Flink를 운영해야 하고, slot이 밀리면 원천 DB에 WAL이 쌓입니다 |
 
-비교만 하고 재지 않은 대안: Kafka Connect의 Iceberg sink(Flink 없이 Connect가 바로 적재). 실측하지 않았으므로 어느 쪽이 낫다고 적지 않습니다.
+비교만 하고 재지 않은 대안: Kafka Connect의 Iceberg sink(Flink 없이 Connect가 바로 적재). 재 보지 않았으므로 어느 쪽이 낫다고 적지 않습니다.

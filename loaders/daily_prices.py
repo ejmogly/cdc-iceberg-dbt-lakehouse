@@ -9,7 +9,7 @@ trade_date는 그 시장의 현지 날짜입니다. 받은 원본은 data/raw/da
   python loaders/daily_prices.py --adjusted false                        그 뒤 매일(최근 7일을 다시 받아 바뀐 행만 고침)
   python loaders/daily_prices.py --market kr --start 2026-11-03 --end 2026-11-07 --dry-run
 
-미국 시세의 수정주가(--adjusted)는 아직 정하지 않았습니다. 실행할 때마다 true나 false를 고릅니다(data/README.md).
+미국 시세의 수정주가(--adjusted)는 2026-11-13에 정했습니다: false는 원천 시세로 넣고, true(수정 종가)는 --dry-run으로 원본만 받아 화면 파일에 씁니다(data/README.md). 한 원천 테이블에 두 판을 섞지 않으려고 매번 고르게 둡니다.
 국내 시세는 거래일 다음 영업일 오후 1시 이후, 미국 시세는 미국 장 마감 뒤에 나옵니다.
 """
 import csv
@@ -137,7 +137,7 @@ def main():
     date_args(p, default_days=7)
     p.add_argument("--market", choices=["kr", "us", "all"], default="all")
     p.add_argument("--symbols", help="쉼표로 구분한 일부 종목만")
-    p.add_argument("--adjusted", choices=["true", "false"], help="미국 시세의 수정주가 여부(정하지 않음, 매번 고름)")
+    p.add_argument("--adjusted", choices=["true", "false"], help="미국 시세의 수정주가 여부. 원천에는 false, 수정 종가는 true --dry-run(data/README.md)")
     p.add_argument("--mode", choices=["auto", "ticker", "grouped"], default="auto",
                    help="미국: ticker=종목마다 기간 조회, grouped=날짜마다 전 종목 조회. auto는 평일 5일 넘으면 ticker")
     args = p.parse_args()
@@ -148,7 +148,7 @@ def main():
     kr = [i["symbol"] for i in inst if i["market"] == "KRX" and args.market in ("kr", "all")]
     us = [i["symbol"] for i in inst if i["market"] == "US" and args.market in ("us", "all")]
     if us and not args.adjusted:
-        sys.exit("미국 시세는 --adjusted true 또는 false를 골라야 합니다(수정주가 여부는 아직 정하지 않음, data/README.md)")
+        sys.exit("미국 시세는 --adjusted true 또는 false를 골라야 합니다(원천에는 false, 수정 종가는 true --dry-run, data/README.md)")
     print(f"기간 {start} ~ {end}, 국내 {len(kr)}종목, 미국 {len(us)}종목"
           + (f", adjusted={args.adjusted}" if us else "") + (", 시험(DB에 쓰지 않음)" if args.dry_run else ""))
 

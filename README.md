@@ -19,9 +19,9 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 | Flink 작업을 멈췄다 다시 켜도 중복, 누락이 없나 | savepoint에서, Kafka에 남은 읽은 위치에서, 카탈로그 DB 장애 뒤 자동 복구, 세 경우 모두 행 수 그대로, 같은 전달 위치 중복 0 | 첫 실행 보고서 1절 |
 | Silver가 키마다 현재 상태 하나를 만드나 | 잔고는 전량 매도 뒤 저장된 행 1개(`is_deleted = true`, 수량과 평단 NULL), 유효한 행 0개. 주문 1001은 `CANCELLED`, 체결 수량 4 | [0010](docs/decisions/0010-silver-current-state-rules.md), 첫 실행 보고서 2절 |
 | 같은 입력이나 과거 변경을 다시 넣으면 | 모든 Silver 테이블에서 바뀐 행 0. 버전 가드를 뺀 대조 시험에서는 판 잔고가 되살아남 | 첫 실행 보고서 2절 |
-| Gold와 데이터 테스트 | 11/12 첫 실행에서 `dbt build` 55개 모두 통과(시세, 환율 포함). 그 뒤 화면 마트와 손익 마트가 더해져 2026-11-24에 95개 모두 통과 | 첫 실행 보고서 3, 5절 |
+| Gold와 데이터 테스트 | 11/12 첫 실행에서 `dbt build` 55개 모두 통과(시세, 환율 포함). 그 뒤 화면 마트와 손익 마트가 더해져 2026-11-24에 95개 모두 통과 | 첫 실행 보고서 3, 5절, [처음부터 다시 올려 보기](docs/reports/2026-11-24_fresh-clone-run.md) |
 | 실제 시세를 원천에 넣었을 때 | 시세 4,736행, 환율 245행. Silver가 원천과 종목별 행 수, 기간, 종가 합, 거래량 합까지 같음 | 첫 실행 보고서 5절 |
-| 화면이 레이크하우스의 Gold를 읽나 | 2년치 시세 9,472행과 환율 488일이 원천 → Bronze → Silver → Gold 마트(`mart_symbol_daily`, `mart_fx_daily`)를 거쳐 원천, 받은 원본과 한 행씩 같고, 화면 파일은 이 마트에서 내보냄. `dbt build` 70개 통과(새 마트와 데이터 테스트 포함) | [F 설계서 7절](docs/ai/F-screen.md) 「화면이 Gold 마트를 읽게」 |
+| 화면이 레이크하우스의 Gold를 읽나 | 2년치 시세 9,472행과 환율 488일이 원천 → Bronze → Silver → Gold 마트(`mart_symbol_daily`, `mart_fx_daily`)를 거쳐 원천, 받은 원본과 한 행씩 같고, 화면 파일은 이 마트에서 내보냄. `dbt build` 70개 통과(11/18, 새 마트와 데이터 테스트 포함) | [F 설계서 7절](docs/ai/F-screen.md) 「화면이 Gold 마트를 읽게」 |
 | 화면에 넣은 내 매매도 레이크를 거치나 | 저장 매매를 원천 주문, 체결, 잔고로 옮겨(계좌 `A-SCREEN`) CDC → Bronze → Silver → Gold `fct_execution`까지. 시험 매매 4종목 10줄에서 체결 9건이 모두 같고, Gold 체결로 다시 센 손익이 화면 손익과 4/4종목 같음. 줄을 지우면 Silver에 지움 표시로 반영 | [F 설계서 7절](docs/ai/F-screen.md) 「내 매매도 CDC로」 |
 | 검증한 손익 SQL이 레이크(Spark)에서도 같나 | 장부만 `aggregate` 접기로 바꾼 Spark 판이 골든 30/30, 입력 순서 섞기 150/150. Gold 손익 마트(`pnl_position`)가 화면 손익과 시험 매매 4/4종목 칸마다 같음 | [손익 SQL 설명서](sql/pnl/README.md), [F 설계서 7절](docs/ai/F-screen.md) 「Spark 손익 마트」 |
 | 시세를 다시 받아 넣을 때 가짜 변경 이벤트가 생기나 | PostgreSQL에서 두 번째 적재의 고친 행 0, 토픽 끝 위치 그대로 | [데이터 준비 2절](docs/ai/data-prep.md), [0006](docs/decisions/0006-batch-prices-through-cdc.md) |
@@ -30,11 +30,14 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 | 주기 실행과 재시도 | Airflow DAG(Silver → dbt → 증분 Gold, 30분마다) 정기 실행과 수동 실행 성공. Spark를 멈춰 실패시킨 실행은 1분 뒤 재시도로 성공 | 같은 보고서 3절 |
 | 레이크 쪽 일을 사람이 돌리나 | 같은 DAG에 화면 매매 옮기기, Bronze 기다리기(센서), 화면 파일 내보내기, 화면 매매 대조를 붙여 태스크 일곱 개. 정기 실행은 한 번 약 2분 20초. Bronze를 멈춘 채 시험 매매를 넣으면 센서가 기다리다 Bronze를 다시 켜자 끝까지 성공(체결 9/9, 손익 마트 4/4종목 같음) | [화면 설계서](docs/ai/F-screen.md) 7절 「Airflow로 묶기」 |
 | 규모를 키우면 어디서 막히나 | 합성 매매 26만 건(꾸준히 초당 20건, 몰아서 1만, 5만, 20만). 원천 커밋 → Bronze는 p95 약 10초(checkpoint 간격이 정함), 20만 건도 17.9초 안에 모두 보임. 먼저 막힌 곳은 원천의 지우기(체결 `order_id` 인덱스 없음, 5만 건 36.6초 → 인덱스를 넣어 0.47초, [0012](docs/decisions/0012-executions-order-id-index.md))와 Silver MERGE가 Bronze 이력 전체를 읽는 것(같은 날 증분 읽기로 바꿔 73초 → 1.6초, [0011](docs/decisions/0011-silver-incremental-read.md)). 모두 지운 뒤 Gold 지문 5/5 그대로 | [규모 시험 보고서](docs/reports/2026-11-18_scale-test.md) |
-| 증권사 앱의 수익률과 맞나 | 증권사 앱은 계좌마다 평단을 냅니다. 매매 줄에 증권사를 고르면 계좌마다 따로 세어 앱의 「수익률」(남은 주식의 평가 손익 / 남은 매입 금액)을 보이고, 계좌 손익의 합은 합쳐 센 손익과 원 단위까지 같습니다. 시세 2년 전부터 가진 주식은 앱 잔고(수량, 평단, 매입 환율)를 넣으면 기간 안 매매를 거꾸로 되짚어 데이터 첫날의 보유로 셉니다. 레이크에서는 증권사가 원천 계좌, 시작 보유가 입고 주문이고 Gold 손익 마트와 계좌 x 종목으로 칸마다 같습니다([결정 기록 0013](docs/decisions/0013-screen-accounts-and-transfer-in.md)) |
-| 데이터 기간을 늘려도 평가가 그대로인가 | 받은 원본 구간을 구간 목록에 더해 늘리고(새 구간은 원천에 넣어 CDC로 Gold까지, 받기는 Mac, 나머지는 Airflow DAG `window_extend`, [0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)), 평가는 정답을 고정한 때의 얼린 화면 파일로 잽니다. 내보낼 때 고정한 날까지의 값이 얼린 파일과 같은지(늦게 나온 종가를 더한 것만 허용) 검사합니다([결정 기록 0015](docs/decisions/0015-extend-data-window-keep-eval-frozen.md)) |
-| 내 투자 전체를 한눈에 보나 | 「전체」 탭이 저장한 모든 종목을 같은 기준일로 다시 세어 원화 손익, 평가액, 비중을 종목별, 증권사별로 더합니다. 레이크의 Gold `mart_account_pnl`(계좌별 손익과 평가액)이 같은 값인지 Airflow DAG의 대조 태스크가 봅니다([결정 기록 0014](docs/decisions/0014-portfolio-tab-and-account-mart.md)) |
+| 증권사 앱의 수익률과 맞나 | 증권사 앱은 계좌마다 평단을 냅니다. 매매 줄에 증권사를 고르면 계좌마다 따로 세어 앱의 「수익률」(남은 주식의 평가 손익 / 남은 매입 금액)을 보이고, 계좌 손익의 합은 합쳐 센 손익과 원 단위까지 같습니다. 시세 2년 전부터 가진 주식은 앱 잔고(수량, 평단, 매입 환율)를 넣으면 기간 안 매매를 거꾸로 되짚어 데이터 첫날의 보유로 셉니다. 레이크에서는 증권사가 원천 계좌, 시작 보유가 입고 주문이고 Gold 손익 마트와 계좌 x 종목으로 칸마다 같습니다| [결정 기록 0013](docs/decisions/0013-screen-accounts-and-transfer-in.md) |
+| 데이터 기간을 늘려도 평가가 그대로인가 | 받은 원본 구간을 구간 목록에 더해 늘리고(새 구간은 원천에 넣어 CDC로 Gold까지, 받기는 Mac, 나머지는 Airflow DAG `window_extend`, [0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)), 평가는 정답을 고정한 때의 얼린 화면 파일로 잽니다. 내보낼 때 고정한 날까지의 값이 얼린 파일과 같은지(늦게 나온 종가를 더한 것만 허용) 검사합니다| [결정 기록 0015](docs/decisions/0015-extend-data-window-keep-eval-frozen.md) |
+| 내 투자 전체를 한눈에 보나 | 「전체」 탭이 저장한 모든 종목을 같은 기준일로 다시 세어 원화 손익, 평가액, 비중을 종목별, 증권사별로 더합니다. 레이크의 Gold `mart_account_pnl`(계좌별 손익과 평가액)이 같은 값인지 Airflow DAG의 대조 태스크가 봅니다| [결정 기록 0014](docs/decisions/0014-portfolio-tab-and-account-mart.md) |
+| 공개본을 받은 사람이 README만으로 끝까지 도나 | 새로 받은 저장소에서 키와 받은 원본 없이 원천부터 Gold, 증분, Airflow까지 README 명령대로 됨. 막힌 곳 둘(커넥터 등록 직후 404, Airflow가 준비되기 전에 끝난 `--wait`)은 고침. 이미지 빌드와 amd64는 확인 못 함 | [처음부터 다시 올려 보기 보고서](docs/reports/2026-11-24_fresh-clone-run.md) |
 
 ### AI 트랙
+
+개발용 문항으로 고치고, 확인용 문항은 마지막 판으로 한 번만 돌려 그 결과를 적습니다. 「판정 모델」은 글을 채점하는 언어 모델이고, 사람과 맞춰 보지 못한 점수는 「참고값」으로 적습니다.
 
 | 확인 | 결과 | 조건과 근거 |
 |---|---|---|
@@ -51,7 +54,6 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 |---|---|
 | 체결, 주문, 잔고가 같은 원천 commit까지 반영됐는지 맞출 수 있나 | Debezium `source`의 트랜잭션 번호로 세 테이블 묶기 |
 | 체결 직후 작업 노드가 멈춰도 결과가 맞나 | [가이드 08](docs/guide/08-airflow-and-recovery.md) 9-3의 복구 시나리오 |
-| 공개본을 받은 사람이 README만으로 끝까지 도는가 | 새로 받은 저장소에서 처음부터 다시 올려 보기(11/26 ~ 11/27) |
 
 숫자는 측정 조건(기기, VM 자원, 버전, 데이터 규모)과 함께 [docs/reports/](docs/reports/README.md)에 남깁니다.
 
@@ -62,7 +64,7 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 | Python | 3.11 이상(3.14로 확인). macOS 기본 `python3`(3.9)로는 패키지가 깔리지 않습니다 |
 | 도구 | git, make, curl |
 | 컨테이너 | Docker 엔진과 Compose v2(`docker compose version`이 나와야 함) |
-| 자원 | 이 저장소는 Colima VM(CPU 6, 메모리 12GB, 디스크 60GB)으로 확인했습니다. 기본 구성은 약 2GB, Airflow까지 모두 띄우면 컨테이너 메모리 합이 약 5.7GiB입니다 |
+| 자원 | 이 저장소는 Colima VM(CPU 6, 메모리 12GB, 디스크 60GB)으로 확인했습니다. 기본 구성은 약 2GiB, Airflow까지 모두 띄우면 컨테이너 메모리 합이 약 5.7GiB입니다 |
 | CPU | Apple Silicon(arm64)에서만 확인했습니다. amd64는 확인하지 않았습니다 |
 | 키 | 실제 시세와 기사를 받을 때만 필요합니다([`data/README.md`](data/README.md)). 아래 「API 키 없이 해 보기」와 시나리오 실행에는 필요 없습니다 |
 
@@ -86,7 +88,7 @@ make setup    # .venv와 패키지(Python 3.11 이상)
 make check    # 손익 골든 30개, 공개 전 검사
 ```
 
-화면도 가짜 시세(E01 골든 사례의 종목 3개)로 띄울 수 있습니다. 브라우저로 http://127.0.0.1:8765/ 를 엽니다.
+실제 시세 화면은 재배포 금지라 캡처를 싣지 않았습니다. 대신 화면을 가짜 시세(E01 골든 사례의 종목 3개)로 띄울 수 있습니다. 실제 시세로 보려면 각자 키로 원본을 받아야 하고, 무료 요금제의 기간 한도 때문에 평가 기준 구간(2024-11-13 ~ 2026-11-12)을 나중에 똑같이 다시 받기는 어려울 수 있습니다(해석). 브라우저로 http://127.0.0.1:8765/ 를 엽니다.
 
 ```bash
 make screen-golden
@@ -101,8 +103,10 @@ make screen-golden
 ```bash
 cp .env.example .env            # 비밀번호를 바꿈
 docker compose up -d --wait     # PostgreSQL, Kafka, Connect, Kafka UI(첫 빌드는 몇 분)
-infra/connect/register.sh       # 커넥터 등록, 마지막 줄이 RUNNING이면 됨
+infra/connect/register.sh       # 커넥터 등록, RUNNING까지 30초 안에서 기다림
 ```
+
+`.env`의 `COMPOSE_PROJECT_NAME`(기본 `cdclake`)이 컨테이너와 볼륨 이름의 앞붙이입니다. 같은 컴퓨터에 이 저장소를 두 벌 띄우면 하나를 다른 이름으로 바꿉니다(같은 이름이면 같은 볼륨을 씀).
 
 원천 테이블은 처음 띄울 때 `infra/postgres/init/`에서 만들어집니다. 볼륨이 이미 있으면 `make source-migrate`와 [데이터 준비 10절](docs/ai/data-prep.md)의 명령으로 맞춥니다.
 
@@ -151,7 +155,7 @@ docker compose exec airflow \
   airflow dags unpause lakehouse_refresh
 ```
 
-DAG는 멈춘 상태로 만들어집니다. 데이터 기간 늘리기 DAG(`window_extend`)까지 함께 켜고 끄려면 `make lake-auto-on`, `make lake-auto-off`입니다([0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)). 이 DAG는 호스트에서 받은 새 원본(`make window-fetch`, 키 필요)이 있을 때만 일하고, 없으면 3시간 기다린 뒤 건너뜁니다.
+Airflow는 처음 뜰 때 메타 DB를 만드느라 30초 ~ 1분쯤 걸리고(11/24 새 볼륨에서 21초), `--wait`는 Airflow의 상태 검사가 통과할 때까지 기다립니다. DAG는 멈춘 상태로 만들어집니다. 데이터 기간 늘리기 DAG(`window_extend`)까지 함께 켜고 끄려면 `make lake-auto-on`, `make lake-auto-off`입니다([0016](docs/decisions/0016-window-extend-fetch-on-mac-process-in-airflow.md)). 이 DAG는 호스트에서 받은 새 원본(`make window-fetch`, 키 필요)이 있을 때만 일하고, 없으면 3시간 기다린 뒤 건너뜁니다.
 
 받은 원본(`data/raw/`)이 없는 저장소에서는 `lakehouse_refresh`의 화면 파일 내보내기와 화면 매매 대조가 「건너뜀」으로 끝나고, Silver, dbt, 증분 Gold는 그대로 돕니다.
 
@@ -200,7 +204,7 @@ colima stop                  # Colima를 쓸 때
 
 ## 작업 방식
 
-- **평가 기준을 먼저 고정합니다.** AI 기능은 지표, 평가셋, 통과선을 개발 전에 커밋하고, git 기록의 날짜로 순서를 남깁니다([0009](docs/decisions/0009-commit-evaluation-before-development.md)). E03은 커밋 대신 sha256 기록으로 고정했고, 그 사실과 순서를 E03 문서에 밝혔습니다.
+- **평가 기준을 먼저 고정합니다.** AI 기능은 지표, 평가셋, 통과선을 개발 전에 커밋하고, git 기록의 날짜로 순서를 남깁니다([0009](docs/decisions/0009-commit-evaluation-before-development.md)). E03, E02, F 화면은 커밋 대신 sha256 기록으로 고정했고(E03은 두 커밋이 2분 차이, E02와 F는 정답과 원본이 git 밖), 그 사실과 순서를 각 문서와 0009에 밝혔습니다.
 - **통과 못 한 결과도 그대로 적습니다.** 확인용 결과를 보고 나서 기준이나 답을 고치지 않습니다.
 - **숫자는 코드로, 판단만 모델로.** 손익과 지표는 결정적 SQL이 계산하고, 언어 모델은 그 결과를 도구로 불러 설명만 합니다.
 - **관계는 상관까지만.** 데이터 사이의 관계는 "같이 움직였다"까지만 말하고, 투자 권유를 하지 않습니다.
@@ -212,10 +216,11 @@ colima stop                  # Colima를 쓸 때
 ```text
 .
 ├── docker-compose.yml   로컬 실행 구성(profile: 기본, lake, flink, spark, dbt, airflow)
-├── Makefile             API 키 없는 확인
+├── Makefile             키 없는 확인, 화면, 레이크와 Airflow 명령
 ├── infra/
 │   ├── postgres/init/   스키마, 원천 테이블
 │   ├── postgres/scenario/  변경 시나리오
+│   ├── postgres/migrate/   떠 있는 원천 DB에 더하는 DDL
 │   ├── connect/         Connect와 커넥터
 │   ├── flink/           Bronze 적재 작업
 │   ├── spark/           Silver 실행과 검증
@@ -231,7 +236,8 @@ colima stop                  # Colima를 쓸 때
 ├── loaders/             시세, 환율, 뉴스 적재기
 ├── ai/                  AI 기능(도구, 에이전트, 프롬프트)
 ├── eval/                평가셋과 정답
-├── scripts/             공개 전 검사
+├── screen/              화면(내 투자 돌아보기) HTML, JS, CSS
+├── scripts/             공개 전 검사, 평일 원본 받기
 ├── data/                출처와 약관
 └── docs/
     ├── design/          설계

@@ -123,7 +123,7 @@
 | 일별 시세 | A, B, C, D | `source.daily_prices`(공공데이터포털, Massive) |
 | 코스피 일별 지수 | D의 판정 | 한국은행 ECOS(무료 키). 출처 표시 필요, 값은 저장소에 두지 않음 |
 | 원/달러 환율 | A, B, D | 한국은행 ECOS(무료 키) 일별 매매기준율을 `source.fx_rates`로(적재기 있음. 미국 거래일과 맞추는 규칙은 같은 날짜, 없으면 직전 값으로 [F 설계서](F-screen.md) 6절에서 2026-11-13에 정함) |
-| 주문, 체결, 잔고 | A, B, E | 합성 데이터 |
+| 주문, 체결, 잔고 | A, B, E | 합성 데이터(화면 계좌는 담당자가 넣은 매매, [0017](../decisions/0017-screen-trades-into-source.md)) |
 | 관심도 | C, D | `source.attention_daily`(GDELT, 위키백과 조회수, 네이버 검색어 트렌드. 적재기 있음, 주제 목록은 정할 것) |
 | 뉴스 제목과 요약 | C | Massive 뉴스를 `source.news_items`, `source.news_ticker_sentiment`로(본문은 받지 않음, 적재기 있음). 종목 표시와 창의 전체 기사. 국내 종목은 공식 무료 출처를 찾으면 다음 판 |
 | 일정(금리 결정, 물가 지표, 실적) | C, D | FRED API(CPI, 고용)와 연준 FOMC 일정 페이지([F 설계서](F-screen.md) 6절에서 2026-11-13에 정함). 국내 일정은 E02 1판에서 받지 않음([데이터 준비](data-prep.md) 6절) |

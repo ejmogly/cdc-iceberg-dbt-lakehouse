@@ -295,6 +295,16 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
       - "127.0.0.1:${AIRFLOW_PORT:-18082}:8080"
+    # standalone은 처음 뜰 때 메타 DB를 만들고 사용자를 만드는 데 30초 ~ 1분쯤 걸립니다(11/24 새 볼륨에서 21초). 이 검사가 없으면 up --wait가 컨테이너가
+    # 뜨자마자 끝나, 바로 이어 친 airflow dags unpause가 「initialize the database」로 실패했습니다(2026-11-24 처음부터 다시 올려 보기).
+    healthcheck:
+      # scheduler는 「한 번이라도 뛴 적이 있는지」만 봅니다. standalone은 태스크를 scheduler 안에서 돌려, 긴 태스크 동안
+      # 하트비트가 멈추면 「healthy」가 아니게 되기 때문입니다(2026-11-24 재검토).
+      test: ["CMD-SHELL", "python -c \"import json, urllib.request as u; d = json.load(u.urlopen('http://localhost:8080/health', timeout=5)); raise SystemExit(0 if d['metadatabase']['status'] == 'healthy' and d['scheduler'].get('latest_scheduler_heartbeat') else 1)\""]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
     volumes:
       - airflow-home:/opt/airflow
       - ./airflow/dags:/opt/airflow/dags:ro

@@ -7,10 +7,10 @@
 | 데이터 | 출처 | 라이선스와 조건 | 받는 방법 | 쓰는 곳 |
 |---|---|---|---|---|
 | 국내 주식 일별 시세(2종목) | 금융위원회_주식시세정보, [공공데이터포털](https://www.data.go.kr/data/15094808/openapi.do) | 공공누리 제4유형(출처표시, 상업적 이용금지, 변경금지). 제3자 재배포 금지. 거래일 다음 영업일 오후 1시 이후에 나옴 | 공공데이터포털에서 각자 인증키를 받아 `loaders/daily_prices.py --market kr` | `source.daily_prices` |
-| 미국 상장 ETF와 개별 기업 일별 시세(17개) | Massive(옛 Polygon.io) 무료 요금제, 일별 집계 | 개인, 비업무, 비상업 용도만. 재배포 금지([약관](https://massive.com/legal/market-data-terms-of-service)). 분당 5번 | 각자 API 키를 받아 `loaders/daily_prices.py --market us --adjusted false`와 `true`(두 판 모두 받음. `false`는 원천 시세, `true`는 수정 종가로 화면 파일에) | `source.daily_prices` |
+| 미국 상장 ETF와 개별 기업 일별 시세(17개) | Massive(옛 Polygon.io) 무료 요금제, 일별 집계 | 개인, 비업무, 비상업 용도만. 재배포 금지([약관](https://massive.com/legal/market-data-terms-of-service)). 분당 5번 | 각자 API 키를 받아 `loaders/daily_prices.py --market us --adjusted false`(원천 시세)와 `--adjusted true --dry-run`(수정 종가, 원본만 받아 화면 파일에. 원천에는 넣지 않음) | `source.daily_prices` |
 | 원/달러 환율 | 한국은행 ECOS Open API(`731Y001`, `0000001` 원/미국달러 매매기준율, 일별) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 값은 저장소에 두지 않음. 한국 휴일에는 값이 없음 | 각자 인증키를 받아 `loaders/fx_rates.py` | `source.fx_rates`(`infra/postgres/init/20_fx_rates.sql`) |
 | 코스피 일별 지수 | 한국은행 ECOS Open API(`802Y001`, `0001000`) | 무료 회원가입 뒤 인증키. ECOS에서 제공된 정보임을 표시(이용약관 제7조). 지수의 저작권은 통계 작성기관에 있으므로 값은 저장소에 두지 않음 | 각자 인증키를 받아 적재기 실행 | E03 판정(`docs/ai/experiments/E03-regime.md`) |
-| 고객 주문, 체결, 잔고 | 직접 만든 합성 데이터 | 제한 없음 | 시나리오 SQL(`infra/postgres/scenario/`)과 규모 시험 생성기(`loaders/load_test.py`) | `source.orders`, `source.executions`, `source.holdings` |
+| 고객 주문, 체결, 잔고 | 직접 만든 합성 데이터(화면 계좌는 담당자가 넣은 매매, [0017](../docs/decisions/0017-screen-trades-into-source.md)) | 제한 없음 | 시나리오 SQL(`infra/postgres/scenario/`)과 규모 시험 생성기(`loaders/load_test.py`) | `source.orders`, `source.executions`, `source.holdings` |
 | 미국 일정(FOMC 금리 결정, CPI와 고용 보고서 발표일) | [연준 FOMC 일정 페이지](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm), FRED API(`fred/release/dates`, release 10과 50) | FOMC 페이지는 미국 정부 저작물(공공 영역), 출처 표시. FRED는 무료 키, 「This product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.」 표시, FRED를 대신하는 서비스 금지. 국내 일정(한국은행, 국가데이터처)은 E02 1판에서 받지 않음([`docs/ai/data-prep.md`](../docs/ai/data-prep.md) 6절) | `loaders/schedule_events.py`(FRED는 각자 키를 받아 `FRED_API_KEY`) → `data/raw/schedule/` | 화면 파일의 `events`(E02 근거, 원천 DB에 넣지 않음) |
 
 - 받은 시세는 재배포할 수 없으므로 저장소에는 **받는 코드만** 둡니다(`loaders/`). 화면이나 글에 시세에서 나온 값을 보일 때는 출처를 적습니다.

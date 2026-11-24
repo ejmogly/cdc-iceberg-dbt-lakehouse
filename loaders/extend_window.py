@@ -186,13 +186,13 @@ def fetch(args):
 def pending(parts, nxt):
     """(종료 코드, 까닭, (시작, 끝)). 0 = 처리할 새 원본, NOT_YET = 아직 없음, 2 = 앞뒤가 안 맞음."""
     if nxt is None:
-        return NOT_YET, "받아 둔 새 원본이 없습니다(Mac의 fetch를 기다림)", None
+        return NOT_YET, "받아 둔 새 원본이 없습니다(호스트의 make window-fetch를 기다림)", None
     w_end = parts[-1][1]
     s, e = nxt["start"], nxt["end"]
     if e <= w_end:
-        return NOT_YET, f"받아 둔 원본({s} ~ {e})은 이미 구간에 있습니다(Mac의 다음 fetch를 기다림)", None
+        return NOT_YET, f"받아 둔 원본({s} ~ {e})은 이미 구간에 있습니다(호스트의 다음 make window-fetch를 기다림)", None
     if s > w_end:
-        return 2, f"받아 둔 원본이 {s}부터라 구간 끝 {w_end}와 겹치지 않습니다(빈 날). Mac에서 다시 받으세요", None
+        return 2, f"받아 둔 원본이 {s}부터라 구간 끝 {w_end}와 겹치지 않습니다(빈 날). 호스트에서 make window-fetch로 다시 받으세요", None
     return 0, f"처리할 새 원본: {s} ~ {e}(구간 끝 {w_end})", (s, e)
 
 
@@ -221,7 +221,7 @@ def check(args):
     tag = tag_of(start, end)
     bad = check_files(nxt)
     if bad:
-        print(f"원본 지문이 next.json과 다릅니다({len(bad)}개, 예: {bad[0]}). 받는 중이었거나 바뀜. Mac에서 다시 받으세요")
+        print(f"원본 지문이 next.json과 다릅니다({len(bad)}개, 예: {bad[0]}). 받는 중이었거나 바뀜. 호스트에서 make window-fetch로 다시 받으세요")
         return 2
     short = {s: d for s, d in kr_last_days(tag).items() if str(d) != end}
     if short:

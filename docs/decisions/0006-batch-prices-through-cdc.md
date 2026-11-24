@@ -56,6 +56,6 @@ WHERE (p.open_price, p.high_price,
 
 ## 범위가 바뀜 (2026-11-13)
 
-이 길로 Bronze까지 가는 것은 시세(`daily_prices`)와 환율(`fx_rates`)뿐입니다. 기사와 일정은 원천에 넣지 않고 `data/raw/`에서 화면 파일로 바로 갑니다([F 설계서](../ai/F-screen.md) 6절 6번, `loaders/schedule_events.py`). 관심도 적재기는 원천 테이블에 쓰지만 Bronze 작업(`infra/flink/bronze.sql`)은 다섯 테이블(주문, 체결, 잔고, 시세, 환율)만 읽어 Kafka에서 멈춥니다.
+이 길로 Bronze까지 가는 것은 시세(`daily_prices`)와 환율(`fx_rates`)뿐입니다. E02와 화면이 쓰는 기사와 일정은 원천을 거치지 않고 `data/raw/`에서 화면 파일로 바로 갑니다([F 설계서](../ai/F-screen.md) 6절 6번, `loaders/schedule_events.py`). 관심도 적재기는 원천 테이블에 쓰지만 Bronze 작업(`infra/flink/bronze.sql`)은 다섯 테이블(주문, 체결, 잔고, 시세, 환율)만 읽어 Kafka에서 멈춥니다.
 - 처음 1년치를 넣으면 시세 4,736개와 환율 245개의 `c` 이벤트가 한꺼번에 Kafka로 갑니다. Flink와 Bronze가 이 몰림을 받아 내는지 4회차에 봅니다.
 - 적재기는 [`loaders/`](../../loaders/README.md)에 있습니다.

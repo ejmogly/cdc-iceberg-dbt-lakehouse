@@ -17,7 +17,7 @@
 ## 보존과 지우는 길
 
 - 매매 값은 이 컴퓨터의 원천 DB, Kafka 토픽, Iceberg(Bronze, Silver, Gold)에만 있고, 저장소 파일과 git 기록에는 들어가지 않습니다. 저장 파일과 대조 결과는 `data/generated/`(git 밖)입니다. 레이크의 볼륨은 이 컴퓨터 밖으로 내보내지 않습니다.
-- 화면에서 줄을 지우면 원천에서 지우고, Silver는 지움 표시, Gold는 그 행이 빠집니다. Bronze는 지우지 않는 이력이라([0011](0011-silver-incremental-read.md)) 옛 값이 남습니다.
+- 화면에서 줄을 지우면 원천에서 지우고, Silver는 지움 표시, Gold는 그 행이 빠집니다. 그래도 옛 값이 남는 곳이 넷입니다. Bronze는 지우지 않는 이력입니다([0011](0011-silver-incremental-read.md)). 체결은 REPLICA IDENTITY FULL이라 Silver의 지움 표시 행에도 주문 번호와 체결 시각이 남습니다([0005](0005-replica-identity-executions-full.md)). Silver와 Gold의 옛 Iceberg 스냅샷은 유지보수가 만료하기 전까지(기본 3일) 남습니다. Kafka 토픽에는 보존 기간 동안 남습니다.
 - 매매를 레이크에서 모두 없애려면 `docker compose down -v`로 원천, Kafka, 카탈로그, 레이크 볼륨을 함께 지웁니다. 그 뒤에는 시나리오와 시세를 처음부터 다시 넣어야 합니다.
 
 ## 검토한 다른 방법

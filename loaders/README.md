@@ -32,6 +32,7 @@ python3 -m venv .venv
 ```bash
 # 처음 1년치
 .venv/bin/python loaders/daily_prices.py --days 365 --adjusted false
+.venv/bin/python loaders/daily_prices.py --days 365 --adjusted true --dry-run  # 수정 종가는 원본만
 .venv/bin/python loaders/fx_rates.py --days 365
 
 # 그 뒤 매일(최근 며칠을 다시 받아 바뀐 행만 고침)

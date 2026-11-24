@@ -171,8 +171,8 @@ def read_raw(insts, tags=None, overlap=None):
 
 
 def missing_raw(insts=None):
-    """내보내기가 꼭 읽는 받은 원본(구간 목록의 모든 구간의 시세, 수정 종가, 환율, 기사와 일정 정리본) 가운데 없는 파일.
-    새로 받은 저장소에는 원본이 없습니다(재배포 금지, data/README.md)."""
+    """내보내기가 꼭 읽는 받은 원본(구간 목록의 모든 구간의 시세, 수정 종가, 환율, 기사와 일정 정리본) 가운데 없는 파일과
+    꼭 읽는 파일의 수. 새로 받은 저장소에는 원본이 하나도 없습니다(재배포 금지, data/README.md)."""
     need = []
     for tag in TAGS:
         base = raw_dir(tag)
@@ -184,7 +184,7 @@ def missing_raw(insts=None):
                 need += [base / "daily_prices" / f"us_{sym}_{tag}_adj{k}.json" for k in ("false", "true")]
         need += [base / "fx_rates" / f"USDKRW_{tag}.json", base / "news_massive" / f"ALL_{tag}.json"]
     need.append(EVENTS_FILE)
-    return [p for p in need if not p.exists()]
+    return [p for p in need if not p.exists()], len(need)
 
 
 def read_source():
@@ -812,11 +812,14 @@ if __name__ == "__main__":
     if a.selftest:
         sys.exit(selftest())
     if a.cmd == "export" and a.if_changed:
-        miss = missing_raw()
-        if miss:  # 새로 받은 저장소: DAG의 앞 태스크(Silver, dbt)는 돌고 화면 파일만 건너뜀
+        miss, need = missing_raw()
+        if miss and len(miss) == need:  # 새로 받은 저장소: DAG의 앞 태스크(Silver, dbt)는 돌고 화면 파일만 건너뜀
             print(f"받은 원본이 없어 화면 파일 내보내기를 건너뜁니다(없는 파일 {len(miss)}개, 예: "
                   f"{miss[0].relative_to(ROOT)}). 원본 받기는 loaders/README.md")
             sys.exit(SKIP)
+        if miss:  # 일부만 없음: 건너뛰면 화면 파일이 예전 그대로 남고 실행은 성공으로 보임(2026-11-24 재검토). 실패로 알림
+            sys.exit(f"받은 원본 {need}개 가운데 {len(miss)}개가 없습니다(예: "
+                     + ", ".join(str(m.relative_to(ROOT)) for m in miss[:3]) + "). 원본을 다시 받은 뒤 내보냅니다")
         path, changed = export_if_changed(Path(a.path) if a.path else OUT)
         st = status(path)
         print("화면 파일을 새로 씀" if changed else
