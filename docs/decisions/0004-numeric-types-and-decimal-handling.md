@@ -32,6 +32,6 @@ Debezium PostgreSQL 커넥터의 기본값 `decimal.handling.mode=precise`에서
 
 ## 결과
 
-- Bronze의 가격은 글자이므로, Silver에서 자료형을 바꿀 때 변환 실패를 세는 확인을 둡니다(4회차).
-- 손익 SQL도 끝까지 decimal을 유지합니다. 엔진마다 decimal 나눗셈과 CASE의 자료형 합치기가 달라 생긴 함정은 [`sql/pnl/README.md`](../../sql/pnl/README.md) 「엔진 함정」에 적었습니다.
+- Bronze의 가격은 글자이므로 Silver에서 자료형을 바꿉니다. 변환 실패를 세지 않고, ANSI 모드(`spark.sql.ansi.enabled`)로 첫 실패에서 멈춥니다(4회차).
+- 손익 SQL은 원가와 금액을 decimal로 들고 다니되, 나눗셈(평균 단가, 평균 환율)과 효과 나누기, 기준 종목은 일부러 double로 셉니다. 표시 전에 소수 여섯째 자리로 맞춘 뒤 decimal로 바꿔 반올림합니다. 엔진마다 decimal 나눗셈과 CASE의 자료형 합치기가 달라서이고(DuckDB는 자리 넘침 오류, Spark는 decimal 나눗셈의 자리 줄임으로 1원 차이, [0014](0014-portfolio-tab-and-account-mart.md)), 함정은 [`sql/pnl/README.md`](../../sql/pnl/README.md) 「엔진 함정」에 적었습니다. 모두 decimal로 되돌리면 그 차이가 다시 납니다(`make check-pnl-spark`가 잡음).
 - 커넥터 설정은 [`infra/connect/source-postgres.json`](../../infra/connect/source-postgres.json), 테이블은 [`infra/postgres/init/10_brokerage.sql`](../../infra/postgres/init/10_brokerage.sql)입니다.

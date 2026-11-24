@@ -40,7 +40,7 @@ python3 -m venv .venv
 .venv/bin/python loaders/news_massive.py
 ```
 
-- **수정주가(`--adjusted`)는 아직 정하지 않았습니다.** 미국 시세를 받을 때마다 `true`나 `false`를 고릅니다. 한 테이블에 두 판을 섞지 않습니다(정할 것은 [`docs/ai/data-prep.md`](../docs/ai/data-prep.md)).
+- **수정주가(`--adjusted`)는 2026-11-13에 정했습니다.** 두 판을 모두 받아 `false`는 원천 시세로, `true`(수정 종가)는 화면 파일로 바로 갑니다([F 설계서](../docs/ai/F-screen.md) 6절). 원천 테이블에는 두 판을 섞지 않습니다(선택지는 [`docs/ai/data-prep.md`](../docs/ai/data-prep.md)).
 - 미국 시세는 평일 5일 넘는 기간이면 종목마다 기간 조회(17번), 그 안이면 날짜마다 전 종목 조회(하루 1번)를 씁니다(`--mode`로 고를 수 있음). 둘이 낸 값은 같았습니다(2026-11-09, 11-10 대조).
 - Massive 무료 요금제는 분당 5번이라 호출 사이에 12.5초 쉽니다. 시세와 뉴스 적재기를 동시에 돌리지 않습니다.
 - 국내 시세는 거래일 다음 영업일 오후 1시 이후, 미국 시세는 미국 장 마감 뒤, ECOS 환율은 고시한 날에 나옵니다.
@@ -76,4 +76,4 @@ python3 -m venv .venv
 
 ## 종목
 
-[`instruments.csv`](instruments.csv)는 종목 19개의 이름, 시장, 통화, 자산군, 묶음, 시세 출처입니다. 5회차에 dbt seed로 옮길 수 있습니다.
+[`instruments.csv`](instruments.csv)는 종목 19개의 이름, 시장, 통화, 자산군, 묶음, 시세 출처입니다. dbt seed로 옮겼습니다(`dbt/seeds/instruments.csv`가 이 파일을 가리키는 링크라, 링크를 따르지 않는 환경에서는 복사본이 필요합니다).

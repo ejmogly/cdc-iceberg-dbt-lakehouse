@@ -7,7 +7,7 @@
 #   flink   : jobmanager, taskmanager. Bronze 적재          (3회차)
 #   spark   : Spark Thrift server. Silver와 Gold            (4, 5회차)
 #   dbt     : dbt 한 번 실행(run --rm으로만 씀)              (5회차)
-#   airflow : airflow standalone. 30분마다 Silver, dbt, 증분 (8회차)
+#   airflow : airflow standalone. 30분마다 Silver, dbt, 증분(lakehouse_refresh), 매일 기간 늘리기(window_extend) (8회차)
 # lake 서비스는 flink나 spark profile만 켜도 같이 뜹니다. 전체는
 #   docker compose --profile flink --profile spark up -d
 # 버전 조합과 이유는 docs/decisions/0002에 있습니다.

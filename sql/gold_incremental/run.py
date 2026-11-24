@@ -92,7 +92,7 @@ def define_core(spark, ends):
         CREATE OR REPLACE TEMPORARY VIEW inc_core_execution AS
         SELECT o.symbol, i.market, i.currency,
                to_date(from_utc_timestamp(e.executed_at, m.tz)) AS trade_date,
-               e.exec_qty, e.exec_qty * e.exec_price AS exec_value
+               e.exec_qty, e.exec_qty * e.exec_price AS exec_value, o.order_type
         FROM (SELECT * FROM lake.silver.executions VERSION AS OF {ends['silver.executions']}
               WHERE NOT is_deleted) e
         LEFT JOIN (SELECT * FROM lake.silver.orders VERSION AS OF {ends['silver.orders']}
@@ -106,7 +106,8 @@ def define_core(spark, ends):
                count(*) AS execution_count, sum(exec_qty) AS traded_qty,
                CAST(sum(exec_value) AS DECIMAL(38,4)) AS traded_value
         FROM inc_core_execution
-        GROUP BY symbol, market, currency, trade_date""")
+        WHERE order_type IS DISTINCT FROM 'TRANSFER_IN'
+        GROUP BY symbol, market, currency, trade_date""")  # 입고는 매매가 아니라 뺌(dbt 마트와 같은 조건, 0013)
     # 거래일을 정하는 시간대(종목 → 시장 → 시간대)
     spark.run("""
         CREATE OR REPLACE TEMPORARY VIEW inc_symbol_tz AS
@@ -160,10 +161,15 @@ def affected_sql(changed, ends):
 
 
 def save_plan(spark, range_id, starts, ends, full):
-    """2. plan 저장. 같은 range_id의 plan이 있으면 그대로 씁니다."""
+    """2. plan 저장. 같은 range_id의 plan이 있으면 그대로 씁니다(중간에 멈춘 실행을 다시 돌릴 때).
+    --full은 예외입니다. range_id에 모드가 없어, 그대로 쓰면 앞 실행의 changes plan으로 「전체」를 돌리게 됩니다
+    (2026-11-20 독립 검토). 그래서 --full이면 저장된 plan을 지우고 모든 키로 다시 만듭니다."""
     if spark.one(f"SELECT count(*) FROM {PLAN} WHERE range_id = '{range_id}'"):
-        log(f"plan: range_id {range_id}의 저장된 plan을 다시 씁니다")
-        return
+        if not full:
+            log(f"plan: range_id {range_id}의 저장된 plan을 다시 씁니다")
+            return
+        log(f"plan: --full이라 range_id {range_id}의 저장된 plan을 지우고 모든 키로 다시 만듭니다")
+        spark.run(f"DELETE FROM {PLAN} WHERE range_id = '{range_id}'")
     mode = "full" if full else "changes"
     changed = []
     if not full:

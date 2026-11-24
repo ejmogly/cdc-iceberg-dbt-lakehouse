@@ -8,10 +8,16 @@
 - 개인 경로: /Users/이름, /home/이름
 - 비밀값: .env의 값이 파일에 들어갔는지(값은 출력하지 않음)
 - 금지어: .public-check.local.json(git 제외)의 정규식. 파일이 없으면 건너뜀
+- 이메일과 토큰 모양: 이메일 주소, GitHub, Anthropic, AWS 키, JWT 모양(2026-11-24 더함)
+- 실제 매매: 화면 저장 매매(data/generated/f_screen/screen_trades.json)의 날짜와 넣은 가격, 환율의 짝, 지금 잔고 줄의 값이 종목 이름
+  둘레에 나오면 찾음(값은 출력하지 않음, 2026-11-24 더함). 파일이 없으면 건너뜀
 - 시세 값: 한 파일에서 날짜 둘레(그 줄과 앞 한 줄, 뒤 두 줄, 앞뒤 300자 안)에 그날의 실제 가격(data/raw/의 시가, 고가, 저가, 종가)이
   나온 짝이 2개를 넘고 날짜가 나온 횟수의 3% 이상이면 찾음(재배포 금지. 큰 파일의 우연한 겹침은 빼려고 비율을 봄).
   날짜는 2025-04-09, 20250409, 2025/04/09, 2025년 4월 9일, 밀리초 시각을 읽음. data/raw/가 없으면 건너뜀
---history면 git 기록 전체(커밋 메시지와 더한 줄)에서 개인 경로, 비밀값, 금지어를 찾습니다.
+--history면 git 기록 전체(커밋 메시지와 더한 줄, 작성자 이름과 주소)에서 개인 경로, 비밀값, 금지어, 이메일과 토큰 모양을 찾습니다.
+읽는 파일은 git이 추적하는 파일 가운데 UTF-8로 읽히는 것 전부입니다(처음에는 확장자 허용 목록이라 .js, .css, .jsonl을 읽지 않았음,
+2026-11-20 독립 검토). 건너뛴 검사(목록, 원본, 매매 파일이 없을 때)는 끝에 모아 밝힙니다. CI에는 이 셋이 없어 「찾은 것 없음」이
+곧 공개해도 된다는 뜻은 아닙니다.
 찾은 것이 있으면 종료 코드 1입니다.
 """
 import json
@@ -23,8 +29,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TEXT = {".md", ".py", ".sql", ".sh", ".json", ".yml", ".yaml", ".csv", ".txt", ".svg", ".html",
-        ".properties", ".toml", ".example", ""}
+SHAPES = [("이메일", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")),
+          ("토큰 모양", re.compile(r"\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-ant-[A-Za-z0-9_-]{20,}"
+                                r"|\bAKIA[0-9A-Z]{16}\b|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.")),]
+EMAIL_OK = re.compile(r"@(?:example\.(?:com|org)|users\.noreply\.github\.com|anthropic\.com)$")  # 예시와 공개용 주소
+SKIPPED = []
 DOT_RE = re.compile("[\u00b7\u318d\u2022\u2219]")
 PATH_RE = re.compile(r"/(?:Users|home)/[A-Za-z0-9._-]+")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -62,7 +71,7 @@ def secrets():
 def forbidden():
     path = ROOT / ".public-check.local.json"
     if not path.exists():
-        print("금지어 목록(.public-check.local.json)이 없어 금지어 검사는 건너뜁니다.")
+        SKIPPED.append("금지어(.public-check.local.json 없음)")
         return []
     rules = json.loads(path.read_text(encoding="utf-8"))["forbidden"]
     return [(label, re.compile(rx)) for label, rx in rules]
@@ -141,6 +150,12 @@ def check_line(line, words, keys):
     found = []
     if PATH_RE.search(line):
         found.append(("개인 경로", "/Users 또는 /home 아래 이름"))
+    for kind, rx in SHAPES:
+        for m in rx.finditer(line):
+            if kind == "이메일" and EMAIL_OK.search(m.group(0)):
+                continue
+            found.append((kind, "모양이 맞는 글자(값은 출력하지 않음)"))
+            break
     found += [("비밀값", f".env의 {k}") for k, v in keys.items() if v in line]
     found += [("금지어", label) for label, rx in words if rx.search(line)]
     return found
@@ -149,7 +164,7 @@ def check_line(line, words, keys):
 def published():
     for name in git("ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0"):
         path = ROOT / name
-        if name and path.is_file() and (path.suffix in TEXT or path.name in {"Makefile", "Dockerfile"}):
+        if name and path.is_file() and not path.is_symlink():
             yield name, path
 
 
@@ -164,7 +179,7 @@ def scan_files(words, keys):
         in_code = False
         for no, line in enumerate(text.splitlines(), 1):
             hits += [(name, no, kind, label) for kind, label in check_line(line, words, keys)]
-            if DOT_RE.search(line):
+            if DOT_RE.search(line) and not (path.suffix == ".jsonl" and "/runs/" in name):  # 실행 기록은 모델 답 그대로(증거)
                 hits.append((name, no, "가운뎃점", "쉼표나 '와/과'로"))
             if path.suffix != ".md":
                 continue
@@ -176,8 +191,49 @@ def scan_files(words, keys):
     return hits
 
 
+def trade_values():
+    """화면 저장 매매에서 사용자가 넣은 값: ({날짜: {가격, 환율}}, {종목: {지금 잔고 줄의 값}}). 파일이 없으면 None."""
+    path = ROOT / "data" / "generated" / "f_screen" / "screen_trades.json"
+    if not path.exists():
+        return None
+    dated, held = {}, {}
+    for sym, entry in json.loads(path.read_text(encoding="utf-8")).get("symbols", {}).items():
+        for r in entry.get("rows") or entry.get("trades") or []:
+            vals = {norm(str(r[k])) for k in ("price", "fx_rate") if r.get(k) not in (None, "")}
+            vals = {v for v in vals if "." in v or len(v) >= 4}
+            if r.get("date"):
+                dated.setdefault(r["date"], set()).update(vals)
+            elif vals:
+                held.setdefault(sym, set()).update(vals)
+    return dated, held
+
+
+def scan_trades(dated, held):
+    """날짜 둘레에 그날 넣은 가격이나 환율, 종목 이름 둘레에 지금 잔고 줄의 값이 나오면 찾습니다(한 짝만 나와도)."""
+    hits = []
+    for name, path in published():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        pairs = 0
+        for s, e, d in dates_in(text):
+            near = text[max(0, s - NEAR):e + NEAR]
+            pairs += len(dated.get(d, set()) & {norm(x.group(0)) for x in NUM_RE.finditer(near)})
+        for sym, vals in held.items():
+            for m in re.finditer(re.escape(sym), text):
+                near = text[max(0, m.start() - NEAR):m.end() + NEAR]
+                pairs += len(vals & {norm(x.group(0)) for x in NUM_RE.finditer(near)})
+        if pairs:
+            hits.append((name, 0, "실제 매매", f"저장 매매의 값과 같은 짝 {pairs}개(값은 출력하지 않음)"))
+    return hits
+
+
 def scan_history(words, keys):
     hits = Counter()
+    for who in set(git("log", "--all", "--format=%an <%ae>%n%cn <%ce>").splitlines()):
+        for kind, label in check_line(who, words, keys):
+            hits[("작성자", kind, label)] += 1
     for commit in git("rev-list", "--all").split():
         for line in git("show", "--no-color", "--format=%B", commit).splitlines():
             if line.startswith("+++") or line.startswith("-") or line.startswith(" ") or line.startswith("@@"):
@@ -197,11 +253,20 @@ def main():
         hits = scan_files(words, keys)
         closes = raw_closes()
         if closes is None:
-            print("data/raw/가 없어 시세 값 검사는 건너뜁니다.")
+            SKIPPED.append("시세 값(data/raw/ 없음)")
         else:
             hits += scan_prices(closes)
+        trades = trade_values()
+        if trades is None:
+            SKIPPED.append("실제 매매(화면 저장 파일 없음)")
+        else:
+            hits += scan_trades(*trades)
         for name, no, kind, label in hits:
             print(f"{name}:{no}  {kind}  {label}")
+    if not (ROOT / ".env").exists():
+        SKIPPED.append("비밀값(.env 없음)")
+    if SKIPPED:
+        print("건너뛴 검사: " + ", ".join(SKIPPED) + ". 이 검사들은 돌지 않았습니다(CI 등)")
     print(f"\n찾은 것 {len(hits)}건" if hits else "찾은 것 없음")
     return 1 if hits else 0
 

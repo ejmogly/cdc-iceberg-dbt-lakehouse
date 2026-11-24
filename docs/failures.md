@@ -69,7 +69,7 @@
 
 - **무엇이 문제인가:** PostgreSQL은 같은 값으로 `UPDATE`해도 새 행 판을 쓰므로 Debezium이 `u` 이벤트를 냅니다. 적재기는 늦은 정정을 잡으려고 매일 최근 며칠을 다시 받습니다.
 - **고친 것:** 적재기 넷 모두 `ON CONFLICT ... DO UPDATE ... WHERE (...) IS DISTINCT FROM (...)`로 값이 바뀐 행만 고칩니다([0006](decisions/0006-batch-prices-through-cdc.md)).
-- **확인:** 같은 원본을 다시 넣으면 고친 행 0, 종가 하나를 바꾸면 1행(DuckDB로 옮긴 시험, DDL 두 곳과 SQL 자리표시만 고침). PostgreSQL에서의 확인은 남았습니다.
+- **확인:** 같은 원본을 다시 넣으면 고친 행 0, 종가 하나를 바꾸면 1행(DuckDB로 옮긴 시험, DDL 두 곳과 SQL 자리표시만 고침). PostgreSQL에서의 확인은 2026-11-12에 끝났습니다([데이터 준비](ai/data-prep.md) 「PostgreSQL 확인」, 다시 적재하면 고친 행 0, 토픽 끝 위치 그대로).
 
 ## F09 거래량 칸에 소수
 

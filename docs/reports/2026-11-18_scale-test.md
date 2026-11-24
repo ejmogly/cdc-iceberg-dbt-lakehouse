@@ -24,7 +24,7 @@
 | 데이터 | 합성 매매(계좌 `A-LOAD`, 주문 번호 800,000,000부터). 모두 시장가 매수, 원천 시세의 그날 종가, 미국 종목은 그날(없으면 직전) 기준율, 시각은 장 마감. 매매 한 건 = 주문 + 체결 + 잔고 더하기 |
 | 쓰기 | 연결 하나. 꾸준히는 건마다 한 트랜잭션, 몰아서는 500 ~ 2,000건을 한 트랜잭션 |
 | 반복 | 단계마다 한 번. 지연은 그 한 번의 이벤트 전부의 백분위. Silver MERGE만 따로 잰 것은 세 번 |
-| 원본 | [`eval/scale/results.json`](../../eval/scale/results.json), 실행 기록 `data/generated/scale/runs.jsonl`(git 제외) |
+| 원본 | [`eval/scale/results.json`](../../eval/scale/results.json), 실행 기록 `data/generated/scale/runs.jsonl`(git 제외). `pnl_ledger` 칸과 「4.1배에 8.0배」, 인덱스 시험의 36.6, 0.62, 0.49, 0.43초(0.47초는 results.json에 있음), Silver 첫 전체 읽기 61초, 5만 건 넣기 32 ~ 36초는 실행 출력에서 옮겨 results.json에 키로 남기지 않았습니다. 「Bronze 체결 파일 98개」는 results.json에 남은 압축 전 마지막 기록(96개, 699,619행)보다 뒤에 본 값입니다(해석) |
 
 지연은 이벤트 하나마다 Bronze 행의 칸과 Iceberg 메타데이터로 셉니다([`eval/scale/measure.py`](../../eval/scale/measure.py)).
 

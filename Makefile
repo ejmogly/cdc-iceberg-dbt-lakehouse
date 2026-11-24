@@ -68,7 +68,7 @@ lake-auto-on:
 lake-auto-off:
 	docker compose exec -T airflow bash -c 'airflow dags pause window_extend && airflow dags pause lakehouse_refresh'
 
-# 화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN)로 옮김(VM 필요). 그 뒤 Silver MERGE, dbt build, trades-verify
+# 화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN, A-SCREEN-<증권사>)로 옮김(VM 필요). 그 뒤 Silver MERGE, dbt build, trades-verify
 trades-to-source:
 	$(PY) loaders/screen_trades.py
 

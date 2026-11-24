@@ -3,10 +3,12 @@
 .env.*
 !.env.example
 
-# 로컬 전용 메모와 설정
+# 로컬 전용 메모와 설정(진행판과 그 옛 사본, 에이전트 설정도 저장소 밖)
 CLAUDE.local.md
 .public-check.local.json
-.claude/settings.local.json
+.claude/
+진행판.html
+*.before_v3.html
 
 # 데이터 원본과 생성물 (출처와 받는 방법은 data/README.md)
 data/raw/

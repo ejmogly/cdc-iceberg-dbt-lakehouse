@@ -1,7 +1,7 @@
 # 0006 배치 데이터도 원천 DB를 거쳐 CDC로, 값이 바뀐 행만 고침
 
 - 날짜: 2026-11-06(경로), 2026-11-11(적재 방식)
-- 상태: 결정. PostgreSQL에서 다시 확인할 것이 남음(아래 「결과」)
+- 상태: 결정, 확인함(2026-11-12 PostgreSQL, 아래 「결과」). 11/13부터 범위는 시세와 환율(아래 「범위가 바뀜」)
 
 ## 맥락
 
@@ -52,6 +52,10 @@ WHERE (p.open_price, p.high_price,
   - 처음 넣을 때는 모두 삽입됐습니다.
   - 같은 원본을 다시 넣으면 고친 행이 0이었습니다.
   - 종가 하나만 바꿔 넣으면 1행만 고쳐졌습니다.
-- PostgreSQL에서 같은 결과와 Kafka 메시지 수를 확인하는 일이 남았습니다. 명령은 [`docs/ai/data-prep.md`](../ai/data-prep.md) 10절에 있습니다.
+- PostgreSQL에서 같은 결과와 Kafka 메시지 수를 2026-11-12에 확인했습니다. 다시 적재하면 고친 행 0, 토픽 끝 위치 그대로입니다([`docs/ai/data-prep.md`](../ai/data-prep.md) 「PostgreSQL 확인」, 명령은 10절).
+
+## 범위가 바뀜 (2026-11-13)
+
+이 길로 Bronze까지 가는 것은 시세(`daily_prices`)와 환율(`fx_rates`)뿐입니다. 기사와 일정은 원천에 넣지 않고 `data/raw/`에서 화면 파일로 바로 갑니다([F 설계서](../ai/F-screen.md) 6절 6번, `loaders/schedule_events.py`). 관심도 적재기는 원천 테이블에 쓰지만 Bronze 작업(`infra/flink/bronze.sql`)은 다섯 테이블(주문, 체결, 잔고, 시세, 환율)만 읽어 Kafka에서 멈춥니다.
 - 처음 1년치를 넣으면 시세 4,736개와 환율 245개의 `c` 이벤트가 한꺼번에 Kafka로 갑니다. Flink와 Bronze가 이 몰림을 받아 내는지 4회차에 봅니다.
 - 적재기는 [`loaders/`](../../loaders/README.md)에 있습니다.

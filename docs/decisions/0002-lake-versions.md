@@ -32,7 +32,7 @@ Bronze(Flink가 Kafka를 읽어 Iceberg에 쌓음), Silver(Spark SQL `MERGE`), G
 2. **dbt는 의존성 전체를 고정**합니다. 위 두 패키지를 설치한 뒤 `pip freeze`로 뽑은 [`infra/dbt/requirements.lock`](../../infra/dbt/requirements.lock)으로 이미지를 만듭니다.
 3. **카탈로그는 JDBC 카탈로그**입니다. Flink와 Spark가 같은 PostgreSQL을 보고, 테이블마다 지금 가리키는 metadata 파일 경로 한 줄을 둡니다. 원천 DB(`postgres`)와 섞지 않으려고 `catalog-db`를 따로 띄웁니다.
 4. **두 엔진 모두 UTC로** 시각을 다룹니다(Flink `table.local-time-zone`, Spark `spark.sql.session.timeZone`). 거래일은 Silver core에서 그 시장의 현지 날짜로 바꿉니다.
-5. compose profile은 `lake`(카탈로그 DB, 저장소, 버킷 만들기), `flink`, `spark`(Thrift server, dbt)입니다. lake 서비스는 세 profile에 모두 들어 있어 `flink`나 `spark`만 켜도 같이 뜹니다.
+5. compose profile은 `lake`(카탈로그 DB, 저장소, 버킷 만들기), `flink`, `spark`(Thrift server), `dbt`, `airflow`(11/12 더함)입니다. dbt는 `docker compose --profile spark run --rm dbt`처럼 서비스를 바로 골라 부릅니다. lake 서비스는 세 profile에 모두 들어 있어 `flink`나 `spark`만 켜도 같이 뜹니다.
 
 ## 검토한 다른 방법
 
@@ -52,5 +52,5 @@ Bronze(Flink가 Kafka를 읽어 Iceberg에 쌓음), Silver(Spark SQL `MERGE`), G
 
 - 11/12 Colima VM(CPU 6, 메모리 12GB)에서 기본 profile과 `flink`, `spark`를 모두 띄우고 Bronze, Silver, Gold를 돌렸습니다. 결과는 [보고서](../reports/2026-11-12_lake-bronze-silver-gold.md)에 있습니다.
 - Spark Thrift server는 세션 하나를 모든 접속이 같이 씁니다(`singleSession=true`). 접속마다 세션을 만들면 세션마다 Iceberg JDBC 카탈로그가 카탈로그 DB 연결을 새로 열고 닫지 않아, 검증을 몇 번 돌리자 PostgreSQL 연결 한도를 넘겼습니다. 그래서 Silver와 dbt를 동시에 돌리지 않고, 서버를 ANSI 모드로 띄워 세션 설정을 하나로 맞춥니다.
-- 손익 SQL([`sql/pnl/`](../../sql/pnl/README.md))은 재귀 CTE를 쓰는데, Spark 3.5.6은 `WITH RECURSIVE`를 구문 오류(`PARSE_SYNTAX_ERROR`)로 거절합니다(11/12 확인). 그래서 이번 Gold에는 넣지 않았고, Spark를 올릴지 다른 계산 방법을 쓸지는 손익 쪽에서 정합니다.
+- 손익 SQL([`sql/pnl/`](../../sql/pnl/README.md))은 재귀 CTE를 쓰는데, Spark 3.5.6은 `WITH RECURSIVE`를 구문 오류(`PARSE_SYNTAX_ERROR`)로 거절합니다(11/12 확인). 그래서 11/12 Gold에는 넣지 않았습니다. 11/18에 장부만 `aggregate` 접기로 바꾼 Spark 판으로 Gold 손익 마트(`pnl_position` 등, `dbt/models/pnl/`)를 더했습니다(0008 상태, [`sql/pnl/README.md`](../../sql/pnl/README.md)).
 - 버전을 올릴 때는 이 문서에 새 줄을 더하고, jar sha256과 dbt lock을 다시 뽑고, 보고서의 검증을 같은 순서로 다시 돌립니다.

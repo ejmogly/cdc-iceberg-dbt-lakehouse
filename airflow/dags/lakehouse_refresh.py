@@ -2,7 +2,7 @@
 30분마다 한 번(8회차에 만들고, 11/18에 화면 쪽 셋을 붙임).
 
 Bronze는 Flink가 계속 쌓으므로 이 DAG에 없습니다. 태스크는 모두 같은 입력으로 다시 돌려도 답이 같습니다.
-  trades_to_source  화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN)로 옮김(loaders/screen_trades.py).
+  trades_to_source  화면에 저장한 매매를 원천 주문, 체결, 잔고(계좌 A-SCREEN, A-SCREEN-<증권사>)로 옮김(loaders/screen_trades.py).
                     값이 같은 줄은 고치지 않아 CDC 이벤트가 생기지 않음. 마지막 줄의 바꾼 키 목록이 XCom으로 감
   wait_bronze       그 키의 CDC 이벤트가 모두 Bronze에 닿을 때까지 15초마다 봄(BashSensor, 종료코드 99 = 아직).
                     바꾼 것이 없으면 바로 넘어감. Debezium, Kafka, Flink 중 하나가 멈춰 있으면 10분 뒤 실패

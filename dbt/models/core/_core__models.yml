@@ -29,7 +29,8 @@ models:
   - name: fct_execution
     description: >
       체결 1건 = 1행. 철회된 체결 제외. trade_date는 그 시장의 현지 날짜(국내는 서울, 미국은 뉴욕).
-      exec_value는 exec_qty x exec_price이고 종목 통화 그대로입니다.
+      exec_value는 exec_qty x exec_price이고 종목 통화 그대로입니다. order_type은 주문의 유형이고,
+      입고(TRANSFER_IN)는 데이터 기간 전 보유를 첫날에 넣은 것이라 체결 대금 마트에서 뺍니다(0013).
     columns:
       - name: execution_id
         data_tests: [not_null, unique]

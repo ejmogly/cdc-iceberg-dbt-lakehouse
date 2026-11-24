@@ -9,7 +9,7 @@ with executions as (
 ),
 
 orders as (
-  select order_id, account_id, symbol, side
+  select order_id, account_id, symbol, side, order_type
   from {{ ref('dim_order') }}
 ),
 
@@ -31,6 +31,7 @@ select
   i.market,
   i.currency,
   o.side,
+  o.order_type,
   e.exec_qty,
   e.exec_price,
   e.exec_qty * e.exec_price as exec_value,

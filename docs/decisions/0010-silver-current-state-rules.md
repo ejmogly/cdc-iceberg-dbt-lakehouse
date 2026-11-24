@@ -1,7 +1,7 @@
 # 0010 Silver 현재 상태 규칙
 
 - 날짜: 2026-11-11
-- 상태: 제안. 4회차 Silver 설계서에서 확정
+- 상태: 결정, 확인함(11/12 `sql/silver/*/2_merge.sql`로 구현, [첫 실행 보고서](../reports/2026-11-12_lake-bronze-silver-gold.md) 2절)
 
 ## 맥락
 
@@ -9,9 +9,9 @@ Bronze에는 같은 키의 변경이 여러 번 쌓입니다(주문 하나가 �
 Silver는 키마다 현재 상태 한 행을 가져야 합니다. 그런데 Kafka는 같은 이벤트를 다시 보낼 수 있고, 재전달된 옛 변경은 새 offset을 달고 옵니다.
 삭제는 행을 지울지 표시만 할지 골라야 합니다.
 
-## 결정(제안)
+## 결정
 
-1. **묶는 키**: `orders`는 `order_id`, `executions`는 `execution_id`, `holdings`는 (`account_id`, `symbol`), `daily_prices`는 (`symbol`, `trade_date`).
+1. **묶는 키**: `orders`는 `order_id`, `executions`는 `execution_id`, `holdings`는 (`account_id`, `symbol`), `daily_prices`는 (`symbol`, `trade_date`), `fx_rates`는 (`currency_pair`, `rate_date`).
 2. **최신 판단**: 같은 키 안에서 원천 LSN(`source.lsn`)을 먼저 보고, LSN이 같을 때만 Kafka offset으로 가립니다. `updated_at`은 한 트랜잭션 안에서 같은 값이 겹치므로 보조로만 씁니다.
 3. **삭제**: 최신 이벤트가 `d`면 행을 지우지 않고 `is_deleted = true`로 표시하고, `source_lsn`을 그 삭제의 LSN으로 바꿉니다. 유효한 행은 `WHERE NOT is_deleted`로 읽습니다.
 4. **삭제된 잔고**: `qty`, `avg_price`는 NULL로 둡니다. 삭제 이벤트의 값은 채움 값이기 때문입니다([0005](0005-replica-identity-executions-full.md)).

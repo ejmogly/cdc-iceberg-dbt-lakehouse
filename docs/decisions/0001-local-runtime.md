@@ -15,7 +15,7 @@
 3. Kafka는 ZooKeeper 없는 KRaft 단일 노드로 띄웁니다.
 4. 포트는 `127.0.0.1`에만 엽니다.
 5. 비밀값은 `.env`에만 둡니다. compose는 `${VAR:?}`로 값이 없으면 멈춥니다. 커넥터 설정에는 `${env:VAR}`를 쓰고, Kafka Connect의 `EnvVarConfigProvider`가 컨테이너 환경 변수로 바꿉니다.
-6. 이미지 태그는 패치 버전까지 고정합니다.
+6. 이미지 태그는 패치 버전까지 고정합니다. 예외는 dbt 이미지의 바탕 `python:3.11-slim`이고, 대신 패키지를 `requirements.lock`으로 모두 고정합니다(0002).
 7. Kafka Connect는 quay.io의 `debezium/connect` 이미지 대신, Docker Hub의 `apache/kafka:4.3.2`에 Maven Central의 Debezium PostgreSQL 플러그인(`3.6.3.Final`, sha1 확인)을 넣어 직접 빌드합니다.
    - HTTPS를 검사하는 프록시가 있는 네트워크에서는 quay.io에서 이미지를 받지 못할 수 있습니다.
    - 이미지 출처가 Docker Hub와 Maven Central 두 곳으로 줄고, 브로커와 Connect의 Kafka 버전이 같아집니다.

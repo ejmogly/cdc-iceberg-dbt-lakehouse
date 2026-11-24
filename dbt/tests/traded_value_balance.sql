@@ -1,8 +1,10 @@
 -- 조인 fan-out 검사: Gold 대금 합과 Silver core 대금 합이 통화별로 같아야 합니다.
 -- 통화가 다른 대금은 더하지 않으므로 통화마다 비교합니다.
+-- 입고(TRANSFER_IN)는 마트에서 빠지므로 core 쪽도 뺍니다(mart_daily_symbol_trading과 같은 조건).
 with core as (
   select currency, sum(exec_value) as v
   from {{ ref('fct_execution') }}
+  where order_type is distinct from 'TRANSFER_IN'
   group by currency
 ),
 

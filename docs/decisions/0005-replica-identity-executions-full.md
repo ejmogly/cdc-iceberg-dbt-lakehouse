@@ -18,8 +18,8 @@ DEFAULT에서는 삭제 이벤트에 `execution_id`만 옵니다.
 ## 결정
 
 1. `executions`만 `REPLICA IDENTITY FULL`로 둡니다.
-2. `orders`, `holdings`, `daily_prices`는 기본값(DEFAULT)으로 둡니다.
-3. Silver는 삭제 이벤트의 `before` 값을 믿지 않고 `op = 'd'`만 보고 삭제로 처리합니다. 바로 앞 값이 필요하면 Bronze에서 같은 키의 이전 이벤트 `after`를 봅니다.
+2. `orders`, `holdings`, `daily_prices`, `fx_rates`는 기본값(DEFAULT)으로 둡니다.
+3. DEFAULT 테이블의 삭제 이벤트는 `before`에 키 밖 칸이 채움 값이므로, Silver는 그 값을 믿지 않고 `op = 'd'`만 보고 삭제로 처리합니다. 바로 앞 값이 필요하면 Bronze에서 같은 키의 이전 이벤트 `after`를 봅니다. 체결(FULL)은 `before`를 모두 쓰고 검사하며, 증분 Gold가 철회된 체결의 주문 번호와 체결 시각으로 영향 키를 찾습니다(`sql/silver/executions/1_incoming.sql`, `sql/gold_incremental/run.py`).
 
 ## 검토한 다른 방법
 

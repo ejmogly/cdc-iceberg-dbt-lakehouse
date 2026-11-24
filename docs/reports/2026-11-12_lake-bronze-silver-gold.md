@@ -82,7 +82,7 @@ Flink 작업 하나가 토픽 패턴 `src\.source\.(orders|executions|holdings|d
 | `daily_prices` | 0 | 0 | |
 
 - 작업을 넣은 지 10초 안팎(checkpoint 한 번) 뒤에 세 테이블에 snapshot이 하나씩 생겼고, 데이터 파일은 테이블마다 Parquet 하나입니다.
-- 새 변경이 없어도 snapshot은 늘어납니다. `orders`는 checkpoint 1에서 6행을 더한 뒤, checkpoint 11에서 행 없는 `append` snapshot이 하나 더 생겼습니다(약 100초 뒤). 빈 checkpoint가 10번 이어지면 한 번 commit하는 Iceberg Flink 쓰기의 기본 동작으로 보입니다(설정 `flink.max-continuous-empty-commits`, 확인 전). 10초 주기면 테이블마다 하루 약 860개라, 7회차의 snapshot 정리 대상입니다.
+- 새 변경이 없어도 snapshot은 늘어납니다. `orders`는 checkpoint 1에서 6행을 더한 뒤, checkpoint 11에서 행 없는 `append` snapshot이 하나 더 생겼습니다(약 100초 뒤). 빈 checkpoint가 10번 이어지면 한 번 commit하는 Iceberg Flink 쓰기의 기본 동작으로 보입니다(설정 `flink.max-continuous-empty-commits`, 확인 전). 10초 주기면 테이블마다 하루 약 860개라, 7회차의 snapshot 정리 대상입니다(100초 가정. 뒤 [증분, 유지보수 보고서](2026-11-12_incremental-maintenance-airflow.md)에서 108초로 재어 약 800개).
 - 행마다 `source.lsn`이 원천 순서대로 커집니다. 예: 잔고 `c` 27424264, `d` 27433432.
 - 잔고 삭제(`d`)의 `before`는 `qty` 0, `avg_price` `"0.0000"`, `updated_at` 1970-01-01입니다. REPLICA IDENTITY DEFAULT의 채움 값이라 Silver에서 NULL로 바꿉니다([0005](../decisions/0005-replica-identity-executions-full.md)). 체결은 FULL이라 `before`에 진짜 값이 있습니다.
 
@@ -211,7 +211,7 @@ docker compose exec -T kafka \
 |---|---|
 | Bronze `fx_rates` | 작업을 보낸 지 21초 안에 245행, 전달 위치 중복 0. 처음 보는 토픽이라 처음부터 읽음 |
 | Bronze의 다른 네 테이블 | 6, 2, 2, 4,736 그대로. 이미 읽은 토픽은 commit된 위치부터 이어 읽어 중복 없음 |
-| Silver와 원천 대조 | `USDKRW` 245행, 2025-11-12 ~ 2026-11-11, 환율 합 355,167.7, 최솟값 1,322.6, 최댓값 1,554.4로 같음 |
+| Silver와 원천 대조(환율 값은 한국은행 ECOS에서 제공된 정보) | `USDKRW` 245행, 2025-11-12 ~ 2026-11-11, 환율 합 355,167.7, 최솟값 1,322.6, 최댓값 1,554.4로 같음 |
 | `check-silver.sh` | 다섯 테이블 모두 통과. 같은 입력으로 다시 MERGE해도 바뀐 행 0 |
 | `dbt build` | `PASS=55`(환율 source 테스트 3개 추가) |
 

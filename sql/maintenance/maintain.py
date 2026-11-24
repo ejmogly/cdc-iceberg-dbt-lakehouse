@@ -21,8 +21,12 @@ import sys
 
 from pyhive import hive
 
-# 이 테이블을 증분으로 읽는 작업의 progress 테이블(sql/gold_incremental/run.py)
-PROGRESS_TABLES = ["lake.gold.mart_daily_symbol_trading_inc_progress"]
+# 이 테이블을 증분으로 읽는 작업의 progress 테이블: (progress 테이블, 입력 칸, 유지보수 테이블 이름의 앞붙이).
+# 증분 Gold(sql/gold_incremental/run.py)는 입력 칸에 'silver.executions'처럼, Silver MERGE(sql/silver/run.py)는
+# 'orders'처럼 Bronze 테이블 이름만 적습니다. Silver progress가 빠져 있어 Bronze를 정리하면 Silver의 시작 스냅샷이
+# 만료돼 전체 읽기로 돌아갈 수 있었습니다(2026-11-20 독립 검토).
+PROGRESS_TABLES = [("lake.gold.mart_daily_symbol_trading_inc_progress", "input_table", ""),
+                   ("lake.silver.merge_progress", "bronze_table", "bronze.")]
 
 
 class Spark:
@@ -59,9 +63,11 @@ def measure(spark, t, sum_expr):
 def progress_snapshots(spark, t):
     """이 테이블을 가리키는 progress 스냅샷과 그 커밋 시각"""
     found = []
-    for p in PROGRESS_TABLES:
+    for p, col, prefix in PROGRESS_TABLES:
+        if not t.startswith(prefix):
+            continue
         try:
-            ids = [r[0] for r in spark.rows(f"SELECT snapshot_id FROM {p} WHERE input_table = '{t}'")]
+            ids = [r[0] for r in spark.rows(f"SELECT snapshot_id FROM {p} WHERE {col} = '{t[len(prefix):]}'")]
         except Exception:
             continue  # progress 테이블이 아직 없음
         for sid in ids:
