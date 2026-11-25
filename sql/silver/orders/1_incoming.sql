@@ -1,5 +1,5 @@
 -- Silver orders 1단계: Bronze 이력을 펼치고 검사한 뒤, 주문마다 최신 후보 하나를 고릅니다.
--- 규칙은 docs/decisions/0010, 뼈대는 docs/guide/04-bronze-to-silver.md 12-4입니다.
+-- 규칙은 docs/decisions/0010, 뼈대는 학습 가이드 04 12-4입니다.
 -- 2_merge.sql과 한 세션에서 이어 돌립니다(infra/spark/silver.sh).
 
 -- 글자를 숫자나 시각으로 바꾸다 실패하면 NULL로 넘기지 않고 오류로 멈춥니다.

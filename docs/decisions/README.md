@@ -22,6 +22,7 @@
 | [0015](0015-extend-data-window-keep-eval-frozen.md) | 데이터 기간은 원본 구간을 뒤에 더해 늘리고, 평가는 정답을 고정한 때의 얼린 파일로 한다 | 2026-11-19 | 결정, 확인함 |
 | [0016](0016-window-extend-fetch-on-mac-process-in-airflow.md) | 기간 늘리기는 받기를 Mac에, 처리를 Airflow DAG `window_extend`에 둔다 | 2026-11-19 | 결정, 확인함 |
 | [0017](0017-screen-trades-into-source.md) | 화면에 넣은 담당자의 매매를 원천으로 옮겨 레이크를 거치게 한다 | 2026-11-18 | 결정, 확인함 |
+| [0018](0018-public-release.md) | 공개는 git 기록을 고쳐 옮기고, 학습 가이드는 빼고, 준비되는 대로 한다 | 2026-11-24 | 결정, 실행 전 |
 
 ## 결정 기록 밖에서 정한 것
 

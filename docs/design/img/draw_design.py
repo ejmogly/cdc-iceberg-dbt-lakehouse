@@ -1,5 +1,5 @@
 """원천 설계 그림 생성기. 사용: python3 docs/design/img/draw_design.py docs/design/img
-꾸밈은 docs/guide/img/draw_guide03.py와 같게 맞췄습니다."""
+꾸밈은 학습 가이드의 그림 스크립트와 같게 맞췄습니다."""
 import sys
 from pathlib import Path
 from html import escape

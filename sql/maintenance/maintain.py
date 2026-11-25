@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Iceberg 테이블 하나의 유지보수 한 주기(docs/guide/07-iceberg-maintenance.md 7 ~ 10절).
+"""Iceberg 테이블 하나의 유지보수 한 주기(학습 가이드 07 7 ~ 10절).
 
 순서: rewrite_data_files → expire_snapshots → remove_orphan_files → rewrite_manifests
 단계마다 파일, 스냅샷, manifest, metadata 이력 수와 행 수, 합계를 재고, 행 수나 합계가 바뀌면 멈춥니다.

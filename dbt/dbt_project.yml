@@ -1,4 +1,4 @@
-# 증권 앱 Gold(dbt-spark, Iceberg). 설계는 docs/guide/05-dbt-gold-metrics.md 12절입니다.
+# 증권 앱 Gold(dbt-spark, Iceberg). 설계는 학습 가이드 05 12절입니다.
 #   docker compose --profile spark run --rm dbt build
 # Silver 현재 상태 다섯 테이블(lake.silver.*: 주문, 체결, 잔고, 시세, 환율)은 dbt가 아니라 sql/silver의 MERGE가 만듭니다.
 # dbt는 그것을 source로 읽어 Silver core(dim, fct)와 Gold(mart)를 만듭니다.

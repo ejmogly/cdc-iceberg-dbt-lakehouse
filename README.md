@@ -53,7 +53,7 @@ PostgreSQL의 변경을 Debezium과 Kafka로 받아 Flink로 Apache Iceberg에 �
 | 질문 | 어떻게 보이나 |
 |---|---|
 | 체결, 주문, 잔고가 같은 원천 commit까지 반영됐는지 맞출 수 있나 | Debezium `source`의 트랜잭션 번호로 세 테이블 묶기 |
-| 체결 직후 작업 노드가 멈춰도 결과가 맞나 | [가이드 08](docs/guide/08-airflow-and-recovery.md) 9-3의 복구 시나리오 |
+| 체결 직후 작업 노드가 멈춰도 결과가 맞나 | 학습 가이드 08 9-3의 복구 시나리오 |
 
 숫자는 측정 조건(기기, VM 자원, 버전, 데이터 규모)과 함께 [docs/reports/](docs/reports/README.md)에 남깁니다.
 
@@ -200,7 +200,7 @@ colima stop                  # Colima를 쓸 때
 | 측정 보고서 | [docs/reports/](docs/reports/README.md) |
 | AI 트랙: 문제, 가설, 평가 기준, 결과 | [docs/ai/](docs/ai/README.md) |
 | 계획과 진행 기록 | [docs/PLAN.md](docs/PLAN.md) |
-| 학습 노트: 회차별 입문 가이드 00 ~ 08 | [docs/guide/](docs/guide/00-overview.md) |
+| 학습 노트: 회차별 입문 가이드 00 ~ 08 | 강의를 듣고 다시 쓴 글이라 강의 쪽 허락을 받은 뒤 공개합니다([0018](docs/decisions/0018-public-release.md)). 코드 주석의 「학습 가이드 NN」이 이 가이드입니다 |
 
 ## 작업 방식
 
@@ -245,7 +245,6 @@ colima stop                  # Colima를 쓸 때
     ├── failures.md      실패와 고친 것
     ├── reports/         측정 보고서
     ├── ai/              AI 트랙
-    ├── guide/           회차별 입문 가이드
     └── PLAN.md          계획과 진행 기록
 ```
 
@@ -270,7 +269,7 @@ colima stop                  # Colima를 쓸 때
 
 ## 참고
 
-- 메타코드M 「실시간 데이터 수집부터 분석 마트까지 — CDC, Iceberg, dbt」 스터디 커리큘럼을 바탕으로 혼자 진행합니다. 입문 가이드는 강의를 듣고 제 말로 다시 쓴 학습 노트이고, 강의 원문과 자료는 저장소에 넣지 않습니다.
+- 메타코드M 「실시간 데이터 수집부터 분석 마트까지 — CDC, Iceberg, dbt」 스터디 커리큘럼을 바탕으로 혼자 진행합니다. 입문 가이드는 강의를 듣고 제 말로 다시 쓴 학습 노트라, 강의 쪽 허락을 받은 뒤 공개합니다. 강의 원문과 자료는 저장소에 넣지 않습니다.
 - [Debezium PostgreSQL Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html)
 - [Apache Iceberg](https://iceberg.apache.org/docs/latest/)
 - [Iceberg Flink Writes](https://iceberg.apache.org/docs/latest/flink-writes/)

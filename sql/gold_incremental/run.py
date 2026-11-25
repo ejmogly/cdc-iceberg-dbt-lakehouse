@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """일별 종목별 체결 대금의 증분 갱신(바뀐 키만 다시 계산).
 
-docs/guide/06-incremental-and-backfill.md 7 ~ 12절, 14절의 설계를 이 저장소에 옮겼습니다.
+학습 가이드 06 7 ~ 12절, 14절의 설계를 이 저장소에 옮겼습니다.
 
   1. 구간 고정: 입력(Silver executions, orders)마다 progress에 저장한 스냅샷이 시작(빼고),
      main 참조의 현재 스냅샷이 끝(넣고)입니다. 계산은 모두 끝 스냅샷으로 고정해 읽습니다.

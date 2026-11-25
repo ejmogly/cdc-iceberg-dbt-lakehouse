@@ -1,5 +1,5 @@
 -- Silver executions 1단계: Bronze 이력을 펼치고 검사한 뒤, 체결마다 최신 후보 하나를 고릅니다.
--- 규칙은 docs/decisions/0010, 뼈대는 docs/guide/04-bronze-to-silver.md 12-4입니다.
+-- 규칙은 docs/decisions/0010, 뼈대는 학습 가이드 04 12-4입니다.
 -- 2_merge.sql과 한 세션에서 이어 돌립니다(infra/spark/silver.sh).
 
 SET spark.sql.ansi.enabled = true;
