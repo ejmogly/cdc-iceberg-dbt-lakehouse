@@ -1029,7 +1029,7 @@ function renderPortfolio(p) {
   $("pf-brokers").replaceChildren(...p.brokers.map((b) => pfLi(b.broker_name,
     `종목 ${b.symbols}개, 평가액 ${krw(b.value_krw)}, 실현 ${krw(b.realized_krw, true)}, 평가 ${krw(b.unrealized_krw, true)}`,
     krwBig(b.total_krw, true), tone(b.total_krw))));
-  const notes = ["저장한 모든 종목의 매매를 위 기준일로 다시 센 값이에요(종목마다 저장한 기준일과 다를 수 있어요).",
+  const notes = ["저장한 모든 종목의 매매를 위 기준일로 다시 센 값이에요.",
     "SPY 비교와 연 환산 수익률은 돈이 들어간 때가 종목마다 달라 여기서 더하지 않고 종목 요약에서 봐요."];
   if (p.symbols.some((x) => x.currency === "USD")) notes.push(`미국 종목 평가액은 ${p.fx_date} 매매기준율로 원화로 바꿨어요.`);
   if (p.skipped.length) notes.push(`틀린 줄이 있어 뺀 종목: ${p.skipped.map((x) => `${x.name}(${x.message})`).join(", ")}`);
@@ -1142,9 +1142,9 @@ function load(sym) {
   st.asofErr = null;
   $("asof").removeAttribute("aria-invalid");
   const saved = st.saved.symbols[sym];
+  // 저장한 기준일은 되살리지 않고 지금 기준일(처음 열 때는 데이터 끝날)을 그대로 씁니다(11/25). 저장 파일 형식은 그대로
   if (saved) {
     st.rows = saved.trades.map((t) => ({ price: "", fx_rate: "", side: "BUY", ...t }));
-    st.asof = saved.asof;
     st.example = false;
   } else if (!Object.keys(st.saved.symbols).length && sym === DEFAULT_SYMBOL) {
     st.rows = EXAMPLE.map((t) => ({ price: "", fx_rate: "", ...t }));
@@ -1190,7 +1190,9 @@ async function boot() {
   }
   const asof = $("asof");
   asof.min = st.calendar[0]; asof.max = st.calendar[1];
-  st.asof = st.calendar[1];
+  // 처음 기준일은 데이터 끝날입니다. 주소에 ?asof=YYYY-MM-DD가 있고 데이터 기간 안이면 그날로 엽니다(화면 값 대조가 사례의 기준일로 열 때 씀)
+  const want = new URLSearchParams(location.search).get("asof");
+  st.asof = want && /^\d{4}-\d{2}-\d{2}$/.test(want) && want >= st.calendar[0] && want <= st.calendar[1] ? want : st.calendar[1];
   const tr = await api("/api/trades");
   if (tr.status === 200 && tr.body.enabled) {
     st.saveOn = true;
@@ -1224,7 +1226,7 @@ async function boot() {
     changed();
     if (!$("all").hidden) fetchPortfolio();
   });
-  // 저장한 기준일이 데이터 끝날보다 앞이면(데이터 기간을 늘린 뒤 등) 끝날로 옮기는 단추. 저장한 기준일은 고르기 전까지 그대로 둠
+  // 기준일이 데이터 끝날보다 앞이면(앞날을 고른 뒤, 주소로 앞날을 연 뒤) 끝날로 옮기는 단추
   $("asof-latest").addEventListener("click", () => {
     asof.value = st.calendar[1];
     asof.dispatchEvent(new Event("change"));

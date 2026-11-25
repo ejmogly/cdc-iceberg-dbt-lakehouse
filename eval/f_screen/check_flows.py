@@ -216,6 +216,17 @@ def run_flows(page, port):
     if not page.wait(CALC_DONE, 20):
         return {"처음 계산": [f"계산을 마치지 못함: {page.js(STATE)!r}"]}
 
+    # 0. 저장한 종목(QQQ, 저장한 기준일 11/11)도 데이터 끝날로 열림(11/25)
+    bad = []
+    start = page.js("[document.getElementById('sym').value, document.getElementById('asof').value, document.getElementById('asof').max]")
+    if start[0] != "QQQ":
+        bad.append(f"저장한 마지막 종목으로 열리지 않음: {start[0]!r}")
+    if start[1] != start[2]:
+        bad.append(f"기준일이 데이터 끝날 {start[2]}가 아니라 {start[1]}로 열림")
+    if not page.js("document.getElementById('asof-latest').hidden"):
+        bad.append("끝날로 열렸는데 최신 단추가 보임")
+    out["저장한 종목도 끝날 기준일로 열림"] = bad
+
     # 1. 늦게 온 답
     bad, held = [], []
     page.on_pause = held.append
@@ -270,7 +281,7 @@ def run_flows(page, port):
     page.call("Fetch.disable")
     out["틀린 기준일이면 계산하지 않음"] = bad
 
-    # 2-2. 기준일이 데이터 끝날보다 앞이면 「최신 <끝날>로」 단추(데이터 기간을 늘린 뒤 저장한 종목을 열 때, 11/19)
+    # 2-2. 기준일이 데이터 끝날보다 앞이면 「최신 <끝날>로」 단추(11/19, 11/25부터는 앞날을 고른 뒤에만 보임)
     bad = []
     end = page.js("document.getElementById('asof').max")
     if page.js("!document.getElementById('asof-latest').hidden !== (document.getElementById('asof').value < "
@@ -591,6 +602,9 @@ def run_flows(page, port):
 
 # 자체 시험: 화면 사본에 고치기 전의 잘못을 하나씩 되살려, 맡은 흐름이 실패로 잡는지 봅니다
 BUGS = [
+    ("저장한 종목도 끝날 기준일로 열림", "저장한 기준일을 되살림", [
+        ("    st.rows = saved.trades.map((t) => ({ price: \"\", fx_rate: \"\", side: \"BUY\", ...t }));\n",
+         "    st.rows = saved.trades.map((t) => ({ price: \"\", fx_rate: \"\", side: \"BUY\", ...t }));\n    st.asof = saved.asof;\n")]),
     ("늦게 온 답이 오류를 지우지 않음", "일찍 끝나는 갈래에서 앞 요청을 버리지 않음", [
         ("  const my = ++st.seq;\n  st.ctl?.abort();\n  st.ctl = null;\n  const sent", "  const sent"),
         ("  st.ctl = new AbortController();\n  st.notes = null;",
@@ -644,7 +658,7 @@ BUGS = [
 
 
 def one_run(static=None):
-    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 아홉을 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
+    """저장 파일을 새로 쓰고 서버와 Chrome을 띄워 흐름 열하나를 돌림. static을 주면 그 폴더의 화면 파일을 씀."""
     # GLD 한 줄은 7번 칸 흐름이 「매매가 있는 다른 종목」으로 바꿀 때 씀(SPY는 매매가 없는 종목으로 둠)
     TMP.write_text(json.dumps({"symbols": {"QQQ": {"asof": "2026-11-11", "trades": START},
                                            "GLD": {"asof": "2026-11-11", "trades": [{"date": "2025-03-03", "side": "BUY",

@@ -179,6 +179,11 @@ def ftone(v):
 
 # ---------- 사례 하나 ----------
 
+def page_url(port, asof, tab=""):
+    """사례의 기준일로 여는 주소. 화면은 저장한 기준일을 되살리지 않고 데이터 끝날로 열므로(11/25) 주소로 넘깁니다."""
+    return f"http://127.0.0.1:{port}/?asof={asof}{tab}"
+
+
 def chrome_dom(url, width=1280):
     with tempfile.TemporaryDirectory() as prof:
         r = subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
@@ -257,7 +262,7 @@ def check_account_case(case, port, html=None):
     api = post(port, {"symbol": case["symbol"], "asof": case["asof"], "trades": case["rows"]})
     if html is None:
         write_saved(case, case["rows"])
-        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        html = chrome_dom(page_url(port, case["asof"]))
     ids = dom(html).ids
     bad, cur = [], api["currency"]
     s = api["summary"]
@@ -373,7 +378,7 @@ def check_portfolio_case(port, html=None):
     if html is None:
         TMP.write_text(json.dumps({"symbols": {s: {"asof": c["asof"], "trades": rows} for s, rows in c["symbols"].items()},
                                    "last": c["last"]}, ensure_ascii=False), encoding="utf-8")
-        html = chrome_dom(f"http://127.0.0.1:{port}/#all")
+        html = chrome_dom(page_url(port, c["asof"], "#all"))
     ids = dom(html).ids
     bad = []
 
@@ -492,7 +497,7 @@ def check_case(case, port, inputs, html=None):
     api = post(port, {"symbol": case["symbol"], "asof": case["asof"], "trades": trades})
     if html is None:
         write_saved(case, trades)
-        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        html = chrome_dom(page_url(port, case["asof"]))
     ids = dom(html).ids
     bad = []
     cur = api["currency"]
@@ -899,7 +904,7 @@ def selftest(port):
     for cid in ("R02", "R03"):
         case, inputs = cases[cid], expected[cid]["inputs"]
         write_saved(case, screen_trades(case, inputs))
-        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        html = chrome_dom(page_url(port, case["asof"]))
         api, bad = check_case(case, port, inputs, html)
         assert not bad, (cid, bad)
         for name, fn in mutations(api).items():
@@ -913,7 +918,7 @@ def selftest(port):
     PC = PORTFOLIO_CASE
     TMP.write_text(json.dumps({"symbols": {s_: {"asof": PC["asof"], "trades": rows} for s_, rows in PC["symbols"].items()},
                                "last": PC["last"]}, ensure_ascii=False), encoding="utf-8")
-    html = chrome_dom(f"http://127.0.0.1:{port}/#all")
+    html = chrome_dom(page_url(port, PC["asof"], "#all"))
     _, bad = check_portfolio_case(port, html)
     assert not bad, ("P01", bad)
     for name, fn in PORTFOLIO_MUT.items():
@@ -923,7 +928,7 @@ def selftest(port):
     for cid, muts in ACCOUNT_MUT.items():
         case = acases[cid]
         write_saved(case, case["rows"])
-        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        html = chrome_dom(page_url(port, case["asof"]))
         _, bad = check_account_case(case, port, html)
         assert not bad, (cid, bad)
         for name, fn in muts.items():
@@ -937,7 +942,7 @@ def selftest(port):
     for cid, muts in EXTRA_MUT.items():
         case = extra[cid]
         write_saved(case, screen_trades(case, {}))
-        html = chrome_dom(f"http://127.0.0.1:{port}/")
+        html = chrome_dom(page_url(port, case["asof"]))
         api, bad = check_case(case, port, {}, html)
         assert not bad, (cid, bad)
         for name, fn in muts.items():
